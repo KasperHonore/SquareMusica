@@ -1,0 +1,5 @@
+# Local Claude config / artifacts
+.claude/
+
+# Devcontainer config (ignore if you don't want it versioned)
+.devcontainer/.env

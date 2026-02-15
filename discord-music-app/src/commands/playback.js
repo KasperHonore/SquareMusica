@@ -4,6 +4,8 @@ import { musicManager } from '../state/musicManager.js';
 import { MusicPlayer } from '../music/player.js';
 import { Queue } from '../music/queue.js';
 import { search, getInfo, isValidUrl, isPlaylist, getPlaylist } from '../music/youtube.js';
+import { parseSpotifyUrl, getPublicTrack, getPublicPlaylistTracks } from '../music/spotify.js';
+import { resolveSpotifyTrack, resolveSpotifyTracks } from '../music/resolver.js';
 
 // Singleton instances
 let player = null;
@@ -57,8 +59,38 @@ export async function handlePlay(interaction) {
     const q = getQueue();
 
     let tracks = [];
+    let skippedTracks = [];
 
-    if (isPlaylist(query)) {
+    // Check for Spotify URL first
+    const spotifyParsed = parseSpotifyUrl(query);
+
+    if (spotifyParsed.type === 'playlist') {
+      // Handle Spotify playlist
+      const spotifyTracks = await getPublicPlaylistTracks(spotifyParsed.id);
+      if (spotifyTracks.length === 0) {
+        return interaction.editReply('Could not load Spotify playlist or playlist is empty.');
+      }
+
+      const { resolved, skipped } = await resolveSpotifyTracks(spotifyTracks);
+      tracks = resolved;
+      skippedTracks = skipped;
+
+      if (tracks.length === 0) {
+        return interaction.editReply('Could not find any tracks from this Spotify playlist on YouTube.');
+      }
+    } else if (spotifyParsed.type === 'track') {
+      // Handle Spotify track
+      const spotifyTrack = await getPublicTrack(spotifyParsed.id);
+      if (!spotifyTrack) {
+        return interaction.editReply('Could not find that Spotify track.');
+      }
+
+      const youtubeTrack = await resolveSpotifyTrack(spotifyTrack);
+      if (!youtubeTrack) {
+        return interaction.editReply(`Could not find "${spotifyTrack.title}" on YouTube.`);
+      }
+      tracks = [youtubeTrack];
+    } else if (isPlaylist(query)) {
       tracks = await getPlaylist(query);
       if (tracks.length === 0) {
         return interaction.editReply('Could not load playlist.');
@@ -111,7 +143,11 @@ export async function handlePlay(interaction) {
         await interaction.editReply(`Now playing: **${tracks[0].title}**`);
       }
     } else {
-      await interaction.editReply(`Added ${tracks.length} tracks to queue`);
+      let message = `Added ${tracks.length} tracks to queue`;
+      if (skippedTracks.length > 0) {
+        message += ` (${skippedTracks.length} tracks could not be found on YouTube)`;
+      }
+      await interaction.editReply(message);
     }
   } catch (error) {
     console.error('Play error:', error);

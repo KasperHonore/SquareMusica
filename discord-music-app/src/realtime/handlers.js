@@ -1,6 +1,9 @@
 import { musicManager } from '../state/musicManager.js';
-import { search, getInfo, isValidUrl } from '../music/youtube.js';
+import { search, getInfo, isValidUrl, isPlaylist, getPlaylist } from '../music/youtube.js';
 import { getConnection, isConnected } from '../bot/voiceManager.js';
+import { parseSpotifyUrl, getPublicTrack, getPublicPlaylistTracks } from '../music/spotify.js';
+import { resolveSpotifyTrack } from '../music/resolver.js';
+import { resolutionManager, ResolutionManager } from '../music/resolutionManager.js';
 
 /**
  * Check if bot is connected to voice channel
@@ -26,26 +29,81 @@ export function handleQueueAdd(socket) {
     if (!checkVoiceConnection(socket)) return;
 
     try {
-      let track;
+      let tracks = [];
+      const requestedBy = socket.user?.username || 'Web User';
 
-      if (isValidUrl(query)) {
-        track = await getInfo(query);
+      // Check for Spotify URL first
+      const spotifyParsed = parseSpotifyUrl(query);
+
+      if (spotifyParsed.type === 'playlist') {
+        // Handle Spotify playlist - add tracks with lazy resolution
+        const spotifyTracks = await getPublicPlaylistTracks(spotifyParsed.id);
+        if (spotifyTracks.length === 0) {
+          socket.emit('error', { message: 'Spotify playlist not found or empty' });
+          return;
+        }
+
+        // Convert to unresolved queue tracks (lazy resolution)
+        tracks = spotifyTracks.map(st =>
+          ResolutionManager.createUnresolvedTrack(st, requestedBy)
+        );
+      } else if (spotifyParsed.type === 'track') {
+        // Handle Spotify track - resolve immediately
+        const spotifyTrack = await getPublicTrack(spotifyParsed.id);
+        if (!spotifyTrack) {
+          socket.emit('error', { message: 'Spotify track not found' });
+          return;
+        }
+
+        const youtubeTrack = await resolveSpotifyTrack(spotifyTrack);
+        if (!youtubeTrack) {
+          socket.emit('error', { message: `Could not find "${spotifyTrack.title}" on YouTube` });
+          return;
+        }
+        tracks = [youtubeTrack];
+      } else if (isPlaylist(query)) {
+        // Handle YouTube playlist
+        tracks = await getPlaylist(query);
+        if (tracks.length === 0) {
+          socket.emit('error', { message: 'Playlist not found or empty' });
+          return;
+        }
+      } else if (isValidUrl(query)) {
+        // Handle direct YouTube URL
+        const track = await getInfo(query);
+        if (!track) {
+          socket.emit('error', { message: 'Video not found' });
+          return;
+        }
+        tracks = [track];
       } else {
+        // Search YouTube
         const results = await search(query, 1);
         if (results.length === 0) {
           socket.emit('error', { message: 'No results found' });
           return;
         }
-        track = results[0];
+        tracks = [results[0]];
       }
 
-      if (!track) {
-        socket.emit('error', { message: 'Could not find track' });
-        return;
-      }
+      // Add requestedBy to all tracks
+      tracks = tracks.map(track => ({
+        ...track,
+        requestedBy
+      }));
 
-      track.requestedBy = socket.user?.username || 'Web User';
-      musicManager.addToQueue(track);
+      // Add to queue
+      tracks.forEach(track => musicManager.addToQueue(track));
+
+      // Trigger lookahead resolution for Spotify playlists (non-blocking)
+      const hasUnresolvedTracks = tracks.some(t => t.status === 'unresolved');
+      if (hasUnresolvedTracks && musicManager.queue) {
+        resolutionManager.setQueue(musicManager.queue);
+        resolutionManager.start();
+        resolutionManager.processLookahead(musicManager.getCurrentIndex()).catch(err => {
+          console.error('Lookahead resolution error:', err);
+        });
+      }
 
       // Auto-play if not playing
       const player = musicManager.player;
@@ -56,7 +114,16 @@ export function handleQueueAdd(socket) {
         if (connection) {
           const current = queue.getCurrent();
           if (current) {
-            await player.play(current, connection);
+            const success = await player.play(current, connection);
+            // If first track failed to resolve, try next tracks
+            if (!success) {
+              let nextTrack = queue.next();
+              while (nextTrack) {
+                const nextSuccess = await player.play(nextTrack, connection);
+                if (nextSuccess) break;
+                nextTrack = queue.next();
+              }
+            }
           }
         }
       }

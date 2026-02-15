@@ -1,4 +1,4 @@
-import { getConnection } from '../bot/voiceManager.js';
+import { getConnection, isConnected } from '../bot/voiceManager.js';
 import { musicManager } from '../state/musicManager.js';
 import { MusicPlayer } from '../music/player.js';
 import { Queue } from '../music/queue.js';
@@ -119,6 +119,13 @@ export async function handlePlay(interaction) {
 }
 
 export async function handlePause(interaction) {
+  if (!isConnected(interaction.guildId)) {
+    return interaction.reply({
+      content: "I'm not in a voice channel! Use `/join` to add me first.",
+      ephemeral: true
+    });
+  }
+
   const p = getPlayer();
 
   if (!p.isPlaying()) {
@@ -133,6 +140,13 @@ export async function handlePause(interaction) {
 }
 
 export async function handleResume(interaction) {
+  if (!isConnected(interaction.guildId)) {
+    return interaction.reply({
+      content: "I'm not in a voice channel! Use `/join` to add me first.",
+      ephemeral: true
+    });
+  }
+
   const p = getPlayer();
 
   if (!p.isPaused()) {
@@ -147,6 +161,13 @@ export async function handleResume(interaction) {
 }
 
 export async function handleSkip(interaction) {
+  if (!isConnected(interaction.guildId)) {
+    return interaction.reply({
+      content: "I'm not in a voice channel! Use `/join` to add me first.",
+      ephemeral: true
+    });
+  }
+
   const p = getPlayer();
   const q = getQueue();
   const connection = getConnection(interaction.guildId);
@@ -173,6 +194,13 @@ export async function handleSkip(interaction) {
 }
 
 export async function handleStop(interaction) {
+  if (!isConnected(interaction.guildId)) {
+    return interaction.reply({
+      content: "I'm not in a voice channel! Use `/join` to add me first.",
+      ephemeral: true
+    });
+  }
+
   const p = getPlayer();
   const q = getQueue();
 

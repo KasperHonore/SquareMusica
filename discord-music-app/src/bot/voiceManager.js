@@ -46,4 +46,8 @@ export function getConnection(guildId) {
   return connections.get(guildId) || getVoiceConnection(guildId);
 }
 
+export function isConnected(guildId) {
+  return !!getConnection(guildId);
+}
+
 export { connections };

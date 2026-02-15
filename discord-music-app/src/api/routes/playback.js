@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { musicManager } from '../../state/musicManager.js';
 import { db } from '../../database/db.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
+import { isConnected } from '../../bot/voiceManager.js';
 
 const router = Router();
 
@@ -16,6 +17,11 @@ router.get('/', optionalAuth, (req, res) => {
  * POST /api/player/:action - Control playback
  */
 router.post('/:action', authMiddleware, (req, res) => {
+  const guildId = musicManager.guildId || process.env.GUILD_ID;
+  if (!isConnected(guildId)) {
+    return res.status(400).json({ error: 'Bot is not in a voice channel. Use /join in Discord first.' });
+  }
+
   const { action } = req.params;
   const { value } = req.body;
 

@@ -113,6 +113,14 @@ export function useSocket() {
     socket?.emit('player:control', { action, value });
   }, [socket]);
 
+  const voiceJoin = useCallback(() => {
+    socket?.emit('voice:join');
+  }, [socket]);
+
+  const voiceLeave = useCallback(() => {
+    socket?.emit('voice:leave');
+  }, [socket]);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -130,6 +138,8 @@ export function useSocket() {
     removeFromQueue,
     reorderQueue,
     playerControl,
+    voiceJoin,
+    voiceLeave,
     clearError
   };
 }

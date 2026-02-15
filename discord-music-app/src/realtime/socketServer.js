@@ -7,7 +7,9 @@ import {
   handleQueueAdd,
   handleQueueRemove,
   handleQueueReorder,
-  handlePlayerControl
+  handlePlayerControl,
+  handleVoiceJoin,
+  handleVoiceLeave
 } from './handlers.js';
 
 let io;
@@ -65,6 +67,8 @@ export function setupSocketServer(httpServer) {
     socket.on(ClientEvents.QUEUE_REMOVE, handleQueueRemove(socket));
     socket.on(ClientEvents.QUEUE_REORDER, handleQueueReorder(socket));
     socket.on(ClientEvents.PLAYER_CONTROL, handlePlayerControl(socket));
+    socket.on(ClientEvents.VOICE_JOIN, handleVoiceJoin(socket));
+    socket.on(ClientEvents.VOICE_LEAVE, handleVoiceLeave(socket));
 
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${socket.user.username}`);

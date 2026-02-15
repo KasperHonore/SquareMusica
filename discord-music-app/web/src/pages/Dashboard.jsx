@@ -23,6 +23,8 @@ export function Dashboard() {
     removeFromQueue,
     reorderQueue,
     playerControl,
+    voiceJoin,
+    voiceLeave,
     clearError
   } = useSocket();
 
@@ -56,8 +58,12 @@ export function Dashboard() {
     playerControl('shuffle');
   };
 
+  const handleJoinChannel = () => {
+    voiceJoin();
+  };
+
   const handleLeaveChannel = () => {
-    playerControl('leave');
+    voiceLeave();
   };
 
   // Render the main content based on active view
@@ -146,6 +152,7 @@ export function Dashboard() {
         user={user}
         activeView={activeView}
         onViewChange={setActiveView}
+        onJoinChannel={handleJoinChannel}
         onLeaveChannel={handleLeaveChannel}
         onLogout={logout}
         onAdd={addToQueue}

@@ -3,7 +3,6 @@ import {
   Queue,
   History,
   Settings,
-  Speaker,
   Leave,
 } from '../icons/index.jsx';
 
@@ -20,9 +19,8 @@ import {
  * │   History          │
  * │   Settings         │
  * ├────────────────────┤
- * │ Voice Channel      │
- * │ # Music Lounge     │
- * │ [Leave Channel]    │
+ * │ [JOIN CHANNEL] or  │
+ * │ [I'm in a channel] │
  * └────────────────────┘
  */
 
@@ -37,16 +35,16 @@ export function Sidebar({
   activeView = 'nowplaying',
   onViewChange,
   voiceContext,
+  onJoinChannel,
   onLeaveChannel,
-  bottomPadding = 0,
 }) {
+  const isConnected = !!voiceContext?.channelName;
   return (
     <aside
       className="w-60 flex flex-col flex-shrink-0 border-r h-full"
       style={{
         backgroundColor: 'var(--color-bg)',
         borderColor: 'var(--color-border)',
-        paddingBottom: bottomPadding ? `${bottomPadding}px` : undefined,
       }}
     >
       {/* Logo section */}
@@ -94,29 +92,25 @@ export function Sidebar({
         </ul>
       </nav>
 
-      {/* Voice channel section */}
-      {voiceContext?.channelName && (
-        <div className="p-4 border-t mt-auto" style={{ borderColor: 'var(--color-border)' }}>
-          <div
-            className="text-xs font-semibold uppercase tracking-wider mb-3"
-            style={{ color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}
-          >
-            Voice Channel
-          </div>
-          <div className="flex items-center gap-2.5 mb-3 px-2 py-2 rounded-lg bg-surface-elevated/50" style={{ color: 'var(--color-text-secondary)' }}>
-            <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-            <Speaker size={16} className="text-accent/70" />
-            <span className="text-sm truncate font-medium">{voiceContext.channelName}</span>
-          </div>
+      {/* Voice channel button */}
+      <div className="p-4 border-t mt-auto" style={{ borderColor: 'var(--color-border)' }}>
+        {isConnected ? (
           <button
             onClick={onLeaveChannel}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all duration-200 border border-transparent hover:border-red-500/20"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all duration-200 border border-red-500/30 hover:border-red-500/50"
           >
             <Leave size={16} />
-            Leave Channel
+            I'm in a channel
           </button>
-        </div>
-      )}
+        ) : (
+          <button
+            onClick={onJoinChannel}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wider transition-all duration-200 bg-accent hover:bg-accent/90 text-white"
+          >
+            JOIN CHANNEL
+          </button>
+        )}
+      </div>
     </aside>
   );
 }

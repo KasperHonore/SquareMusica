@@ -85,7 +85,7 @@ export function AppLayout({
 
         {/* Main content */}
         <main
-          className="flex-1 overflow-y-auto p-4 md:p-6"
+          className="flex-1 overflow-hidden p-4 md:p-6 flex flex-col"
           style={{ paddingBottom: showMiniPlayerPadding ? '96px' : '24px' }}
         >
           {/* Mobile header with menu and queue buttons */}
@@ -121,10 +121,9 @@ export function AppLayout({
               style={{
                 backgroundColor: 'var(--color-bg-raised)',
                 borderColor: 'var(--color-border)',
-                paddingBottom: showMiniPlayerPadding ? '80px' : '0'
               }}
             >
-              <div className="flex-1 p-4 overflow-hidden flex flex-col">
+              <div className="flex-1 p-4 overflow-hidden flex flex-col min-h-0">
                 {queueComponent}
               </div>
             </aside>
@@ -146,7 +145,6 @@ export function AppLayout({
               `}
               style={{
                 backgroundColor: 'var(--color-bg-raised)',
-                paddingBottom: showMiniPlayerPadding ? '80px' : '0'
               }}
             >
               <div className="flex-shrink-0 p-4 border-b flex items-center justify-between"
@@ -166,7 +164,7 @@ export function AppLayout({
                   </svg>
                 </button>
               </div>
-              <div className="flex-1 p-4 overflow-hidden flex flex-col">
+              <div className="flex-1 p-4 overflow-hidden flex flex-col min-h-0">
                 {queueComponent}
               </div>
             </aside>

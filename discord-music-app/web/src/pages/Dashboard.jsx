@@ -92,15 +92,13 @@ export function Dashboard() {
 
       case 'queue':
         return (
-          <div className="h-full flex flex-col">
-            <Queue
-              tracks={upcomingTracks}
-              onReorder={handleReorder}
-              onRemove={handleRemove}
-              onShuffle={handleShuffle}
-              resolutionStats={resolutionStats}
-            />
-          </div>
+          <Queue
+            tracks={upcomingTracks}
+            onReorder={handleReorder}
+            onRemove={handleRemove}
+            onShuffle={handleShuffle}
+            resolutionStats={resolutionStats}
+          />
         );
 
       case 'history':

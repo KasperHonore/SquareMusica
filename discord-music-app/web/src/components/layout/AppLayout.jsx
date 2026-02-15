@@ -26,6 +26,7 @@ export function AppLayout({
   user,
   activeView,
   onViewChange,
+  onJoinChannel,
   onLeaveChannel,
   onLogout,
   onAdd,
@@ -78,8 +79,8 @@ export function AppLayout({
               setSidebarOpen(false);
             }}
             voiceContext={voiceContext}
+            onJoinChannel={onJoinChannel}
             onLeaveChannel={onLeaveChannel}
-            bottomPadding={showMiniPlayerPadding ? 80 : 0}
           />
         </div>
 

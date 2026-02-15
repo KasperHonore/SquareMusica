@@ -18,5 +18,7 @@ export const ClientEvents = {
   QUEUE_ADD: 'queue:add',
   QUEUE_REMOVE: 'queue:remove',
   QUEUE_REORDER: 'queue:reorder',
-  PLAYER_CONTROL: 'player:control'
+  PLAYER_CONTROL: 'player:control',
+  VOICE_JOIN: 'voice:join',
+  VOICE_LEAVE: 'voice:leave'
 };

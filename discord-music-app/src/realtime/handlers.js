@@ -1,9 +1,10 @@
 import { musicManager } from '../state/musicManager.js';
 import { search, getInfo, isValidUrl, isPlaylist, getPlaylist } from '../music/youtube.js';
-import { getConnection, isConnected } from '../bot/voiceManager.js';
+import { getConnection, isConnected, joinChannel, leaveChannel, setChannelCache } from '../bot/voiceManager.js';
 import { parseSpotifyUrl, getPublicTrack, getPublicPlaylistTracks } from '../music/spotify.js';
 import { resolveSpotifyTrack } from '../music/resolver.js';
 import { resolutionManager, ResolutionManager } from '../music/resolutionManager.js';
+import { client } from '../bot/client.js';
 
 /**
  * Check if bot is connected to voice channel
@@ -224,6 +225,61 @@ export function handlePlayerControl(socket) {
     } catch (err) {
       console.error('Player control error:', err);
       socket.emit('error', { message: err.message });
+    }
+  };
+}
+
+/**
+ * Handle voice join requests from web clients
+ * Joins the bot to the user's current voice channel in Discord
+ * @param {Socket} socket - Socket.io socket instance
+ * @returns {Function} Event handler
+ */
+export function handleVoiceJoin(socket) {
+  return async () => {
+    try {
+      const guildId = musicManager.guildId || process.env.GUILD_ID;
+      const discordId = socket.user.discord_id;
+
+      const guild = await client.guilds.fetch(guildId);
+      const member = await guild.members.fetch(discordId);
+      const voiceChannel = member.voice?.channel;
+
+      if (!voiceChannel) {
+        socket.emit('error', { message: 'You need to be in a voice channel in Discord!' });
+        return;
+      }
+
+      await joinChannel(voiceChannel);
+      musicManager.setGuildId(guildId);
+      setChannelCache(guildId, voiceChannel);
+      musicManager.emitVoiceContext();
+      musicManager.emitState();
+    } catch (err) {
+      console.error('Voice join error:', err);
+      socket.emit('error', { message: err.message || 'Failed to join voice channel' });
+    }
+  };
+}
+
+/**
+ * Handle voice leave requests from web clients
+ * Disconnects the bot from the voice channel
+ * @param {Socket} socket - Socket.io socket instance
+ * @returns {Function} Event handler
+ */
+export function handleVoiceLeave(socket) {
+  return async () => {
+    try {
+      const guildId = musicManager.guildId || process.env.GUILD_ID;
+      leaveChannel(guildId);
+      setChannelCache(guildId, null);
+      musicManager.stop();
+      musicManager.emitVoiceContext();
+      musicManager.emitState();
+    } catch (err) {
+      console.error('Voice leave error:', err);
+      socket.emit('error', { message: err.message || 'Failed to leave voice channel' });
     }
   };
 }

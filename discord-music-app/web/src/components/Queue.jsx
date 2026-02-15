@@ -43,7 +43,7 @@ export function Queue({ tracks, currentIndex, onReorder, onRemove }) {
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {tracks.map((track, index) => (
               <QueueItem
-                key={track.url}
+                key={`${track.url}-${index}`}
                 track={track}
                 index={index}
                 isCurrent={index === currentIndex}

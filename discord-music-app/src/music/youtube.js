@@ -157,23 +157,6 @@ export async function getStream(url) {
 }
 
 /**
- * Get audio stream with retry logic
- * @param {string} url - YouTube URL
- * @param {number} maxRetries - Maximum retry attempts (default 3)
- * @returns {Promise<Object>} Stream object for discord.js voice
- */
-export async function getStreamWithRetry(url, maxRetries = 3) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await getStream(url);
-    } catch (error) {
-      if (i === maxRetries - 1) throw error;
-      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
-    }
-  }
-}
-
-/**
  * Check if URL is a YouTube playlist
  * @param {string} url - URL to check
  * @returns {boolean}

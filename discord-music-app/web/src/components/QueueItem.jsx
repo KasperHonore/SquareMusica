@@ -1,5 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { formatTime } from '../utils/formatTime';
 
 export function QueueItem({ track, index, isCurrent, onRemove }) {
   const {
@@ -29,6 +30,8 @@ export function QueueItem({ track, index, isCurrent, onRemove }) {
         {...attributes}
         {...listeners}
         className="cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300"
+        aria-label="Drag to reorder"
+        role="button"
       >
         ⋮⋮
       </div>
@@ -49,7 +52,7 @@ export function QueueItem({ track, index, isCurrent, onRemove }) {
           {track.title}
         </p>
         <p className="text-gray-400 text-sm truncate">
-          {formatDuration(track.duration)}
+          {formatTime(track.duration, '')}
         </p>
       </div>
 
@@ -57,16 +60,10 @@ export function QueueItem({ track, index, isCurrent, onRemove }) {
         onClick={() => onRemove(index)}
         className="text-gray-500 hover:text-red-400 transition-colors p-1"
         title="Remove"
+        aria-label={`Remove ${track.title} from queue`}
       >
         ✕
       </button>
     </div>
   );
-}
-
-function formatDuration(seconds) {
-  if (!seconds) return '';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
 }

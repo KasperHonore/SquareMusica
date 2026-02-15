@@ -74,5 +74,3 @@ process.on('uncaughtException', (error) => {
 });
 
 start();
-
-export { app, httpServer };

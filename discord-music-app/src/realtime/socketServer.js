@@ -102,14 +102,6 @@ export function setupSocketServer(httpServer) {
 }
 
 /**
- * Get the Socket.io server instance
- * @returns {Server|undefined} Socket.io server instance
- */
-export function getIO() {
-  return io;
-}
-
-/**
  * Shutdown Socket.io server and cleanup resources
  */
 export function shutdownSocketServer() {

@@ -72,19 +72,9 @@ class DatabaseManager {
     return stmt.get(token);
   }
 
-  deleteSession(id) {
-    const stmt = this.db.prepare('DELETE FROM sessions WHERE id = ?');
-    stmt.run(id);
-  }
-
   deleteSessionByToken(token) {
     const stmt = this.db.prepare('DELETE FROM sessions WHERE token = ?');
     stmt.run(token);
-  }
-
-  cleanExpiredSessions() {
-    const stmt = this.db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')");
-    return stmt.run();
   }
 
   // History methods

@@ -155,8 +155,8 @@ YouTube frequently changes their systems. Keep yt-dlp updated to avoid streaming
 # Manual update
 yt-dlp -U
 
-# Or via npm script
-npm run yt-dlp:update
+# Or delete bin/yt-dlp and run npm run setup to re-download
+rm bin/yt-dlp && npm run setup
 ```
 
 ### Common Error Patterns

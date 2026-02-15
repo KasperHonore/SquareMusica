@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 
@@ -26,12 +26,10 @@ export function useSocket() {
     });
 
     newSocket.on('connect', () => {
-      console.log('Socket connected');
       setConnected(true);
     });
 
     newSocket.on('disconnect', () => {
-      console.log('Socket disconnected');
       setConnected(false);
     });
 

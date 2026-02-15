@@ -159,13 +159,6 @@ class MusicPlayer extends EventEmitter {
     return this.audioPlayer.state.status === AudioPlayerStatus.Paused;
   }
 
-  /**
-   * Get the underlying audio player for direct access
-   * @returns {AudioPlayer}
-   */
-  getAudioPlayer() {
-    return this.audioPlayer;
-  }
 }
 
 export { MusicPlayer };

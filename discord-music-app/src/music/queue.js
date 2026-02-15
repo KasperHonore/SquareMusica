@@ -28,14 +28,6 @@ class Queue {
   }
 
   /**
-   * Add multiple tracks to the queue
-   * @param {Track[]} tracks
-   */
-  addMany(tracks) {
-    tracks.forEach(track => this.add(track));
-  }
-
-  /**
    * Remove a track by index
    * @param {number} index
    * @returns {Track|null} Removed track or null
@@ -166,14 +158,6 @@ class Queue {
    */
   getCurrent() {
     return this.tracks[this.currentIndex] || null;
-  }
-
-  /**
-   * Check if queue is empty
-   * @returns {boolean}
-   */
-  isEmpty() {
-    return this.tracks.length === 0;
   }
 
   /**

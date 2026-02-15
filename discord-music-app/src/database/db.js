@@ -23,6 +23,7 @@ class DatabaseManager {
   init() {
     const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf8');
     this.db.exec(schema);
+    console.log('[Database] Schema initialized successfully');
   }
 
   // User methods
@@ -79,10 +80,18 @@ class DatabaseManager {
 
   // History methods
   addToHistory(track) {
-    const stmt = this.db.prepare(
-      'INSERT INTO history (title, url, duration, thumbnail, requested_by) VALUES (?, ?, ?, ?, ?)'
-    );
-    stmt.run(track.title, track.url, track.duration, track.thumbnail, track.requestedBy);
+    try {
+      if (!track?.title || !track?.url) {
+        console.warn('[Database] addToHistory: Missing required track fields', { title: track?.title, url: track?.url });
+        return;
+      }
+      const stmt = this.db.prepare(
+        'INSERT INTO history (title, url, duration, thumbnail, requested_by) VALUES (?, ?, ?, ?, ?)'
+      );
+      stmt.run(track.title, track.url, track.duration || 0, track.thumbnail || null, track.requestedBy || 'Unknown');
+    } catch (error) {
+      console.error('[Database] addToHistory failed:', error.message, { track: track?.title });
+    }
   }
 
   getHistory(limit = 50, offset = 0) {

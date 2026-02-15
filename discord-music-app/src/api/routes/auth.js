@@ -93,7 +93,8 @@ router.get('/callback', async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
-    res.redirect(process.env.WEB_URL);
+    // Redirect with token in URL for cross-port cookie issue in development
+    res.redirect(`${process.env.WEB_URL}?token=${jwtToken}`);
   } catch (error) {
     console.error('OAuth callback error:', error);
     res.redirect(`${process.env.WEB_URL}?error=server_error`);

@@ -67,7 +67,7 @@ class DatabaseManager {
 
   getSessionByToken(token) {
     const stmt = this.db.prepare(
-      'SELECT * FROM sessions WHERE token = ? AND expires_at > datetime("now")'
+      "SELECT * FROM sessions WHERE token = ? AND expires_at > datetime('now')"
     );
     return stmt.get(token);
   }
@@ -83,7 +83,7 @@ class DatabaseManager {
   }
 
   cleanExpiredSessions() {
-    const stmt = this.db.prepare('DELETE FROM sessions WHERE expires_at <= datetime("now")');
+    const stmt = this.db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')");
     return stmt.run();
   }
 

@@ -150,13 +150,14 @@ class MusicManager extends EventEmitter {
   }
 
   getPlayerState() {
+    const guildId = this.guildId || process.env.GUILD_ID;
     return {
       playing: this.player?.isPlaying() || false,
       paused: this.player?.isPaused() || false,
       volume: this.player?.volume ?? 100,
       loop: this.queue?.loopMode || 'off',
       position: this.player?.getPosition() || 0,
-      connected: !!this.voiceManager?.getConnection(this.guildId)
+      connected: !!this.getConnection?.(guildId)
     };
   }
 

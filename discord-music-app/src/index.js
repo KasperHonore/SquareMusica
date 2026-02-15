@@ -6,6 +6,7 @@ import { setupCommandHandler } from './bot/commandHandler.js';
 import { registerAllCommands } from './commands/index.js';
 import { setupSocketServer, shutdownSocketServer } from './realtime/socketServer.js';
 import { db } from './database/db.js';
+import { getPlayer, getQueue } from './commands/playback.js';
 
 const PORT = process.env.PORT || 3000;
 
@@ -18,6 +19,10 @@ setupSocketServer(httpServer);
 // Setup Discord command handler
 setupCommandHandler();
 registerAllCommands();
+
+// Initialize player and queue so web UI can detect voice connection state
+getPlayer();
+getQueue();
 
 // Start servers
 async function start() {

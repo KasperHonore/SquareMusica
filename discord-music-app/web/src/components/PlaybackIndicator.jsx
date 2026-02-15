@@ -1,13 +1,23 @@
 // PlaybackIndicator - Animated wave bars for showing playback state
 // Shows pulsing bars when playing, static bars when paused
+// Enhanced with glow effects and smoother animations
+
+import { useMemo } from 'react';
 
 const sizeConfig = {
-  sm: { width: 12, height: 12, barWidth: 2, gap: 1 },
-  md: { width: 16, height: 16, barWidth: 3, gap: 1 },
-  lg: { width: 24, height: 24, barWidth: 4, gap: 2 },
+  sm: { width: 14, height: 14, barWidth: 2.5, gap: 1.5 },
+  md: { width: 20, height: 20, barWidth: 3.5, gap: 2 },
+  lg: { width: 28, height: 28, barWidth: 5, gap: 2.5 },
+  xl: { width: 36, height: 36, barWidth: 6, gap: 3 },
 };
 
-export function PlaybackIndicator({ playing = false, size = 'md', className = '' }) {
+export function PlaybackIndicator({
+  playing = false,
+  size = 'md',
+  className = '',
+  glowColor = 'var(--color-accent)',
+  showGlow = true
+}) {
   const config = sizeConfig[size] || sizeConfig.md;
   const { width, height, barWidth, gap } = config;
 
@@ -15,89 +25,138 @@ export function PlaybackIndicator({ playing = false, size = 'md', className = ''
   const totalBarsWidth = barWidth * 4 + gap * 3;
   const startX = (width - totalBarsWidth) / 2;
 
+  // Unique ID for this instance's filter
+  const filterId = useMemo(() => `glow-${Math.random().toString(36).substr(2, 9)}`, []);
+
   return (
     <div
-      className={`inline-flex items-center justify-center ${className}`}
+      className={`inline-flex items-center justify-center transition-transform duration-200 ${playing ? 'scale-100' : 'scale-95 opacity-70'} ${className}`}
       style={{ width, height }}
       role="img"
-      aria-label={playing ? 'Playing' : 'Paused'}
+      aria-label={playing ? 'Audio is playing' : 'Audio is paused'}
+      aria-live="polite"
     >
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        style={{ overflow: 'visible' }}
+      >
+        <defs>
+          {/* Glow filter for playing state */}
+          {showGlow && (
+            <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+              <feMerge>
+                <feMergeNode in="coloredBlur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          )}
+        </defs>
+
         <style>
           {`
-            @keyframes playback-bar-1 {
-              0%, 100% { height: 40%; }
-              50% { height: 100%; }
+            @keyframes playback-wave-1 {
+              0%, 100% { transform: scaleY(0.35); }
+              25% { transform: scaleY(0.7); }
+              50% { transform: scaleY(1); }
+              75% { transform: scaleY(0.55); }
             }
-            @keyframes playback-bar-2 {
-              0%, 100% { height: 70%; }
-              50% { height: 40%; }
+            @keyframes playback-wave-2 {
+              0%, 100% { transform: scaleY(0.65); }
+              25% { transform: scaleY(0.4); }
+              50% { transform: scaleY(0.75); }
+              75% { transform: scaleY(1); }
             }
-            @keyframes playback-bar-3 {
-              0%, 100% { height: 50%; }
-              50% { height: 90%; }
+            @keyframes playback-wave-3 {
+              0%, 100% { transform: scaleY(0.5); }
+              25% { transform: scaleY(0.9); }
+              50% { transform: scaleY(0.6); }
+              75% { transform: scaleY(0.85); }
             }
-            @keyframes playback-bar-4 {
-              0%, 100% { height: 60%; }
-              50% { height: 30%; }
+            @keyframes playback-wave-4 {
+              0%, 100% { transform: scaleY(0.55); }
+              25% { transform: scaleY(0.3); }
+              50% { transform: scaleY(0.8); }
+              75% { transform: scaleY(0.45); }
             }
+
             .playback-bar {
               fill: currentColor;
-              transform-origin: bottom;
+              transform-origin: center bottom;
+              transition: transform 0.3s ease;
             }
-            .playback-bar-animated-1 {
-              animation: playback-bar-1 0.8s ease-in-out infinite;
+
+            .playback-bar-wave-1 {
+              animation: playback-wave-1 1.2s ease-in-out infinite;
             }
-            .playback-bar-animated-2 {
-              animation: playback-bar-2 0.8s ease-in-out infinite;
-              animation-delay: 0.2s;
+            .playback-bar-wave-2 {
+              animation: playback-wave-2 1.2s ease-in-out infinite;
+              animation-delay: -0.4s;
             }
-            .playback-bar-animated-3 {
-              animation: playback-bar-3 0.8s ease-in-out infinite;
-              animation-delay: 0.4s;
+            .playback-bar-wave-3 {
+              animation: playback-wave-3 1.2s ease-in-out infinite;
+              animation-delay: -0.8s;
             }
-            .playback-bar-animated-4 {
-              animation: playback-bar-4 0.8s ease-in-out infinite;
-              animation-delay: 0.1s;
+            .playback-bar-wave-4 {
+              animation: playback-wave-4 1.2s ease-in-out infinite;
+              animation-delay: -0.2s;
             }
           `}
         </style>
-        <g transform={`translate(0, ${height})`}>
+
+        <g
+          filter={playing && showGlow ? `url(#${filterId})` : undefined}
+          style={{ color: playing ? glowColor : 'currentColor' }}
+        >
           {/* Bar 1 */}
           <rect
             x={startX}
-            y={0}
+            y={height * 0.15}
             width={barWidth}
-            height={playing ? height * 0.4 : height * 0.3}
-            className={`playback-bar ${playing ? 'playback-bar-animated-1' : ''}`}
-            transform="scale(1, -1)"
+            rx={barWidth / 2}
+            height={height * 0.7}
+            className={`playback-bar ${playing ? 'playback-bar-wave-1' : ''}`}
+            style={{
+              transform: playing ? undefined : 'scaleY(0.3)',
+            }}
           />
           {/* Bar 2 */}
           <rect
             x={startX + barWidth + gap}
-            y={0}
+            y={height * 0.15}
             width={barWidth}
-            height={playing ? height * 0.7 : height * 0.5}
-            className={`playback-bar ${playing ? 'playback-bar-animated-2' : ''}`}
-            transform="scale(1, -1)"
+            rx={barWidth / 2}
+            height={height * 0.7}
+            className={`playback-bar ${playing ? 'playback-bar-wave-2' : ''}`}
+            style={{
+              transform: playing ? undefined : 'scaleY(0.5)',
+            }}
           />
           {/* Bar 3 */}
           <rect
             x={startX + (barWidth + gap) * 2}
-            y={0}
+            y={height * 0.15}
             width={barWidth}
-            height={playing ? height * 0.5 : height * 0.4}
-            className={`playback-bar ${playing ? 'playback-bar-animated-3' : ''}`}
-            transform="scale(1, -1)"
+            rx={barWidth / 2}
+            height={height * 0.7}
+            className={`playback-bar ${playing ? 'playback-bar-wave-3' : ''}`}
+            style={{
+              transform: playing ? undefined : 'scaleY(0.4)',
+            }}
           />
           {/* Bar 4 */}
           <rect
             x={startX + (barWidth + gap) * 3}
-            y={0}
+            y={height * 0.15}
             width={barWidth}
-            height={playing ? height * 0.6 : height * 0.35}
-            className={`playback-bar ${playing ? 'playback-bar-animated-4' : ''}`}
-            transform="scale(1, -1)"
+            rx={barWidth / 2}
+            height={height * 0.7}
+            className={`playback-bar ${playing ? 'playback-bar-wave-4' : ''}`}
+            style={{
+              transform: playing ? undefined : 'scaleY(0.35)',
+            }}
           />
         </g>
       </svg>

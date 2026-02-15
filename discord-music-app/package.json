@@ -10,7 +10,7 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "dev": "node src/index.js",
     "register": "node src/commands/register.js",
     "setup": "node scripts/setup-ytdlp.js",
     "postinstall": "node scripts/setup-ytdlp.js"
@@ -38,7 +38,11 @@
   "nodemonConfig": {
     "ignore": [
       "*-player-script.js",
-      "**/*-player-script.js"
+      "**/*-player-script.js",
+      "data/*",
+      "*.db",
+      "*.db-wal",
+      "*.db-shm"
     ]
   }
 }

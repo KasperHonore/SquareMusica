@@ -13,7 +13,7 @@
 
 :root {
   /* -------------------------------------------------------------------------
-     Color Palette - Dark Theme (Default)
+     Color Palette - Dark Theme
      Spotify-inspired with refined elevation system
      ------------------------------------------------------------------------- */
 
@@ -76,32 +76,6 @@
   --transition-base: 200ms ease;
   --transition-slow: 300ms ease;
   --transition-bounce: 300ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
-}
-
-/* ==========================================================================
-   Light Theme Override
-   ========================================================================== */
-
-:root.light-theme {
-  --color-bg: #f8fafc;
-  --color-bg-raised: #ffffff;
-  --color-bg-elevated: #f1f5f9;
-  --color-bg-overlay: rgba(255, 255, 255, 0.9);
-
-  /* Text colors adjusted for WCAG AA contrast (4.5:1 minimum) */
-  --color-text-primary: #0f172a;      /* Contrast ratio: 15.8:1 on #f8fafc */
-  --color-text-secondary: #334155;    /* Contrast ratio: 8.1:1 on #f8fafc */
-  --color-text-muted: #64748b;        /* Contrast ratio: 4.5:1 on #f8fafc - meets AA */
-  --color-text-inverse: #ffffff;
-
-  /* Accent adjusted for better contrast on light backgrounds */
-  --color-accent: #16a34a;            /* Darker green for 4.5:1 contrast on white */
-  --color-accent-hover: #15803d;
-  --color-accent-muted: rgba(22, 163, 74, 0.15);
-  --color-accent-subtle: rgba(22, 163, 74, 0.08);
-
-  --color-border: rgba(0, 0, 0, 0.12);
-  --color-border-strong: rgba(0, 0, 0, 0.25);
 }
 
 /* ==========================================================================

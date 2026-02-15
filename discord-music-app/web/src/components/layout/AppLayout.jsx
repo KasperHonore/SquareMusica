@@ -79,6 +79,7 @@ export function AppLayout({
             }}
             voiceContext={voiceContext}
             onLeaveChannel={onLeaveChannel}
+            bottomPadding={showMiniPlayerPadding ? 80 : 0}
           />
         </div>
 

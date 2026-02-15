@@ -92,8 +92,7 @@ export function Dashboard() {
 
       case 'queue':
         return (
-          <div className="max-w-2xl mx-auto">
-            <h1 className="text-2xl font-bold mb-6" style={{ fontFamily: 'var(--font-heading)' }}>Queue</h1>
+          <div className="h-full flex flex-col">
             <Queue
               tracks={upcomingTracks}
               onReorder={handleReorder}

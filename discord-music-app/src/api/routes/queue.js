@@ -206,11 +206,14 @@ router.get('/history', optionalAuth, (req, res) => {
   const limit = parseInt(req.query.limit) || 50;
   const offset = parseInt(req.query.offset) || 0;
 
+  console.log(`[History API] Fetching history: limit=${limit}, offset=${offset}`);
+
   try {
     const history = db.getHistory(limit, offset);
+    console.log(`[History API] Returning ${history.length} records`);
     res.json({ history });
   } catch (error) {
-    console.error('History error:', error);
+    console.error('[History API] Database error:', error);
     res.status(500).json({ error: 'Failed to get history' });
   }
 });

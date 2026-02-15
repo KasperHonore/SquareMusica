@@ -592,38 +592,6 @@
     pointer-events: none;
   }
 
-  /* "Up Next" item special styling with gradient border */
-  .queue-item-up-next {
-    position: relative;
-    background: linear-gradient(
-      135deg,
-      rgba(29, 185, 84, 0.12) 0%,
-      rgba(29, 185, 84, 0.04) 50%,
-      transparent 100%
-    );
-    padding-top: 1rem; /* Extra space for the "Next" badge */
-  }
-
-  .queue-item-up-next::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: var(--radius-lg);
-    padding: 1px;
-    background: linear-gradient(
-      135deg,
-      var(--color-accent) 0%,
-      rgba(29, 185, 84, 0.3) 50%,
-      transparent 100%
-    );
-    -webkit-mask:
-      linear-gradient(#fff 0 0) content-box,
-      linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
-  }
-
   /* Drop target indicator styling */
   .queue-item-drop-target {
     background-color: var(--color-accent-subtle) !important;

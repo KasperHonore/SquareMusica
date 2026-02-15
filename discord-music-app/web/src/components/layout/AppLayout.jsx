@@ -114,16 +114,18 @@ export function AppLayout({
         {/* Queue panel - slide out on tablet/mobile */}
         {queueComponent && (
           <>
-            {/* Desktop queue panel */}
+            {/* Desktop queue panel - fills height, has internal padding */}
             <aside
-              className="hidden lg:block w-80 border-l overflow-y-auto flex-shrink-0"
+              className="hidden lg:flex lg:flex-col w-80 border-l flex-shrink-0"
               style={{
                 backgroundColor: 'var(--color-bg-raised)',
                 borderColor: 'var(--color-border)',
-                paddingBottom: showMiniPlayerPadding ? '72px' : '0'
+                paddingBottom: showMiniPlayerPadding ? '80px' : '0'
               }}
             >
-              {queueComponent}
+              <div className="flex-1 p-4 overflow-hidden flex flex-col">
+                {queueComponent}
+              </div>
             </aside>
 
             {/* Mobile/Tablet queue overlay */}
@@ -138,22 +140,21 @@ export function AppLayout({
             <aside
               className={`
                 fixed right-0 top-0 h-full w-80 max-w-[85vw] z-50 lg:hidden
-                transform transition-transform duration-300 ease-in-out
+                transform transition-transform duration-300 ease-in-out flex flex-col
                 ${queueOpen ? 'translate-x-0' : 'translate-x-full'}
-                overflow-y-auto
               `}
               style={{
                 backgroundColor: 'var(--color-bg-raised)',
-                paddingBottom: showMiniPlayerPadding ? '72px' : '0'
+                paddingBottom: showMiniPlayerPadding ? '80px' : '0'
               }}
             >
-              <div className="sticky top-0 p-4 border-b flex items-center justify-between"
+              <div className="flex-shrink-0 p-4 border-b flex items-center justify-between"
                 style={{
                   backgroundColor: 'var(--color-bg-raised)',
                   borderColor: 'var(--color-border)'
                 }}
               >
-                <span className="font-semibold">Queue</span>
+                <span className="font-semibold" style={{ fontFamily: 'var(--font-heading)' }}>Queue</span>
                 <button
                   onClick={() => setQueueOpen(false)}
                   className="p-2 rounded-lg hover:bg-white/10 transition-colors"
@@ -164,7 +165,9 @@ export function AppLayout({
                   </svg>
                 </button>
               </div>
-              {queueComponent}
+              <div className="flex-1 p-4 overflow-hidden flex flex-col">
+                {queueComponent}
+              </div>
             </aside>
           </>
         )}

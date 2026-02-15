@@ -374,9 +374,17 @@ function ToggleButton({ active, onClick, icon: Icon, title, ariaLabel, glowColor
   );
 }
 
-export function MiniPlayer({ currentTrack, playerState, onControl }) {
+export function MiniPlayer({
+  currentTrack,
+  playerState,
+  onControl,
+  activeView = 'nowplaying'
+}) {
   const [isMobile, setIsMobile] = useState(false);
   const albumColor = useAlbumColor(currentTrack?.thumbnail);
+
+  // Compact mode when on Now Playing view (hero section shows track info)
+  const isCompact = activeView === 'nowplaying';
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 640);
@@ -521,51 +529,56 @@ export function MiniPlayer({ currentTrack, playerState, onControl }) {
 
         {/* Main content - 3 column layout: track info | controls | volume */}
         <div className="h-[72px] flex items-center px-4 sm:px-6">
-          {/* Track info section - left, fixed width */}
+          {/* Left section - Empty (compact) or Track info (full) */}
           <div className="flex items-center gap-3 sm:gap-4 min-w-0 w-[30%] max-w-[300px]">
-            {/* Album art with glow */}
-            <div className="relative flex-shrink-0">
-              {currentTrack.thumbnail ? (
-                <img
-                  src={currentTrack.thumbnail}
-                  alt=""
-                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg object-cover"
-                  style={{
-                    boxShadow: `0 4px 16px hsla(${albumColor.h}, ${albumColor.s}%, ${albumColor.l}%, 0.35)`
-                  }}
-                />
-              ) : (
-                <div
-                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg flex items-center justify-center"
-                  style={{
-                    background: `linear-gradient(135deg,
-                      hsl(${albumColor.h}, ${albumColor.s}%, ${albumColor.l}%) 0%,
-                      hsl(${albumColor.h}, ${albumColor.s}%, ${Math.max(albumColor.l - 15, 15)}%) 100%)`
-                  }}
-                >
-                  <MusicNote size={24} className="text-white/80" />
+            {isCompact ? null : (
+              /* Full mode: Album art + track details */
+              <>
+                {/* Album art with glow */}
+                <div className="relative flex-shrink-0">
+                  {currentTrack.thumbnail ? (
+                    <img
+                      src={currentTrack.thumbnail}
+                      alt=""
+                      className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg object-cover"
+                      style={{
+                        boxShadow: `0 4px 16px hsla(${albumColor.h}, ${albumColor.s}%, ${albumColor.l}%, 0.35)`
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg flex items-center justify-center"
+                      style={{
+                        background: `linear-gradient(135deg,
+                          hsl(${albumColor.h}, ${albumColor.s}%, ${albumColor.l}%) 0%,
+                          hsl(${albumColor.h}, ${albumColor.s}%, ${Math.max(albumColor.l - 15, 15)}%) 100%)`
+                      }}
+                    >
+                      <MusicNote size={24} className="text-white/80" />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {/* Track details */}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p className="font-semibold truncate text-sm sm:text-base" style={{ fontFamily: 'var(--font-heading)' }}>
-                  {currentTrack.title}
-                </p>
-                {playerState.playing && !isMobile && (
-                  <WaveformVisualizer isPlaying={playerState.playing} color={albumColor} />
-                )}
-              </div>
-              <div className="flex items-center gap-2 text-xs sm:text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                {currentTrack.artist && <span className="truncate">{currentTrack.artist}</span>}
-                {currentTrack.artist && <span className="text-muted">•</span>}
-                <span className="font-mono text-xs text-muted tabular-nums whitespace-nowrap">
-                  {formatTime(playerState.position)} / {formatTime(currentTrack.duration)}
-                </span>
-              </div>
-            </div>
+                {/* Track details */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold truncate text-sm sm:text-base" style={{ fontFamily: 'var(--font-heading)' }}>
+                      {currentTrack.title}
+                    </p>
+                    {playerState.playing && !isMobile && (
+                      <WaveformVisualizer isPlaying={playerState.playing} color={albumColor} />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs sm:text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                    {currentTrack.artist && <span className="truncate">{currentTrack.artist}</span>}
+                    {currentTrack.artist && <span className="text-muted">•</span>}
+                    <span className="font-mono text-xs text-muted tabular-nums whitespace-nowrap">
+                      {formatTime(playerState.position)} / {formatTime(currentTrack.duration)}
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Playback controls - center, takes remaining space */}

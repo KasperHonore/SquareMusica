@@ -8,6 +8,7 @@ export function useSocket() {
   const [connected, setConnected] = useState(false);
   const [queue, setQueue] = useState([]);
   const [currentTrack, setCurrentTrack] = useState(null);
+  const [error, setError] = useState(null);
   const [playerState, setPlayerState] = useState({
     playing: false,
     paused: false,
@@ -56,6 +57,10 @@ export function useSocket() {
       setPlayerState(state.playerState);
     });
 
+    newSocket.on('error', (err) => {
+      setError(err.message || 'An error occurred');
+    });
+
     setSocket(newSocket);
 
     return () => {
@@ -79,14 +84,20 @@ export function useSocket() {
     socket?.emit('player:control', { action, value });
   }, [socket]);
 
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
   return {
     connected,
     queue,
     currentTrack,
     playerState,
+    error,
     addToQueue,
     removeFromQueue,
     reorderQueue,
-    playerControl
+    playerControl,
+    clearError
   };
 }

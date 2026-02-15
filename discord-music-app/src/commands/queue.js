@@ -1,8 +1,16 @@
 import { EmbedBuilder } from 'discord.js';
 import { musicManager } from '../state/musicManager.js';
 import { getPlayer, getQueue } from './playback.js';
+import { isConnected } from '../bot/voiceManager.js';
 
 export async function handleQueue(interaction) {
+  if (!isConnected(interaction.guildId)) {
+    return interaction.reply({
+      content: "I'm not in a voice channel! Use `/join` to add me first.",
+      ephemeral: true
+    });
+  }
+
   const q = getQueue();
   const tracks = q.getAll();
 
@@ -42,6 +50,13 @@ export async function handleQueue(interaction) {
 }
 
 export async function handleNowPlaying(interaction) {
+  if (!isConnected(interaction.guildId)) {
+    return interaction.reply({
+      content: "I'm not in a voice channel! Use `/join` to add me first.",
+      ephemeral: true
+    });
+  }
+
   const p = getPlayer();
   const track = p.currentTrack;
 
@@ -73,6 +88,13 @@ export async function handleNowPlaying(interaction) {
 }
 
 export async function handleRemove(interaction) {
+  if (!isConnected(interaction.guildId)) {
+    return interaction.reply({
+      content: "I'm not in a voice channel! Use `/join` to add me first.",
+      ephemeral: true
+    });
+  }
+
   const position = interaction.options.getInteger('position') - 1; // Convert to 0-based
   const q = getQueue();
 
@@ -90,6 +112,13 @@ export async function handleRemove(interaction) {
 }
 
 export async function handleShuffle(interaction) {
+  if (!isConnected(interaction.guildId)) {
+    return interaction.reply({
+      content: "I'm not in a voice channel! Use `/join` to add me first.",
+      ephemeral: true
+    });
+  }
+
   const q = getQueue();
 
   if (q.length < 2) {
@@ -106,6 +135,13 @@ export async function handleShuffle(interaction) {
 }
 
 export async function handleClear(interaction) {
+  if (!isConnected(interaction.guildId)) {
+    return interaction.reply({
+      content: "I'm not in a voice channel! Use `/join` to add me first.",
+      ephemeral: true
+    });
+  }
+
   const q = getQueue();
   const p = getPlayer();
   const current = q.getCurrent();

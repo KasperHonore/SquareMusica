@@ -2,8 +2,18 @@ import { Router } from 'express';
 import { musicManager } from '../../state/musicManager.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
 import { search, getInfo, isValidUrl, isPlaylist, getPlaylist } from '../../music/youtube.js';
+import { isConnected } from '../../bot/voiceManager.js';
 
 const router = Router();
+
+// Middleware to check voice connection for mutating operations
+function requireVoiceConnection(req, res, next) {
+  const guildId = musicManager.guildId || process.env.GUILD_ID;
+  if (!isConnected(guildId)) {
+    return res.status(400).json({ error: 'Bot is not in a voice channel. Use /join in Discord first.' });
+  }
+  next();
+}
 
 /**
  * GET /api/queue - Get current queue
@@ -19,7 +29,7 @@ router.get('/', optionalAuth, (req, res) => {
 /**
  * POST /api/queue - Add track to queue
  */
-router.post('/', authMiddleware, async (req, res) => {
+router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
   const { query } = req.body;
 
   if (!query) {
@@ -74,7 +84,7 @@ router.post('/', authMiddleware, async (req, res) => {
 /**
  * DELETE /api/queue/:position - Remove track from queue
  */
-router.delete('/:position', authMiddleware, (req, res) => {
+router.delete('/:position', authMiddleware, requireVoiceConnection, (req, res) => {
   const position = parseInt(req.params.position);
 
   if (isNaN(position) || position < 0) {
@@ -93,7 +103,7 @@ router.delete('/:position', authMiddleware, (req, res) => {
 /**
  * PATCH /api/queue/reorder - Reorder tracks
  */
-router.patch('/reorder', authMiddleware, (req, res) => {
+router.patch('/reorder', authMiddleware, requireVoiceConnection, (req, res) => {
   const { from, to } = req.body;
 
   if (typeof from !== 'number' || typeof to !== 'number') {
@@ -112,7 +122,7 @@ router.patch('/reorder', authMiddleware, (req, res) => {
 /**
  * POST /api/queue/shuffle - Shuffle queue
  */
-router.post('/shuffle', authMiddleware, (req, res) => {
+router.post('/shuffle', authMiddleware, requireVoiceConnection, (req, res) => {
   musicManager.shuffleQueue();
   res.json({ success: true });
 });
@@ -120,7 +130,7 @@ router.post('/shuffle', authMiddleware, (req, res) => {
 /**
  * DELETE /api/queue - Clear queue
  */
-router.delete('/', authMiddleware, (req, res) => {
+router.delete('/', authMiddleware, requireVoiceConnection, (req, res) => {
   musicManager.clearQueue();
   res.json({ success: true });
 });

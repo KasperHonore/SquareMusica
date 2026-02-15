@@ -1,6 +1,20 @@
 import { musicManager } from '../state/musicManager.js';
 import { search, getInfo, isValidUrl } from '../music/youtube.js';
-import { getConnection } from '../bot/voiceManager.js';
+import { getConnection, isConnected } from '../bot/voiceManager.js';
+
+/**
+ * Check if bot is connected to voice channel
+ * @param {Socket} socket - Socket.io socket instance
+ * @returns {boolean} True if connected, false otherwise (and emits error)
+ */
+function checkVoiceConnection(socket) {
+  const guildId = musicManager.guildId || process.env.GUILD_ID;
+  if (!isConnected(guildId)) {
+    socket.emit('error', { message: 'Bot is not in a voice channel. Use /join in Discord first.' });
+    return false;
+  }
+  return true;
+}
 
 /**
  * Handle queue add requests from web clients
@@ -9,6 +23,8 @@ import { getConnection } from '../bot/voiceManager.js';
  */
 export function handleQueueAdd(socket) {
   return async ({ query }) => {
+    if (!checkVoiceConnection(socket)) return;
+
     try {
       let track;
 
@@ -58,6 +74,8 @@ export function handleQueueAdd(socket) {
  */
 export function handleQueueRemove(socket) {
   return ({ position }) => {
+    if (!checkVoiceConnection(socket)) return;
+
     try {
       musicManager.removeFromQueue(position);
     } catch (err) {
@@ -73,6 +91,8 @@ export function handleQueueRemove(socket) {
  */
 export function handleQueueReorder(socket) {
   return ({ from, to }) => {
+    if (!checkVoiceConnection(socket)) return;
+
     try {
       musicManager.reorderQueue(from, to);
     } catch (err) {
@@ -88,6 +108,8 @@ export function handleQueueReorder(socket) {
  */
 export function handlePlayerControl(socket) {
   return async ({ action, value }) => {
+    if (!checkVoiceConnection(socket)) return;
+
     try {
       switch (action) {
         case 'play':

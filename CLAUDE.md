@@ -1,53 +1,123 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
-## Commands
+## Project Vision
 
-```bash
-# Install dependencies
-npm install
+This is a **Discord Music Bot with Web UI** - a music bot that allows users to control playback and manage the queue through both Discord slash commands and a web-based control panel. Multiple users can collaborate on the queue in real-time.
 
-# Run the app
-npm start          # or: node app.js
-
-# Development with auto-reload
-npm run dev        # uses nodemon
-
-# Register slash commands with Discord
-npm run register
-```
+**Key Features**:
+- Play music from YouTube in Discord voice channels
+- Full queue management (add, remove, reorder, shuffle)
+- Real-time web UI for controlling the bot
+- Discord OAuth authentication
+- Multiple users can control the queue simultaneously
 
 ## Architecture
 
-This is a Discord bot using the HTTP interactions model (not WebSocket gateway). It implements a rock-paper-scissors style game with 7 choices (rock, paper, scissors, cowboy, virus, computer, wumpus).
+The application consists of three main components:
 
-**Key files:**
+1. **Discord Bot** (discord.js) - Handles voice connections and slash commands
+2. **Web API** (Express) - REST API + Discord OAuth + Socket.io for real-time
+3. **Web UI** (React) - Browser-based control panel
 
-- `app.js` - Express server handling Discord interactions at `/interactions` endpoint. Uses `discord-interactions` for request verification.
-- `commands.js` - Slash command definitions. Running this file registers commands with Discord API. Add new commands to `ALL_COMMANDS` array.
-- `game.js` - RPS game logic with extended choices. `RPSChoices` object defines win conditions as `{winner: {loser: verb}}`.
-- `utils.js` - Discord API wrapper (`DiscordRequest`) and command installation (`InstallGlobalCommands`).
+```
+Discord <-> Bot (discord.js) <-> Music Manager <-> Web API (Express)
+                                     |              |
+                                  SQLite      Socket.io <-> React UI
+```
 
-**Flow:** Discord sends HTTP POST to `/interactions` -> `verifyKeyMiddleware` validates request -> handler routes by `InteractionType` and command name -> returns JSON response.
+## Commands
+
+### Development
+```bash
+npm install              # Install dependencies
+npm run dev              # Start bot + API with hot reload
+npm run register         # Register slash commands with Discord
+```
+
+### Web UI
+```bash
+cd web
+npm install              # Install frontend dependencies
+npm run dev              # Start React dev server
+npm run build            # Build for production
+```
+
+### Production
+```bash
+npm start                # Start bot + API server
+npm run start:all        # Start everything (bot + built web UI)
+```
+
+## Project Structure
+
+```
+discord-music-bot/
+├── src/
+│   ├── bot/             # Discord.js bot client and voice handling
+│   ├── commands/        # Slash command implementations
+│   ├── music/           # Player, queue, and YouTube integration
+│   ├── api/             # Express routes and middleware
+│   ├── realtime/        # Socket.io server
+│   ├── database/        # SQLite schema and queries
+│   ├── state/           # Shared state management
+│   └── index.js         # Entry point
+├── web/                 # React frontend
+├── package.json
+└── .env
+```
 
 ## Environment Variables
 
-Required in `.env` (see `.env.sample`):
+Required in `.env`:
 
-- `APP_ID` - Discord application ID
-- `DISCORD_TOKEN` - Bot token
-- `PUBLIC_KEY` - For request signature verification
+```env
+# Discord Bot
+DISCORD_TOKEN=           # Bot token from Discord Developer Portal
+APP_ID=                  # Application ID
+PUBLIC_KEY=              # Public key for verification
+GUILD_ID=                # Your Discord server ID
+
+# OAuth (for web UI authentication)
+DISCORD_CLIENT_SECRET=   # OAuth client secret
+OAUTH_REDIRECT_URI=http://localhost:3000/api/auth/callback
+
+# Server
+PORT=3000                # API server port
+JWT_SECRET=              # Secret for JWT tokens
+WEB_URL=http://localhost:5173  # React dev server URL
+```
+
+## Slash Commands
+
+| Command | Description |
+|---------|-------------|
+| `/play <query>` | Play a song or add to queue |
+| `/pause` | Pause playback |
+| `/resume` | Resume playback |
+| `/skip` | Skip to next track |
+| `/stop` | Stop and clear queue |
+| `/queue` | View current queue |
+| `/nowplaying` | Show current track |
+| `/volume <0-100>` | Set volume |
+| `/join` | Join voice channel |
+| `/leave` | Leave voice channel |
+| `/shuffle` | Shuffle the queue |
+| `/loop <mode>` | Set loop mode |
+| `/remove <pos>` | Remove from queue |
+| `/webui` | Get web control panel link |
 
 ## Local Development
 
-Requires a public URL for Discord to send interactions. Use ngrok:
+1. Copy `.env.sample` to `.env` and fill in values
+2. Run `npm install` in root and `web/` directories
+3. Run `npm run register` to register slash commands
+4. Run `npm run dev` to start the bot
+5. Run `cd web && npm run dev` to start the web UI
+6. Join a voice channel and use `/play` or open the web UI
 
-```bash
-ngrok http 3000
-```
-
-Set the ngrok HTTPS URL + `/interactions` as your app's Interactions Endpoint URL in Discord Developer Portal.
+For local testing, the bot needs to be in your Discord server with appropriate permissions (voice connect, speak, application commands).
 
 # Commit rules
 

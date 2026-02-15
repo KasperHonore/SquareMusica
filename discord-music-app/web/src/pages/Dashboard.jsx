@@ -162,6 +162,7 @@ export function Dashboard() {
         currentTrack={currentTrack}
         playerState={playerState}
         onControl={playerControl}
+        activeView={activeView}
       />
     </>
   );

@@ -21,9 +21,28 @@ class DatabaseManager {
   }
 
   init() {
+    // Run migrations before schema to handle existing tables
+    this.migrate();
     const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf8');
     this.db.exec(schema);
     console.log('[Database] Schema initialized successfully');
+  }
+
+  migrate() {
+    // Check if history table exists first
+    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='history'").all();
+    if (tables.length === 0) {
+      return; // Table doesn't exist yet, schema.sql will create it with guild_id
+    }
+
+    // Add guild_id column to history table if it doesn't exist
+    const tableInfo = this.db.pragma('table_info(history)');
+    const hasGuildId = tableInfo.some(col => col.name === 'guild_id');
+    if (!hasGuildId) {
+      this.db.exec('ALTER TABLE history ADD COLUMN guild_id TEXT');
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_history_guild_id ON history(guild_id)');
+      console.log('[Database] Migrated: added guild_id to history table');
+    }
   }
 
   // User methods
@@ -79,16 +98,16 @@ class DatabaseManager {
   }
 
   // History methods
-  addToHistory(track) {
+  addToHistory(track, guildId = null) {
     try {
       if (!track?.title || !track?.url) {
         console.warn('[Database] addToHistory: Missing required track fields', { title: track?.title, url: track?.url });
         return;
       }
       const stmt = this.db.prepare(
-        'INSERT INTO history (title, url, duration, thumbnail, requested_by) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by) VALUES (?, ?, ?, ?, ?, ?)'
       );
-      stmt.run(track.title, track.url, track.duration || 0, track.thumbnail || null, track.requestedBy || 'Unknown');
+      stmt.run(guildId, track.title, track.url, track.duration || 0, track.thumbnail || null, track.requestedBy || 'Unknown');
     } catch (error) {
       console.error('[Database] addToHistory failed:', error.message, { track: track?.title });
     }
@@ -99,6 +118,31 @@ class DatabaseManager {
       'SELECT * FROM history ORDER BY played_at DESC LIMIT ? OFFSET ?'
     );
     return stmt.all(limit, offset);
+  }
+
+  clearHistoryByGuild(guildId) {
+    try {
+      // Clear history for this guild, including old records with NULL guild_id
+      const stmt = this.db.prepare('DELETE FROM history WHERE guild_id = ? OR guild_id IS NULL');
+      const result = stmt.run(guildId);
+      console.log(`[Database] Cleared ${result.changes} history entries for guild ${guildId}`);
+      return result.changes;
+    } catch (error) {
+      console.error('[Database] clearHistoryByGuild failed:', error.message);
+      return 0;
+    }
+  }
+
+  clearAllHistory() {
+    try {
+      const stmt = this.db.prepare('DELETE FROM history');
+      const result = stmt.run();
+      console.log(`[Database] Cleared all ${result.changes} history entries`);
+      return result.changes;
+    } catch (error) {
+      console.error('[Database] clearAllHistory failed:', error.message);
+      return 0;
+    }
   }
 
   close() {

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- Play history
 CREATE TABLE IF NOT EXISTS history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  guild_id TEXT,
   title TEXT NOT NULL,
   url TEXT NOT NULL,
   duration INTEGER,
@@ -29,5 +30,6 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_history_played_at ON history(played_at DESC);
+CREATE INDEX IF NOT EXISTS idx_history_guild_id ON history(guild_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
 CREATE INDEX IF NOT EXISTS idx_users_discord_id ON users(discord_id);

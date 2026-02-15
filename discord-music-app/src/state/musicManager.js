@@ -210,7 +210,7 @@ class MusicManager extends EventEmitter {
   // Called when track changes
   onTrackChange(track) {
     if (track) {
-      db.addToHistory(track);
+      db.addToHistory(track, this.guildId);
     }
     this.emit('track:change', track);
     this.emitQueueUpdate();

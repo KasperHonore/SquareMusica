@@ -292,10 +292,10 @@ export function NowPlaying({ track, playerState }) {
               {track.title}
             </h2>
 
-            {/* Artist Name - Secondary */}
-            {track.artist && (
+            {/* Artist/Channel Name - Secondary */}
+            {(track.artist || track.channel) && (
               <p className="text-body text-base sm:text-lg md:text-xl text-secondary/90 line-clamp-1">
-                {track.artist}
+                {track.artist || track.channel}
               </p>
             )}
 

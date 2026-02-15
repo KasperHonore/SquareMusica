@@ -1,12 +1,29 @@
 /**
+ * Track resolution status
+ * @typedef {'resolved' | 'resolving' | 'pending' | 'unresolved' | 'failed'} ResolutionStatus
+ */
+
+/**
+ * Spotify track data for unresolved tracks
+ * @typedef {Object} SpotifyData
+ * @property {string} spotifyId
+ * @property {string[]} artists
+ * @property {number} durationMs
+ * @property {string} spotifyUrl
+ */
+
+/**
  * Track object interface
  * @typedef {Object} Track
  * @property {string} title
- * @property {string} url
+ * @property {string|null} url - YouTube URL (null if unresolved)
  * @property {number} duration - Duration in seconds
- * @property {string} thumbnail
+ * @property {string|null} thumbnail
+ * @property {string|null} channel - YouTube channel name
  * @property {string} requestedBy - Discord user ID
  * @property {Date} addedAt
+ * @property {SpotifyData} [spotifyData] - Original Spotify data (if from Spotify)
+ * @property {ResolutionStatus} [status] - Resolution status for Spotify tracks
  */
 
 class Queue {
@@ -166,6 +183,83 @@ class Queue {
    */
   get length() {
     return this.tracks.length;
+  }
+
+  /**
+   * Get a track by index
+   * @param {number} index
+   * @returns {Track|null}
+   */
+  getAt(index) {
+    return this.tracks[index] || null;
+  }
+
+  /**
+   * Update a track at a specific index
+   * @param {number} index
+   * @param {Partial<Track>} updates
+   * @returns {boolean} Success
+   */
+  updateAt(index, updates) {
+    if (index < 0 || index >= this.tracks.length) {
+      return false;
+    }
+    this.tracks[index] = { ...this.tracks[index], ...updates };
+    return true;
+  }
+
+  /**
+   * Get tracks in a range (for lookahead window)
+   * @param {number} start - Start index (inclusive)
+   * @param {number} end - End index (exclusive)
+   * @returns {Track[]}
+   */
+  getRange(start, end) {
+    return this.tracks.slice(start, end);
+  }
+
+  /**
+   * Get tracks that need resolution within a window
+   * @param {number} start - Start index
+   * @param {number} windowSize - Number of tracks to check
+   * @returns {{ track: Track, index: number }[]}
+   */
+  getUnresolvedInWindow(start, windowSize) {
+    const result = [];
+    const end = Math.min(start + windowSize, this.tracks.length);
+
+    for (let i = start; i < end; i++) {
+      const track = this.tracks[i];
+      if (track && !track.url && track.spotifyData && track.status !== 'failed') {
+        result.push({ track, index: i });
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Count tracks by resolution status
+   * @returns {{ resolved: number, unresolved: number, resolving: number, pending: number, failed: number }}
+   */
+  getResolutionStats() {
+    const stats = { resolved: 0, unresolved: 0, resolving: 0, pending: 0, failed: 0 };
+
+    for (const track of this.tracks) {
+      if (track.url && track.status !== 'failed') {
+        stats.resolved++;
+      } else if (track.status === 'resolving') {
+        stats.resolving++;
+      } else if (track.status === 'pending') {
+        stats.pending++;
+      } else if (track.status === 'failed') {
+        stats.failed++;
+      } else {
+        stats.unresolved++;
+      }
+    }
+
+    return stats;
   }
 }
 

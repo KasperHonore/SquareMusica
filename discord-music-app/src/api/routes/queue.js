@@ -5,6 +5,7 @@ import { search, getInfo, isValidUrl, isPlaylist, getPlaylist } from '../../musi
 import { isConnected } from '../../bot/voiceManager.js';
 import { parseSpotifyUrl, getPublicTrack, getPublicPlaylistTracks } from '../../music/spotify.js';
 import { resolveSpotifyTrack, resolveSpotifyTracks } from '../../music/resolver.js';
+import { resolutionManager, ResolutionManager } from '../../music/resolutionManager.js';
 
 const router = Router();
 
@@ -46,19 +47,18 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
     const spotifyParsed = parseSpotifyUrl(query);
 
     if (spotifyParsed.type === 'playlist') {
-      // Handle Spotify playlist
+      // Handle Spotify playlist - add tracks immediately without resolution (lazy)
       const spotifyTracks = await getPublicPlaylistTracks(spotifyParsed.id);
       if (spotifyTracks.length === 0) {
         return res.status(404).json({ error: 'Spotify playlist not found or empty' });
       }
 
-      const { resolved, skipped } = await resolveSpotifyTracks(spotifyTracks);
-      tracks = resolved;
-      skippedTracks = skipped;
+      // Convert to unresolved queue tracks (lazy resolution)
+      tracks = spotifyTracks.map(st =>
+        ResolutionManager.createUnresolvedTrack(st, req.user.username)
+      );
 
-      if (tracks.length === 0) {
-        return res.status(404).json({ error: 'Could not find any tracks from this Spotify playlist on YouTube' });
-      }
+      // Tracks will be resolved lazily - no skipped tracks at add time
     } else if (spotifyParsed.type === 'track') {
       // Handle Spotify track
       const spotifyTrack = await getPublicTrack(spotifyParsed.id);
@@ -102,11 +102,22 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
     // Add to queue
     tracks.forEach(track => musicManager.addToQueue(track));
 
+    // Trigger lookahead resolution for Spotify playlists (non-blocking)
+    const hasUnresolvedTracks = tracks.some(t => t.status === 'unresolved');
+    if (hasUnresolvedTracks && musicManager.queue) {
+      resolutionManager.setQueue(musicManager.queue);
+      resolutionManager.start();
+      resolutionManager.processLookahead(musicManager.getCurrentIndex()).catch(err => {
+        console.error('Lookahead resolution error:', err);
+      });
+    }
+
     res.json({
       success: true,
       added: tracks.length,
       tracks,
-      skipped: skippedTracks
+      skipped: skippedTracks,
+      lazyResolution: hasUnresolvedTracks
     });
   } catch (error) {
     console.error('Add to queue error:', error);

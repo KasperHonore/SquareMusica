@@ -22,8 +22,8 @@ function getTrackId(track, index) {
  */
 function EmptyQueue({ onShuffle }) {
   return (
-    <div className="card-premium p-6 w-80" role="region" aria-label="Music queue">
-      <div className="flex items-center justify-between mb-4">
+    <div className="h-full flex flex-col" role="region" aria-label="Music queue">
+      <div className="flex items-center justify-between mb-4 px-1">
         <h3 className="text-heading text-lg" id="queue-heading">Up Next</h3>
         <button
           onClick={onShuffle}
@@ -38,7 +38,7 @@ function EmptyQueue({ onShuffle }) {
       </div>
 
       {/* Engaging empty state */}
-      <div className="flex flex-col items-center py-8 animate-fade-in">
+      <div className="flex-1 flex flex-col items-center justify-center py-8 animate-fade-in">
         {/* Animated music notes container */}
         <div className="relative w-24 h-24 mb-6">
           {/* Background circle */}
@@ -142,9 +142,9 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, resolutionStats 
     : -1;
 
   return (
-    <div className="card-premium p-4 w-80" role="region" aria-labelledby="queue-heading">
+    <div className="h-full flex flex-col" role="region" aria-labelledby="queue-heading">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3 px-1">
         <div className="flex items-center gap-2">
           <h3 className="text-heading text-lg" id="queue-heading">Up Next</h3>
           <span
@@ -171,7 +171,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, resolutionStats 
         </button>
       </div>
 
-      {/* Queue list with DnD */}
+      {/* Queue list with DnD - fills remaining space */}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -184,7 +184,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, resolutionStats 
           strategy={verticalListSortingStrategy}
         >
           <div
-            className="space-y-1.5 max-h-96 overflow-y-auto pr-1 queue-list"
+            className="flex-1 space-y-1.5 overflow-y-auto pr-1 queue-list"
             style={{
               scrollbarGutter: 'stable',
             }}

@@ -115,17 +115,15 @@ export function Dashboard() {
     }
   };
 
-  // Queue component for sidebar panel
+  // Queue component for sidebar panel - no extra wrapper needed
   const queuePanel = activeView !== 'queue' ? (
-    <div className="p-4">
-      <Queue
-        tracks={upcomingTracks}
-        onReorder={handleReorder}
-        onRemove={handleRemove}
-        onShuffle={handleShuffle}
-        resolutionStats={resolutionStats}
-      />
-    </div>
+    <Queue
+      tracks={upcomingTracks}
+      onReorder={handleReorder}
+      onRemove={handleRemove}
+      onShuffle={handleShuffle}
+      resolutionStats={resolutionStats}
+    />
   ) : null;
 
   return (

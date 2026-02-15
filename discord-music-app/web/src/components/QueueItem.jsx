@@ -199,17 +199,15 @@ export function QueueItem({
   // Build class names based on state
   const containerClasses = [
     'queue-item',
-    'flex items-start gap-3 p-3 rounded-lg',
+    'flex items-start gap-3 p-2.5 rounded-lg',
     'transition-all duration-200',
     'group relative',
     // Staggered fade-in animation on initial render
     !isOverlay && 'animate-queue-item-in',
-    // Alternating backgrounds
-    isEven ? 'bg-surface-base' : 'bg-surface-elevated/30',
-    // "Up Next" highlight styling
-    isUpNext && 'queue-item-up-next',
-    // Hover lift effect
-    !isDragging && !isOverlay && 'hover:translate-y-[-2px] hover:shadow-lg hover:z-10',
+    // Alternating backgrounds - subtle
+    isEven ? '' : 'bg-white/[0.02]',
+    // Hover effect
+    !isDragging && !isOverlay && 'hover:bg-white/[0.05]',
     // Dragging states
     isDragging && 'opacity-40 scale-95',
     isBeingDragged && 'ring-2 ring-accent/50',
@@ -236,32 +234,15 @@ export function QueueItem({
         <div className="absolute -top-1 left-0 right-0 h-0.5 bg-accent rounded-full shadow-[0_0_8px_rgba(29,185,84,0.6)]" />
       )}
 
-      {/* "Up Next" badge for first item */}
-      {isUpNext && !isOverlay && (
-        <div className="absolute -top-2 left-3 px-2 py-0.5 bg-accent text-xs font-semibold text-black rounded-full">
-          Next
-        </div>
-      )}
-
       {/* Thumbnail */}
       {track.thumbnail ? (
-        <div className="relative flex-shrink-0">
-          <img
-            src={track.thumbnail}
-            alt=""
-            className="w-12 h-12 rounded-md object-cover"
-          />
-          {/* Play indicator overlay on up-next */}
-          {isUpNext && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-md opacity-0 group-hover:opacity-100 transition-opacity">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </div>
-          )}
-        </div>
+        <img
+          src={track.thumbnail}
+          alt=""
+          className="w-11 h-11 rounded-md object-cover flex-shrink-0"
+        />
       ) : (
-        <div className="w-12 h-12 rounded-md bg-surface-elevated flex items-center justify-center flex-shrink-0">
+        <div className="w-11 h-11 rounded-md bg-surface-elevated flex items-center justify-center flex-shrink-0">
           {statusIndicator?.icon || (
             <span className="text-text-muted text-lg">&#9835;</span>
           )}

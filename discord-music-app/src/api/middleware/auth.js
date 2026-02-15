@@ -16,11 +16,13 @@ export function authMiddleware(req, res, next) {
     const session = db.getSessionByToken(token);
 
     if (!session) {
+      console.log('Auth failed: No session found for token');
       return res.status(401).json({ error: 'Session expired' });
     }
 
     const user = db.getUserById(session.user_id);
     if (!user) {
+      console.log('Auth failed: User not found for session', session.user_id);
       return res.status(401).json({ error: 'User not found' });
     }
 
@@ -28,6 +30,7 @@ export function authMiddleware(req, res, next) {
     req.token = token;
     next();
   } catch (err) {
+    console.log('Auth failed: JWT verification error:', err.message);
     return res.status(401).json({ error: 'Invalid token' });
   }
 }

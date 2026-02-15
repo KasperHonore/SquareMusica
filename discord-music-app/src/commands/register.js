@@ -14,10 +14,10 @@ const commands = [
   // Playback commands
   new SlashCommandBuilder()
     .setName('play')
-    .setDescription('Play a song from YouTube')
+    .setDescription('Play a song from YouTube or Spotify')
     .addStringOption(option =>
       option.setName('query')
-        .setDescription('YouTube URL or search query')
+        .setDescription('YouTube/Spotify URL or search query')
         .setRequired(true)),
 
   new SlashCommandBuilder()

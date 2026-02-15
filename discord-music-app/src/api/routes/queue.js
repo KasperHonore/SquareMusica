@@ -3,6 +3,8 @@ import { musicManager } from '../../state/musicManager.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
 import { search, getInfo, isValidUrl, isPlaylist, getPlaylist } from '../../music/youtube.js';
 import { isConnected } from '../../bot/voiceManager.js';
+import { parseSpotifyUrl, getPublicTrack, getPublicPlaylistTracks } from '../../music/spotify.js';
+import { resolveSpotifyTrack, resolveSpotifyTracks } from '../../music/resolver.js';
 
 const router = Router();
 
@@ -38,15 +40,45 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
 
   try {
     let tracks = [];
+    let skippedTracks = [];
 
-    if (isPlaylist(query)) {
-      // Handle playlist
+    // Check for Spotify URL first
+    const spotifyParsed = parseSpotifyUrl(query);
+
+    if (spotifyParsed.type === 'playlist') {
+      // Handle Spotify playlist
+      const spotifyTracks = await getPublicPlaylistTracks(spotifyParsed.id);
+      if (spotifyTracks.length === 0) {
+        return res.status(404).json({ error: 'Spotify playlist not found or empty' });
+      }
+
+      const { resolved, skipped } = await resolveSpotifyTracks(spotifyTracks);
+      tracks = resolved;
+      skippedTracks = skipped;
+
+      if (tracks.length === 0) {
+        return res.status(404).json({ error: 'Could not find any tracks from this Spotify playlist on YouTube' });
+      }
+    } else if (spotifyParsed.type === 'track') {
+      // Handle Spotify track
+      const spotifyTrack = await getPublicTrack(spotifyParsed.id);
+      if (!spotifyTrack) {
+        return res.status(404).json({ error: 'Spotify track not found' });
+      }
+
+      const youtubeTrack = await resolveSpotifyTrack(spotifyTrack);
+      if (!youtubeTrack) {
+        return res.status(404).json({ error: `Could not find "${spotifyTrack.title}" on YouTube` });
+      }
+      tracks = [youtubeTrack];
+    } else if (isPlaylist(query)) {
+      // Handle YouTube playlist
       tracks = await getPlaylist(query);
       if (tracks.length === 0) {
         return res.status(404).json({ error: 'Playlist not found or empty' });
       }
     } else if (isValidUrl(query)) {
-      // Handle direct URL
+      // Handle direct YouTube URL
       const track = await getInfo(query);
       if (!track) {
         return res.status(404).json({ error: 'Video not found' });
@@ -73,7 +105,8 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
     res.json({
       success: true,
       added: tracks.length,
-      tracks
+      tracks,
+      skipped: skippedTracks
     });
   } catch (error) {
     console.error('Add to queue error:', error);

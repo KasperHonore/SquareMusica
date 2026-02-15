@@ -9,7 +9,8 @@ export const ServerEvents = {
   PLAYER_STATE: 'player:state',
   TRACK_PROGRESS: 'track:progress',
   INITIAL_STATE: 'initial:state',
-  RESOLUTION_PROGRESS: 'resolution:progress'
+  RESOLUTION_PROGRESS: 'resolution:progress',
+  VOICE_CONTEXT: 'voice:context'
 };
 
 // Events sent from clients to server

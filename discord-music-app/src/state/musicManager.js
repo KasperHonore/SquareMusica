@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { db } from '../database/db.js';
 import { resolutionManager } from '../music/resolutionManager.js';
+import { getChannelInfo } from '../bot/voiceManager.js';
 
 class MusicManager extends EventEmitter {
   constructor() {
@@ -215,6 +216,17 @@ class MusicManager extends EventEmitter {
     this.emitQueueUpdate();
   }
 
+  // Get voice context
+  getVoiceContext() {
+    const guildId = this.guildId || process.env.GUILD_ID;
+    return getChannelInfo(guildId);
+  }
+
+  // Emit voice context update
+  emitVoiceContext() {
+    this.emit('voice:context', this.getVoiceContext());
+  }
+
   // Get full state for initial sync
   getFullState() {
     return {
@@ -222,7 +234,8 @@ class MusicManager extends EventEmitter {
       currentIndex: this.getCurrentIndex(),
       currentTrack: this.getCurrentTrack(),
       playerState: this.getPlayerState(),
-      resolutionStats: this.queue?.getResolutionStats() || null
+      resolutionStats: this.queue?.getResolutionStats() || null,
+      voiceContext: this.getVoiceContext()
     };
   }
 }

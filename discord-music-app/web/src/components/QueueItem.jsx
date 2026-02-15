@@ -1,6 +1,39 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { formatTime } from '../utils/formatTime';
+import { DragHandle, Remove } from './icons';
+
+/**
+ * User avatar component with fallback to first letter
+ */
+function UserAvatar({ userId, avatarHash, username, size = 16 }) {
+  if (avatarHash && userId) {
+    const avatarUrl = `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.png?size=${size * 2}`;
+    return (
+      <img
+        src={avatarUrl}
+        alt={username}
+        className="rounded-full"
+        style={{ width: size, height: size }}
+        onError={(e) => {
+          e.target.style.display = 'none';
+          e.target.nextSibling.style.display = 'flex';
+        }}
+      />
+    );
+  }
+
+  // Fallback to first letter
+  const letter = username ? username.charAt(0).toUpperCase() : '?';
+  return (
+    <div
+      className="rounded-full bg-brand-primary/20 text-brand-primary flex items-center justify-center text-xs font-medium"
+      style={{ width: size, height: size }}
+    >
+      {letter}
+    </div>
+  );
+}
 
 /**
  * Spotify icon SVG component
@@ -123,30 +156,18 @@ export function QueueItem({ track, index, trackId, onRemove }) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-3 p-3 rounded-lg bg-gray-700/50 ${isDragging ? 'shadow-lg' : ''} ${isFailed ? 'opacity-60' : ''}`}
+      className={`flex items-start gap-3 p-3 rounded-lg bg-surface-base hover:bg-white/5 transition-colors group ${isDragging ? 'shadow-lg ring-1 ring-brand-primary/50' : ''} ${isFailed ? 'opacity-60' : ''}`}
     >
-      <div
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300"
-        aria-label="Drag to reorder"
-        role="button"
-      >
-        ⋮⋮
-      </div>
-
-      <span className="text-gray-500 w-6 text-sm">{index + 1}</span>
-
       {track.thumbnail ? (
         <img
           src={track.thumbnail}
           alt=""
-          className="w-10 h-10 rounded object-cover"
+          className="w-12 h-12 rounded object-cover flex-shrink-0"
         />
       ) : (
-        <div className="w-10 h-10 rounded bg-gray-600 flex items-center justify-center">
+        <div className="w-12 h-12 rounded bg-surface-raised flex items-center justify-center flex-shrink-0">
           {statusIndicator?.icon || (
-            <span className="text-gray-400 text-xs">♪</span>
+            <span className="text-text-secondary text-xs">♪</span>
           )}
         </div>
       )}
@@ -158,33 +179,54 @@ export function QueueItem({ track, index, trackId, onRemove }) {
               {statusIndicator.icon}
             </span>
           )}
-          <p className={`truncate font-medium ${statusIndicator?.className || ''}`}>
+          <p className={`truncate font-medium text-sm ${statusIndicator?.className || ''}`}>
             {track.title}
           </p>
         </div>
-        <div className="flex items-center gap-2 text-gray-400 text-sm">
-          <span className="truncate">
-            {formatTime(track.duration, '')}
-          </span>
+        <div className="flex items-center gap-1 text-text-secondary text-xs mt-0.5">
+          <span>{formatTime(track.duration, '')}</span>
           {track.spotifyData?.artists?.length > 0 && (
             <>
-              <span>•</span>
+              <span className="text-text-muted">•</span>
               <span className="truncate">
                 {track.spotifyData.artists.join(', ')}
               </span>
             </>
           )}
         </div>
+        {track.requestedBy && (
+          <div className="flex items-center gap-1.5 text-text-muted text-xs mt-1">
+            <span>Added by</span>
+            <UserAvatar
+              userId={track.requestedById}
+              avatarHash={track.requestedByAvatar}
+              username={track.requestedBy}
+              size={14}
+            />
+            <span className="truncate">{track.requestedBy}</span>
+          </div>
+        )}
       </div>
 
-      <button
-        onClick={() => onRemove(index)}
-        className="text-gray-500 hover:text-red-400 transition-colors p-1"
-        title="Remove"
-        aria-label={`Remove ${track.title} from queue`}
-      >
-        ✕
-      </button>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-text-muted hover:text-text-secondary p-1"
+          aria-label="Drag to reorder"
+          role="button"
+        >
+          <DragHandle size={16} />
+        </div>
+        <button
+          onClick={() => onRemove(index)}
+          className="text-text-muted hover:text-red-400 transition-colors p-1"
+          title="Remove"
+          aria-label={`Remove ${track.title} from queue`}
+        >
+          <Remove size={16} />
+        </button>
+      </div>
     </div>
   );
 }

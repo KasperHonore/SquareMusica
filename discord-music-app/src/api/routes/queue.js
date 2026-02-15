@@ -6,6 +6,7 @@ import { isConnected } from '../../bot/voiceManager.js';
 import { parseSpotifyUrl, getPublicTrack, getPublicPlaylistTracks } from '../../music/spotify.js';
 import { resolveSpotifyTrack, resolveSpotifyTracks } from '../../music/resolver.js';
 import { resolutionManager, ResolutionManager } from '../../music/resolutionManager.js';
+import { db } from '../../database/db.js';
 
 const router = Router();
 
@@ -195,6 +196,22 @@ router.get('/search', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Search error:', error);
     res.status(500).json({ error: 'Search failed' });
+  }
+});
+
+/**
+ * GET /api/queue/history - Get play history
+ */
+router.get('/history', optionalAuth, (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+  const offset = parseInt(req.query.offset) || 0;
+
+  try {
+    const history = db.getHistory(limit, offset);
+    res.json({ history });
+  } catch (error) {
+    console.error('History error:', error);
+    res.status(500).json({ error: 'Failed to get history' });
   }
 });
 

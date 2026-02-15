@@ -1,10 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { useAuth } from '../context/AuthContext';
+import { AppLayout } from '../components/layout/AppLayout';
+import { MiniPlayer } from '../components/layout/MiniPlayer';
 import { NowPlaying } from '../components/NowPlaying';
 import { Queue } from '../components/Queue';
 import { SearchBar } from '../components/SearchBar';
-import { VolumeSlider } from '../components/VolumeSlider';
+import { History } from './History';
+import { Settings } from './Settings';
 
 export function Dashboard() {
   const { user, logout } = useAuth();
@@ -15,6 +18,7 @@ export function Dashboard() {
     currentTrack,
     playerState,
     resolutionStats,
+    voiceContext,
     error,
     addToQueue,
     removeFromQueue,
@@ -22,6 +26,8 @@ export function Dashboard() {
     playerControl,
     clearError
   } = useSocket();
+
+  const [activeView, setActiveView] = useState('nowplaying');
 
   // Auto-dismiss error after 5 seconds
   useEffect(() => {
@@ -47,113 +53,133 @@ export function Dashboard() {
     removeFromQueue(offset + position);
   };
 
+  const handleShuffle = () => {
+    playerControl('shuffle');
+  };
+
+  const handleVolumeChange = (volume) => {
+    playerControl('volume', volume);
+  };
+
+  const handleLoopChange = (mode) => {
+    playerControl('loop', mode);
+  };
+
+  const handleLeaveChannel = () => {
+    playerControl('leave');
+  };
+
+  // Render the main content based on active view
+  const renderMainContent = () => {
+    switch (activeView) {
+      case 'nowplaying':
+        return (
+          <div className="space-y-6">
+            {/* Search bar at top */}
+            <SearchBar
+              onAdd={addToQueue}
+              disabled={!connected}
+            />
+
+            {/* Voice channel warning */}
+            {!playerState.connected && (
+              <div
+                className="px-4 py-3 rounded-lg"
+                style={{
+                  backgroundColor: 'rgba(234, 179, 8, 0.1)',
+                  border: '1px solid rgba(234, 179, 8, 0.3)',
+                  color: '#fcd34d'
+                }}
+              >
+                Bot is not connected to a voice channel. Use <code className="bg-black/20 px-1 rounded">/join</code> in Discord.
+              </div>
+            )}
+
+            {/* Now Playing hero */}
+            <NowPlaying
+              track={currentTrack}
+              playerState={playerState}
+              onControl={playerControl}
+            />
+          </div>
+        );
+
+      case 'queue':
+        return (
+          <div className="max-w-2xl mx-auto">
+            <h1 className="text-2xl font-bold mb-6">Queue</h1>
+            <Queue
+              tracks={upcomingTracks}
+              onReorder={handleReorder}
+              onRemove={handleRemove}
+              onShuffle={handleShuffle}
+              resolutionStats={resolutionStats}
+            />
+          </div>
+        );
+
+      case 'history':
+        return <History />;
+
+      case 'settings':
+        return <Settings />;
+
+      default:
+        return null;
+    }
+  };
+
+  // Queue component for sidebar panel
+  const queuePanel = activeView !== 'queue' ? (
+    <div className="p-4">
+      <Queue
+        tracks={upcomingTracks}
+        onReorder={handleReorder}
+        onRemove={handleRemove}
+        onShuffle={handleShuffle}
+        resolutionStats={resolutionStats}
+      />
+    </div>
+  ) : null;
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <>
       {/* Error Toast */}
       {error && (
-        <div className="fixed top-4 right-4 z-50 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in">
+        <div className="fixed top-4 right-4 z-[100] bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in">
           <span>{error}</span>
           <button
             onClick={clearError}
-            className="text-white/80 hover:text-white"
+            className="text-white/80 hover:text-white text-xl leading-none"
           >
             &times;
           </button>
         </div>
       )}
 
-      {/* Header */}
-      <header className="bg-gray-800 border-b border-gray-700">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            🎵 Music Bot
-          </h1>
-          <div className="flex items-center gap-4">
-            <span className={`flex items-center gap-2 text-sm ${connected ? 'text-green-400' : 'text-red-400'}`}>
-              <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`}></span>
-              {connected ? 'Connected' : 'Disconnected'}
-            </span>
-            {user && (
-              <div className="flex items-center gap-3">
-                {user.avatar && (
-                  <img
-                    src={`https://cdn.discordapp.com/avatars/${user.discord_id}/${user.avatar}.png`}
-                    alt={user.username}
-                    className="w-8 h-8 rounded-full"
-                  />
-                )}
-                <span className="text-gray-300">{user.username}</span>
-                <button
-                  onClick={logout}
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  Logout
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
+      <AppLayout
+        queueComponent={queuePanel}
+        voiceContext={voiceContext}
+        playerState={playerState}
+        currentTrack={currentTrack}
+        user={user}
+        activeView={activeView}
+        onViewChange={setActiveView}
+        onVolumeChange={handleVolumeChange}
+        onLoopChange={handleLoopChange}
+        onLeaveChannel={handleLeaveChannel}
+        onLogout={logout}
+        showMiniPlayerPadding={!!currentTrack}
+      >
+        {renderMainContent()}
+      </AppLayout>
 
-      {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        {!playerState.connected && (
-          <div className="bg-yellow-900/30 border border-yellow-500/50 text-yellow-200 px-4 py-3 rounded-lg mb-6">
-            Bot is not connected to a voice channel. Use <code className="bg-gray-800 px-1 rounded">/join</code> in Discord.
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Player */}
-          <div className="lg:col-span-2 space-y-4">
-            <SearchBar
-              onAdd={addToQueue}
-              disabled={!connected}
-            />
-            <NowPlaying
-              track={currentTrack}
-              playerState={playerState}
-              onControl={playerControl}
-            />
-            <VolumeSlider
-              value={playerState.volume}
-              onChange={(v) => playerControl('volume', v)}
-            />
-
-            {/* Loop Control */}
-            <div className="bg-gray-800 p-4 rounded-lg">
-              <div className="flex items-center gap-4">
-                <span className="text-gray-400">Loop:</span>
-                <div className="flex gap-2">
-                  {['off', 'track', 'queue'].map((mode) => (
-                    <button
-                      key={mode}
-                      onClick={() => playerControl('loop', mode)}
-                      className={`px-3 py-1 rounded ${
-                        playerState.loop === mode
-                          ? 'bg-green-600 text-white'
-                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                      } transition-colors`}
-                    >
-                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column - Queue */}
-          <div>
-            <Queue
-              tracks={upcomingTracks}
-              onReorder={handleReorder}
-              onRemove={handleRemove}
-              resolutionStats={resolutionStats}
-            />
-          </div>
-        </div>
-      </main>
-    </div>
+      {/* MiniPlayer (fixed position) */}
+      <MiniPlayer
+        currentTrack={currentTrack}
+        playerState={playerState}
+        onControl={playerControl}
+      />
+    </>
   );
 }

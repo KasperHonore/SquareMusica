@@ -49,3 +49,39 @@ export function getConnection(guildId) {
 export function isConnected(guildId) {
   return !!getConnection(guildId);
 }
+
+// Store channel references for voice context
+const channelCache = new Map();
+
+export function setChannelCache(guildId, channel) {
+  if (channel) {
+    channelCache.set(guildId, channel);
+  } else {
+    channelCache.delete(guildId);
+  }
+}
+
+export function getChannelInfo(guildId) {
+  const channel = channelCache.get(guildId);
+  if (!channel) {
+    return null;
+  }
+
+  const guild = channel.guild;
+  const connectedUsers = channel.members
+    .filter(m => !m.user.bot)
+    .map(m => ({
+      id: m.user.id,
+      username: m.user.username,
+      avatar: m.user.avatar
+    }));
+
+  return {
+    guildId: guild.id,
+    guildName: guild.name,
+    guildIcon: guild.iconURL(),
+    channelId: channel.id,
+    channelName: channel.name,
+    connectedUsers
+  };
+}

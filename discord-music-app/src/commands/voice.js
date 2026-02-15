@@ -1,4 +1,4 @@
-import { joinChannel, leaveChannel, getConnection } from '../bot/voiceManager.js';
+import { joinChannel, leaveChannel, getConnection, setChannelCache } from '../bot/voiceManager.js';
 import { musicManager } from '../state/musicManager.js';
 
 export async function handleJoin(interaction) {
@@ -18,6 +18,8 @@ export async function handleJoin(interaction) {
     await interaction.deferReply();
     await joinChannel(voiceChannel);
     musicManager.setGuildId(interaction.guildId);
+    setChannelCache(interaction.guildId, voiceChannel);
+    musicManager.emitVoiceContext();
     await interaction.editReply(`Joined **${voiceChannel.name}**`);
   } catch (error) {
     console.error('Join error:', error);
@@ -36,6 +38,8 @@ export async function handleLeave(interaction) {
   }
 
   leaveChannel(interaction.guildId);
+  setChannelCache(interaction.guildId, null);
   musicManager.stop();
+  musicManager.emitVoiceContext();
   await interaction.reply('Left the voice channel.');
 }

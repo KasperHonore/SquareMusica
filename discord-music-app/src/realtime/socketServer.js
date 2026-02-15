@@ -88,6 +88,10 @@ export function setupSocketServer(httpServer) {
     io.emit(ServerEvents.RESOLUTION_PROGRESS, stats);
   });
 
+  musicManager.on('voice:context', (context) => {
+    io.emit(ServerEvents.VOICE_CONTEXT, context);
+  });
+
   // Periodically emit track progress
   progressInterval = setInterval(() => {
     const track = musicManager.getCurrentTrack();

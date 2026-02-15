@@ -1,11 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-gray-900 text-white;
+/* Theme CSS Custom Properties */
+:root {
+  /* Dark theme (default) */
+  --color-bg: #121212;
+  --color-bg-raised: #181818;
+  --color-bg-elevated: #282828;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #b3b3b3;
+  --color-text-muted: #6b7280;
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-accent: #1DB954;
+  --color-accent-hover: #1ed760;
 }
 
+:root.light-theme {
+  /* Light theme */
+  --color-bg: #f8fafc;
+  --color-bg-raised: #ffffff;
+  --color-bg-elevated: #f1f5f9;
+  --color-text-primary: #1e293b;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94a3b8;
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-accent: #1DB954;
+  --color-accent-hover: #1aa34a;
+}
+
+body {
+  @apply font-sans antialiased;
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+}
+
+/* Slide-in animation */
 @keyframes slide-in {
   from {
     transform: translateX(100%);
@@ -19,4 +51,56 @@ body {
 
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
+}
+
+/* Playback indicator wave animation */
+@keyframes wave {
+  0%, 100% {
+    transform: scaleY(0.5);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-wave {
+  animation: wave 1s ease-in-out infinite;
+}
+
+.animate-wave-delay-1 {
+  animation: wave 1s ease-in-out infinite;
+  animation-delay: 0.1s;
+}
+
+.animate-wave-delay-2 {
+  animation: wave 1s ease-in-out infinite;
+  animation-delay: 0.2s;
+}
+
+.animate-wave-delay-3 {
+  animation: wave 1s ease-in-out infinite;
+  animation-delay: 0.3s;
+}
+
+/* Premium card styling utility */
+.card-premium {
+  @apply bg-surface-raised rounded-xl shadow-soft;
+}
+
+/* Gradient background animation */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-shift 8s ease infinite;
 }

@@ -19,6 +19,7 @@ export function useSocket() {
     connected: false
   });
   const [resolutionStats, setResolutionStats] = useState(null);
+  const [voiceContext, setVoiceContext] = useState(null);
 
   useEffect(() => {
     if (!token) return;
@@ -72,6 +73,13 @@ export function useSocket() {
       if (state.resolutionStats) {
         setResolutionStats(state.resolutionStats);
       }
+      if (state.voiceContext !== undefined) {
+        setVoiceContext(state.voiceContext);
+      }
+    });
+
+    newSocket.on('voice:context', (context) => {
+      setVoiceContext(context);
     });
 
     newSocket.on('resolution:progress', (stats) => {
@@ -116,6 +124,7 @@ export function useSocket() {
     currentTrack,
     playerState,
     resolutionStats,
+    voiceContext,
     error,
     addToQueue,
     removeFromQueue,

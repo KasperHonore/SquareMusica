@@ -1,0 +1,644 @@
+# yt-dlp Migration Plan (Agent Teams)
+
+## Overview
+
+This document outlines the migration from `@distube/ytdl-core` (archived and broken) to `yt-dlp` for YouTube audio streaming in the Discord Music Bot. The plan is organized into phases suitable for parallel agent team execution.
+
+## Why Migrate?
+
+The current `@distube/ytdl-core` library:
+- Was **archived on August 16, 2025** and receives no updates
+- Cannot parse YouTube's current signature cipher algorithms
+- Returns 403 Forbidden errors when attempting to stream audio
+- Will never be fixed
+
+---
+
+## Phase Overview
+
+| Phase | Team | Description | Dependencies | Parallelizable |
+|-------|------|-------------|--------------|----------------|
+| 0 | Infra | Prerequisites & environment setup | None | No |
+| 1 | Dependencies | Update package.json | Phase 0 | Yes |
+| 2A | Core | Implement youtube.js core functions | Phase 1 | Yes |
+| 2B | Core | Implement youtube.js streaming | Phase 1 | Yes (with 2A) |
+| 2C | Core | Implement youtube.js playlist support | Phase 1 | Yes (with 2A) |
+| 3 | Integration | Update player.js integration | Phase 2A, 2B | No |
+| 4 | Config | Environment configuration | Phase 1 | Yes (with Phase 2) |
+| 5 | QA | Testing & validation | Phase 3 | No |
+| 6 | Docs | Documentation & cleanup | Phase 5 | No |
+
+---
+
+## Phase 0: Prerequisites & Environment Setup
+
+**Team:** Infrastructure
+**Dependencies:** None
+**Estimated Scope:** Environment preparation only
+
+### Tasks
+
+- [ ] **0.1** Verify yt-dlp is installed on development/production systems
+- [ ] **0.2** Verify ffmpeg is installed and accessible
+- [ ] **0.3** Document installation steps for team members
+
+### Installation Commands
+
+```bash
+# Linux/macOS
+curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+chmod a+rx /usr/local/bin/yt-dlp
+
+# Or via pip
+pip install yt-dlp
+
+# Verify installations
+yt-dlp --version
+ffmpeg -version
+```
+
+### Acceptance Criteria
+
+- [ ] `yt-dlp --version` returns valid version
+- [ ] `ffmpeg -version` returns valid version
+- [ ] Team members can access yt-dlp from command line
+
+---
+
+## Phase 1: Update Dependencies
+
+**Team:** Dependencies
+**Dependencies:** Phase 0
+**Estimated Scope:** package.json only
+
+### Tasks
+
+- [ ] **1.1** Remove `@distube/ytdl-core` from dependencies
+- [ ] **1.2** Add `yt-dlp-exec` to dependencies
+- [ ] **1.3** Add optional `yt-dlp:update` npm script
+- [ ] **1.4** Run `npm install` and verify no errors
+
+### Commands
+
+```bash
+npm uninstall @distube/ytdl-core
+npm install yt-dlp-exec
+```
+
+### package.json Changes
+
+Add to scripts section (optional):
+```json
+{
+  "scripts": {
+    "yt-dlp:update": "yt-dlp -U"
+  }
+}
+```
+
+### Acceptance Criteria
+
+- [ ] `@distube/ytdl-core` removed from package.json
+- [ ] `yt-dlp-exec` added to package.json
+- [ ] `npm install` completes without errors
+- [ ] `npm ls yt-dlp-exec` shows package installed
+
+---
+
+## Phase 2A: Core YouTube Functions
+
+**Team:** Core (Agent A)
+**Dependencies:** Phase 1
+**Parallelizable With:** Phase 2B, 2C, Phase 4
+**File:** `src/music/youtube.js`
+
+### Tasks
+
+- [ ] **2A.1** Add new imports (child_process, util, stream)
+- [ ] **2A.2** Define YT_DLP_PATH constant
+- [ ] **2A.3** Implement `isValidUrl()` function
+- [ ] **2A.4** Implement `search()` function
+- [ ] **2A.5** Implement `getInfo()` function
+
+### Code: Imports and Constants
+
+```javascript
+import { execFile, spawn } from 'child_process';
+import { promisify } from 'util';
+import { PassThrough } from 'stream';
+
+const execFileAsync = promisify(execFile);
+const YT_DLP_PATH = process.env.YT_DLP_PATH || 'yt-dlp';
+```
+
+### Code: isValidUrl()
+
+```javascript
+export function isValidUrl(url) {
+  try {
+    const urlObj = new URL(url);
+    const validHosts = [
+      'youtube.com',
+      'www.youtube.com',
+      'youtu.be',
+      'm.youtube.com',
+      'music.youtube.com'
+    ];
+    return validHosts.some(host => urlObj.hostname === host);
+  } catch {
+    return false;
+  }
+}
+```
+
+### Code: search()
+
+```javascript
+export async function search(query, limit = 5) {
+  try {
+    console.log('Searching YouTube for:', query);
+
+    const { stdout } = await execFileAsync(YT_DLP_PATH, [
+      `ytsearch${limit}:${query}`,
+      '--dump-json',
+      '--flat-playlist',
+      '--no-warnings',
+      '--ignore-errors'
+    ], { maxBuffer: 10 * 1024 * 1024 });
+
+    const results = stdout
+      .trim()
+      .split('\n')
+      .filter(line => line)
+      .map(line => {
+        const data = JSON.parse(line);
+        return {
+          title: data.title || 'Unknown',
+          url: `https://www.youtube.com/watch?v=${data.id}`,
+          duration: data.duration || 0,
+          thumbnail: data.thumbnail || data.thumbnails?.[0]?.url || null,
+          channel: data.channel || data.uploader || 'Unknown'
+        };
+      });
+
+    console.log('Search results:', JSON.stringify(results, null, 2));
+    return results;
+  } catch (error) {
+    console.error('YouTube search error:', error);
+    return [];
+  }
+}
+```
+
+### Code: getInfo()
+
+```javascript
+export async function getInfo(url) {
+  try {
+    if (!isValidUrl(url)) {
+      return null;
+    }
+
+    const { stdout } = await execFileAsync(YT_DLP_PATH, [
+      url,
+      '--dump-json',
+      '--no-download',
+      '--no-warnings'
+    ]);
+
+    const data = JSON.parse(stdout);
+
+    return {
+      title: data.title,
+      url: data.webpage_url || url,
+      duration: data.duration || 0,
+      thumbnail: data.thumbnail || data.thumbnails?.[0]?.url || null,
+      channel: data.channel || data.uploader || 'Unknown'
+    };
+  } catch (error) {
+    console.error('YouTube info error:', error);
+    return null;
+  }
+}
+```
+
+### Acceptance Criteria
+
+- [ ] Imports compile without errors
+- [ ] `isValidUrl()` correctly validates YouTube URLs
+- [ ] `search()` returns array of track objects
+- [ ] `getInfo()` returns track info object for valid URL
+- [ ] Functions handle errors gracefully (return empty array/null)
+
+---
+
+## Phase 2B: Streaming Implementation
+
+**Team:** Core (Agent B)
+**Dependencies:** Phase 1
+**Parallelizable With:** Phase 2A, 2C, Phase 4
+**File:** `src/music/youtube.js`
+
+### Tasks
+
+- [ ] **2B.1** Implement `getStream()` function
+- [ ] **2B.2** Implement `getStreamWithRetry()` function (optional enhancement)
+- [ ] **2B.3** Add proper error handling and logging
+
+### Code: getStream()
+
+```javascript
+export async function getStream(url) {
+  console.log('Getting stream for URL:', url);
+
+  const ytdlp = spawn(YT_DLP_PATH, [
+    url,
+    '-f', 'bestaudio[ext=webm]/bestaudio/best',
+    '-o', '-',
+    '--no-warnings',
+    '--no-playlist',
+    '--quiet'
+  ]);
+
+  const stream = new PassThrough();
+
+  ytdlp.stdout.pipe(stream);
+
+  ytdlp.stderr.on('data', (data) => {
+    console.error('yt-dlp stderr:', data.toString());
+  });
+
+  ytdlp.on('error', (error) => {
+    console.error('yt-dlp process error:', error);
+    stream.destroy(error);
+  });
+
+  ytdlp.on('close', (code) => {
+    if (code !== 0 && code !== null) {
+      console.error(`yt-dlp exited with code ${code}`);
+    }
+  });
+
+  return {
+    stream,
+    type: 'arbitrary'
+  };
+}
+```
+
+### Code: getStreamWithRetry() (Optional Enhancement)
+
+```javascript
+export async function getStreamWithRetry(url, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await getStream(url);
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
+    }
+  }
+}
+```
+
+### Acceptance Criteria
+
+- [ ] `getStream()` returns object with `stream` and `type` properties
+- [ ] Stream emits data when piped
+- [ ] Errors are logged and stream is destroyed on failure
+- [ ] Process cleanup occurs on close
+
+---
+
+## Phase 2C: Playlist Support
+
+**Team:** Core (Agent C)
+**Dependencies:** Phase 1
+**Parallelizable With:** Phase 2A, 2B, Phase 4
+**File:** `src/music/youtube.js`
+
+### Tasks
+
+- [ ] **2C.1** Implement `isPlaylist()` function
+- [ ] **2C.2** Implement `getPlaylist()` function
+
+### Code: isPlaylist()
+
+```javascript
+export function isPlaylist(url) {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.searchParams.has('list') && !urlObj.searchParams.has('v');
+  } catch {
+    return false;
+  }
+}
+```
+
+### Code: getPlaylist()
+
+```javascript
+export async function getPlaylist(url, limit = 50) {
+  try {
+    const { stdout } = await execFileAsync(YT_DLP_PATH, [
+      url,
+      '--dump-json',
+      '--flat-playlist',
+      '--no-warnings',
+      '--ignore-errors',
+      '--playlist-end', String(limit)
+    ], { maxBuffer: 10 * 1024 * 1024 });
+
+    const results = stdout
+      .trim()
+      .split('\n')
+      .filter(line => line)
+      .map(line => {
+        const data = JSON.parse(line);
+        return {
+          title: data.title || 'Unknown',
+          url: `https://www.youtube.com/watch?v=${data.id}`,
+          duration: data.duration || 0,
+          thumbnail: data.thumbnail || data.thumbnails?.[0]?.url || null,
+          channel: data.channel || data.uploader || 'Unknown'
+        };
+      });
+
+    return results;
+  } catch (error) {
+    console.error('YouTube playlist error:', error);
+    return [];
+  }
+}
+```
+
+### Acceptance Criteria
+
+- [ ] `isPlaylist()` correctly identifies playlist URLs
+- [ ] `isPlaylist()` returns false for single video URLs
+- [ ] `getPlaylist()` returns array of track objects
+- [ ] Playlist limit parameter is respected
+- [ ] Errors return empty array
+
+---
+
+## Phase 3: Player Integration
+
+**Team:** Integration
+**Dependencies:** Phase 2A, Phase 2B
+**File:** `src/music/player.js`
+
+### Tasks
+
+- [ ] **3.1** Verify stream handling compatibility
+- [ ] **3.2** Update `createAudioResource` call if needed
+- [ ] **3.3** Test playback end-to-end
+
+### Code Changes (if needed)
+
+```javascript
+// In play() method, ensure:
+const resource = createAudioResource(stream.stream, {
+  inputType: StreamType.Arbitrary,
+  inlineVolume: true
+});
+
+// If audio format issues occur, try:
+// inputType: StreamType.WebmOpus
+```
+
+### Acceptance Criteria
+
+- [ ] Audio plays through Discord voice channel
+- [ ] Volume control works
+- [ ] Skip/stop commands work correctly
+- [ ] No audio artifacts or dropouts
+
+---
+
+## Phase 4: Environment Configuration
+
+**Team:** Config
+**Dependencies:** Phase 1
+**Parallelizable With:** Phase 2A, 2B, 2C
+**Files:** `.env`, `.env.sample`
+
+### Tasks
+
+- [ ] **4.1** Add YT_DLP_PATH to .env.sample
+- [ ] **4.2** Add YT_DLP_COOKIES to .env.sample (optional)
+- [ ] **4.3** Document configuration options
+
+### .env.sample Additions
+
+```env
+# yt-dlp Configuration (optional)
+YT_DLP_PATH=yt-dlp
+YT_DLP_COOKIES=          # Path to cookies file for age-restricted content
+```
+
+### Cookie Support Code (for youtube.js)
+
+```javascript
+// Add to getStream() args array if cookies are configured:
+const args = [
+  url,
+  '-f', 'bestaudio[ext=webm]/bestaudio/best',
+  '-o', '-',
+  '--no-warnings',
+  '--no-playlist'
+];
+
+if (process.env.YT_DLP_COOKIES) {
+  args.push('--cookies', process.env.YT_DLP_COOKIES);
+}
+```
+
+### Acceptance Criteria
+
+- [ ] .env.sample documents new variables
+- [ ] Default YT_DLP_PATH works without configuration
+- [ ] Cookie path is optional and doesn't break when missing
+
+---
+
+## Phase 5: Testing & Validation
+
+**Team:** QA
+**Dependencies:** Phase 3
+**Estimated Scope:** Manual and automated testing
+
+### Tasks
+
+- [ ] **5.1** Run basic functionality tests
+- [ ] **5.2** Run edge case tests
+- [ ] **5.3** Run performance tests
+- [ ] **5.4** Document any issues found
+
+### Test Cases: Basic Functionality
+
+| Test | Command | Expected Result |
+|------|---------|-----------------|
+| Search | `/play never gonna give you up` | Finds and plays song |
+| Direct URL | `/play https://www.youtube.com/watch?v=dQw4w9WgXcQ` | Plays video |
+| Playlist | `/play https://www.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf` | Queues playlist |
+
+### Test Cases: Edge Cases
+
+| Test | Expected Behavior |
+|------|-------------------|
+| Short videos (< 1 minute) | Plays correctly |
+| Long videos (> 1 hour) | Plays correctly |
+| Live streams | Handles gracefully (error or plays) |
+| Age-restricted content | Error message or plays with cookies |
+| Region-locked content | Error message |
+| Invalid URLs | Error message |
+| Network interruptions | Graceful degradation |
+
+### Test Cases: Performance
+
+| Test | Acceptance Criteria |
+|------|---------------------|
+| Memory usage | No memory leaks during extended playback |
+| CPU usage | Reasonable CPU during streaming |
+| Cleanup | Proper cleanup on stop/skip |
+
+### Acceptance Criteria
+
+- [ ] All basic functionality tests pass
+- [ ] Edge cases handled gracefully
+- [ ] No memory leaks detected
+- [ ] Performance is acceptable
+
+---
+
+## Phase 6: Documentation & Cleanup
+
+**Team:** Docs
+**Dependencies:** Phase 5
+**Estimated Scope:** Documentation updates
+
+### Tasks
+
+- [ ] **6.1** Update README.md with yt-dlp requirement
+- [ ] **6.2** Document maintenance procedures
+- [ ] **6.3** Remove this migration plan or archive it
+- [ ] **6.4** Clean up any TODO comments
+
+### Maintenance Documentation
+
+Add to README or CLAUDE.md:
+
+```markdown
+## yt-dlp Maintenance
+
+### Keeping yt-dlp Updated
+
+YouTube frequently changes their systems. Keep yt-dlp updated:
+
+\`\`\`bash
+# Manual update
+yt-dlp -U
+
+# Or via npm script
+npm run yt-dlp:update
+\`\`\`
+
+### Common Error Patterns
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Sign in to confirm you're not a bot` | Rate limited | Add cookies file |
+| `Video unavailable` | Region/age restriction | Use VPN or cookies |
+| `Unable to extract` | yt-dlp outdated | Run `yt-dlp -U` |
+```
+
+### Acceptance Criteria
+
+- [ ] README documents yt-dlp requirement
+- [ ] Maintenance procedures documented
+- [ ] Migration plan archived or removed
+
+---
+
+## Rollback Plan
+
+If migration fails at any phase:
+
+1. Revert all changes to `src/music/youtube.js`
+2. Run `npm install @distube/ytdl-core@4.16.12`
+3. Remove `yt-dlp-exec` from package.json
+4. Run `npm install`
+
+**Note:** Rollback restores the 403 error state - this is temporary only.
+
+---
+
+## Files Changed Summary
+
+| File | Phase | Change Type |
+|------|-------|-------------|
+| `package.json` | 1 | Dependencies |
+| `src/music/youtube.js` | 2A, 2B, 2C | Complete rewrite |
+| `src/music/player.js` | 3 | Minor update (if needed) |
+| `.env.sample` | 4 | Add variables |
+| `README.md` | 6 | Documentation |
+
+**Unchanged Files:**
+- All command files (`src/commands/*.js`)
+- Queue management (`src/music/queue.js`)
+- API routes (`src/api/routes/*.js`)
+- Socket handlers (`src/realtime/*.js`)
+- State management (`src/state/musicManager.js`)
+
+---
+
+## Agent Team Execution Order
+
+```
+                    ┌─────────────┐
+                    │   Phase 0   │
+                    │   (Infra)   │
+                    └──────┬──────┘
+                           │
+                    ┌──────▼──────┐
+                    │   Phase 1   │
+                    │   (Deps)    │
+                    └──────┬──────┘
+                           │
+         ┌─────────────────┼─────────────────┐
+         │                 │                 │
+   ┌─────▼─────┐     ┌─────▼─────┐     ┌─────▼─────┐
+   │ Phase 2A  │     │ Phase 2B  │     │ Phase 4   │
+   │  (Core)   │     │  (Core)   │     │ (Config)  │
+   └─────┬─────┘     └─────┬─────┘     └───────────┘
+         │                 │
+         │           ┌─────▼─────┐
+         │           │ Phase 2C  │
+         │           │  (Core)   │
+         │           └─────┬─────┘
+         │                 │
+         └────────┬────────┘
+                  │
+           ┌──────▼──────┐
+           │   Phase 3   │
+           │(Integration)│
+           └──────┬──────┘
+                  │
+           ┌──────▼──────┐
+           │   Phase 5   │
+           │    (QA)     │
+           └──────┬──────┘
+                  │
+           ┌──────▼──────┐
+           │   Phase 6   │
+           │   (Docs)    │
+           └─────────────┘
+```
+
+## Resources
+
+- [yt-dlp GitHub](https://github.com/yt-dlp/yt-dlp)
+- [yt-dlp Documentation](https://github.com/yt-dlp/yt-dlp#readme)
+- [Discord.js Voice Guide](https://discordjs.guide/voice/)
+- [yt-dlp-exec npm package](https://www.npmjs.com/package/yt-dlp-exec)

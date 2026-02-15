@@ -1,4 +1,6 @@
 import { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus, entersState } from '@discordjs/voice';
+import { db } from '../database/db.js';
+import { botEvents } from './client.js';
 
 const connections = new Map();
 
@@ -37,6 +39,12 @@ export function leaveChannel(guildId) {
   if (connection) {
     connection.destroy();
     connections.delete(guildId);
+
+    // Clear play history when leaving voice channel
+    const cleared = db.clearAllHistory();
+    console.log(`[VoiceManager] Cleared ${cleared} history records on voice leave`);
+    botEvents.emit('historyCleared', guildId);
+
     return true;
   }
   return false;

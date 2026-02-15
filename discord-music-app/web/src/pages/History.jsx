@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../hooks/useSocket';
 import { formatTime } from '../utils/formatTime';
 
 /**
@@ -88,6 +89,7 @@ function HistoryItem({ track, onPlayAgain }) {
 
 export function History() {
   const { token } = useAuth();
+  const { historyVersion } = useSocket();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -133,6 +135,14 @@ export function History() {
   useEffect(() => {
     fetchHistory(0, false);
   }, [fetchHistory]);
+
+  // Refetch when history is cleared (bot left server)
+  useEffect(() => {
+    if (historyVersion > 0) {
+      console.log('[History] historyVersion changed to', historyVersion, '- refetching');
+      fetchHistory(0, false);
+    }
+  }, [historyVersion, fetchHistory]);
 
   const loadMore = () => {
     if (!loading && hasMore) {

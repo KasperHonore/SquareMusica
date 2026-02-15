@@ -2,6 +2,7 @@ import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { db } from '../database/db.js';
 import { musicManager } from '../state/musicManager.js';
+import { botEvents } from '../bot/client.js';
 import { ServerEvents, ClientEvents } from './events.js';
 import {
   handleQueueAdd,
@@ -108,6 +109,12 @@ export function setupSocketServer(httpServer) {
       });
     }
   }, 1000);
+
+  // Listen for history cleared events from bot
+  botEvents.on('historyCleared', (guildId) => {
+    console.log(`[Socket] Broadcasting history:cleared for guild ${guildId}`);
+    io.emit(ServerEvents.HISTORY_CLEARED, { guildId });
+  });
 
   console.log('Socket.io server initialized');
   return io;

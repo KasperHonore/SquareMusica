@@ -20,6 +20,7 @@ export function useSocket() {
   });
   const [resolutionStats, setResolutionStats] = useState(null);
   const [voiceContext, setVoiceContext] = useState(null);
+  const [historyVersion, setHistoryVersion] = useState(0);
 
   useEffect(() => {
     if (!token) return;
@@ -86,6 +87,11 @@ export function useSocket() {
       setResolutionStats(stats);
     });
 
+    newSocket.on('history:cleared', (data) => {
+      console.log('[Socket] Received history:cleared event', data);
+      setHistoryVersion(v => v + 1);
+    });
+
     newSocket.on('error', (err) => {
       setError(err.message || 'An error occurred');
     });
@@ -133,6 +139,7 @@ export function useSocket() {
     playerState,
     resolutionStats,
     voiceContext,
+    historyVersion,
     error,
     addToQueue,
     removeFromQueue,

@@ -86,8 +86,7 @@ export function AppLayout({
 
         {/* Main content */}
         <main
-          className="flex-1 overflow-hidden p-4 md:p-6 flex flex-col"
-          style={{ paddingBottom: showMiniPlayerPadding ? '96px' : '24px' }}
+          className="flex-1 overflow-hidden px-4 md:px-6 pt-4 md:pt-6 flex flex-col"
         >
           {/* Mobile header with menu and queue buttons */}
           <div className="flex items-center justify-between mb-4 lg:hidden">

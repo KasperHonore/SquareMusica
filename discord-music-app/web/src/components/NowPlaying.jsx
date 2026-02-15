@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { MusicNote } from './icons/index.jsx';
 import { PlaybackIndicator } from './PlaybackIndicator';
 
@@ -32,7 +32,7 @@ function EmptyState() {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center h-full min-h-[60vh] px-8 relative">
+    <div className="flex flex-col items-center justify-center h-full px-8 relative">
       {/* Floating music notes animation */}
       <style>
         {`
@@ -205,8 +205,6 @@ function useImageDominantColor(imageUrl) {
 }
 
 export function NowPlaying({ track, playerState }) {
-  const [isAlbumArtHovered, setIsAlbumArtHovered] = useState(false);
-
   const dominantColor = useImageDominantColor(track?.thumbnail);
 
   if (!track) {
@@ -221,143 +219,103 @@ export function NowPlaying({ track, playerState }) {
   const avatarUrl = getAvatarUrl();
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 relative">
-      {/* CSS for animations */}
-      <style>
-        {`
-          @keyframes vinyl-spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-
-          @keyframes color-pulse {
-            0%, 100% { opacity: 0.5; }
-            50% { opacity: 0.8; }
-          }
-
-          @keyframes subtle-float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-6px); }
-          }
-        `}
-      </style>
-
-      {/* Album Art with Ambient Lighting - INCREASED SIZE */}
-      <div className="relative mb-8">
-        {/* Ambient glow layer - larger and more dramatic */}
-        {track.thumbnail && dominantColor && (
+    <div className="relative w-full h-full">
+      {/* Hero section with blur atmosphere - full height */}
+      <div className="relative h-full w-full overflow-visible">
+        {/* Background atmosphere layer - extends beyond container */}
+        <div className="absolute inset-0 overflow-hidden">
+          {/* Blurred album art background */}
+          {track.thumbnail && (
+            <div
+              className="absolute -inset-20 scale-125 blur-[100px] opacity-70"
+              style={{
+                backgroundImage: `url(${track.thumbnail})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }}
+            />
+          )}
+          {/* Softer gradient overlay - gentle fade with soft bottom transition */}
           <div
-            className="absolute -inset-12 rounded-[40px] blur-[60px] transition-all duration-1000"
+            className="absolute inset-0"
             style={{
-              background: `radial-gradient(circle at center, rgba(${dominantColor}, 0.5) 0%, rgba(${dominantColor}, 0.2) 40%, transparent 70%)`,
-              animation: playerState.playing ? 'color-pulse 4s ease-in-out infinite' : 'none',
-              opacity: playerState.playing ? 1 : 0.6,
+              background: `linear-gradient(to bottom,
+                rgba(0,0,0,0.15) 0%,
+                rgba(0,0,0,0.25) 30%,
+                rgba(0,0,0,0.45) 60%,
+                rgba(18,18,18,0.85) 85%,
+                rgba(18,18,18,0.95) 100%
+              )`,
             }}
           />
-        )}
-
-        {/* Album Art Container - LARGER */}
-        <div
-          className="relative"
-          onMouseEnter={() => setIsAlbumArtHovered(true)}
-          onMouseLeave={() => setIsAlbumArtHovered(false)}
-        >
-          {track.thumbnail ? (
-            <div className="relative">
-              {/* Vinyl record effect behind album art - visible on hover */}
-              <div
-                className="absolute rounded-full bg-gradient-to-br from-gray-800 via-gray-900 to-black transition-all duration-500"
-                style={{
-                  width: '420px',
-                  height: '420px',
-                  top: '10px',
-                  left: '10px',
-                  transform: isAlbumArtHovered
-                    ? 'translateX(50px) scale(0.95)'
-                    : 'translateX(0) scale(0.9)',
-                  opacity: isAlbumArtHovered ? 0.9 : 0,
-                  animation: playerState.playing && isAlbumArtHovered
-                    ? 'vinyl-spin 3s linear infinite'
-                    : 'none',
-                }}
-              >
-                {/* Vinyl grooves */}
-                <div className="absolute inset-8 rounded-full border border-gray-700/50" />
-                <div className="absolute inset-16 rounded-full border border-gray-700/30" />
-                <div className="absolute inset-24 rounded-full border border-gray-700/20" />
-                <div className="absolute inset-32 rounded-full border border-gray-700/10" />
-                {/* Center label */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-28 h-28 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center">
-                    <div className="w-5 h-5 rounded-full bg-gray-900" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Main album art image - INCREASED SIZE (30-40% larger: 320px -> 440px) */}
-              <img
-                src={track.thumbnail}
-                alt={track.title}
-                className="w-[340px] h-[340px] md:w-[420px] md:h-[420px] rounded-2xl object-cover relative z-10 transition-all duration-500"
-                style={{
-                  transform: isAlbumArtHovered ? 'scale(1.02)' : 'scale(1)',
-                  filter: isAlbumArtHovered ? 'brightness(1.05)' : 'brightness(1)',
-                  boxShadow: isAlbumArtHovered
-                    ? `0 30px 80px rgba(0,0,0,0.7), 0 10px 30px rgba(0,0,0,0.5), 0 0 60px rgba(${dominantColor || '29, 185, 84'}, 0.2)`
-                    : '0 12px 40px rgba(0,0,0,0.6)',
-                  animation: playerState.playing ? 'subtle-float 6s ease-in-out infinite' : 'none',
-                }}
-              />
-            </div>
-          ) : (
-            <div className="w-[340px] h-[340px] md:w-[420px] md:h-[420px] bg-surface-elevated rounded-2xl flex items-center justify-center shadow-soft">
-              <MusicNote size={100} className="text-gray-600" />
-            </div>
-          )}
-
-          {/* Playback indicator overlay */}
-          {playerState.playing && (
-            <div
-              className="absolute bottom-5 right-5 bg-black/80 backdrop-blur-md rounded-xl p-3 z-20 transition-all duration-300"
-              style={{
-                boxShadow: `0 0 30px rgba(${dominantColor || '29, 185, 84'}, 0.4)`,
-              }}
-            >
-              <PlaybackIndicator
-                playing={true}
-                size="xl"
-                className="text-accent"
-                glowColor={dominantColor ? `rgb(${dominantColor})` : 'var(--color-accent)'}
-              />
-            </div>
-          )}
+          {/* Subtle vignette */}
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_center,transparent_0%,rgba(0,0,0,0.25)_100%)]" />
         </div>
-      </div>
 
-      {/* Track info - ENHANCED */}
-      <div className="text-center max-w-lg">
-        <h2 className="text-heading text-2xl md:text-3xl text-white mb-3 line-clamp-2 tracking-tight leading-tight">
-          {track.title}
-        </h2>
-        {track.artist && (
-          <p className="text-body text-secondary text-lg md:text-xl mb-5">{track.artist}</p>
-        )}
+        {/* Content: Horizontal layout - centered vertically in the hero */}
+        <div className="relative z-10 h-full flex flex-row items-center gap-6 md:gap-10 lg:gap-12 px-6 md:px-10 lg:px-16">
+          {/* Album Artwork - Left Column */}
+          <div className="relative flex-shrink-0">
+            {track.thumbnail ? (
+              <div className="relative">
+                <img
+                  src={track.thumbnail}
+                  alt={track.title}
+                  className="w-44 h-44 sm:w-52 sm:h-52 md:w-60 md:h-60 lg:w-72 lg:h-72 rounded-2xl object-cover ring-1 ring-white/10 shadow-2xl"
+                  style={{
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
+                  }}
+                />
+                {/* Playback indicator overlay */}
+                {playerState.playing && (
+                  <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md rounded-lg p-2">
+                    <PlaybackIndicator
+                      playing={true}
+                      size="lg"
+                      className="text-accent"
+                      glowColor={dominantColor ? `rgb(${dominantColor})` : 'var(--color-accent)'}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="w-44 h-44 sm:w-52 sm:h-52 md:w-60 md:h-60 lg:w-72 lg:h-72 bg-surface-elevated rounded-2xl flex items-center justify-center ring-1 ring-white/10">
+                <MusicNote size={72} className="text-gray-600" />
+              </div>
+            )}
+          </div>
 
-        {/* Requested by - elegant pill design */}
-        <div className="inline-flex items-center gap-3 px-5 py-2.5 bg-surface-elevated/60 backdrop-blur-sm rounded-full border border-white/5 transition-all duration-300 hover:bg-surface-elevated/80">
-          <span className="text-label text-muted text-xs">Requested by</span>
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt={track.requestedBy}
-              className="w-7 h-7 rounded-full ring-2 ring-accent/40"
-            />
-          ) : (
-            <div className="w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center text-sm font-medium text-accent">
-              {track.requestedBy?.charAt(0)?.toUpperCase() || '?'}
+          {/* Metadata - Right Column */}
+          <div className="relative z-10 flex flex-col justify-center gap-2 md:gap-3 min-w-0 flex-1 max-w-2xl">
+            {/* Track Title - Primary focal point */}
+            <h2 className="text-heading text-2xl sm:text-3xl md:text-4xl lg:text-5xl text-white font-bold tracking-tight line-clamp-2 leading-[1.1]">
+              {track.title}
+            </h2>
+
+            {/* Artist Name - Secondary */}
+            {track.artist && (
+              <p className="text-body text-base sm:text-lg md:text-xl text-secondary/90 line-clamp-1">
+                {track.artist}
+              </p>
+            )}
+
+            {/* Requested By Pill - Tertiary */}
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/5 backdrop-blur-sm rounded-full border border-white/10 w-fit mt-1">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={track.requestedBy}
+                  className="w-5 h-5 rounded-full"
+                />
+              ) : (
+                <div className="w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center text-xs text-accent">
+                  {track.requestedBy?.charAt(0)?.toUpperCase() || '?'}
+                </div>
+              )}
+              <span className="text-xs text-muted">Requested by</span>
+              <span className="text-sm font-medium text-primary">{track.requestedBy}</span>
             </div>
-          )}
-          <span className="text-body text-primary font-medium">{track.requestedBy}</span>
+          </div>
         </div>
       </div>
     </div>

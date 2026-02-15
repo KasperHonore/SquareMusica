@@ -8,7 +8,8 @@ export const ServerEvents = {
   TRACK_CHANGE: 'track:change',
   PLAYER_STATE: 'player:state',
   TRACK_PROGRESS: 'track:progress',
-  INITIAL_STATE: 'initial:state'
+  INITIAL_STATE: 'initial:state',
+  RESOLUTION_PROGRESS: 'resolution:progress'
 };
 
 // Events sent from clients to server

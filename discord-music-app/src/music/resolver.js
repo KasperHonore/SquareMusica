@@ -185,13 +185,18 @@ export async function resolveSpotifyTrack(spotifyTrack) {
       ? `${artists.join(', ')} - ${title}`
       : title;
 
+    console.log(`[Resolver] Searching YouTube for: "${query}"`);
+
     // Search YouTube (get top 5 results)
     const results = await search(query, 5);
 
     if (!results || results.length === 0) {
+      console.log(`[Resolver] No YouTube results for: "${query}"`);
       setCache(cacheKey, null);
       return null;
     }
+
+    console.log(`[Resolver] Found ${results.length} YouTube results for: "${query}"`);
 
     // Score each result and find best match
     let bestResult = null;
@@ -199,17 +204,21 @@ export async function resolveSpotifyTrack(spotifyTrack) {
 
     for (const result of results) {
       const score = scoreMatch(spotifyTrack, result);
+      console.log(`[Resolver] Score ${score} for: "${result.title}" (duration: ${result.duration}s)`);
       if (score > bestScore) {
         bestScore = score;
         bestResult = result;
       }
     }
 
-    // Require minimum score of 50
-    if (bestScore <= 50 || !bestResult) {
+    // Require minimum score of 50 (>= 50 passes)
+    if (bestScore < 50 || !bestResult) {
+      console.log(`[Resolver] Best score ${bestScore} below threshold (50) for: "${query}"`);
       setCache(cacheKey, null);
       return null;
     }
+
+    console.log(`[Resolver] Best match for "${query}": "${bestResult.title}" (score: ${bestScore})`)
 
     const resolved = {
       url: bestResult.url,

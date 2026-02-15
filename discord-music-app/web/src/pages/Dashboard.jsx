@@ -14,6 +14,7 @@ export function Dashboard() {
     currentIndex,
     currentTrack,
     playerState,
+    resolutionStats,
     error,
     addToQueue,
     removeFromQueue,
@@ -148,6 +149,7 @@ export function Dashboard() {
               tracks={upcomingTracks}
               onReorder={handleReorder}
               onRemove={handleRemove}
+              resolutionStats={resolutionStats}
             />
           </div>
         </div>

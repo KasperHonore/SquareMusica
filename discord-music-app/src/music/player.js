@@ -7,6 +7,7 @@ import {
 } from '@discordjs/voice';
 import { EventEmitter } from 'events';
 import { getStream } from './youtube.js';
+import { resolutionManager, ResolutionManager } from './resolutionManager.js';
 
 class MusicPlayer extends EventEmitter {
   constructor() {
@@ -49,13 +50,30 @@ class MusicPlayer extends EventEmitter {
 
   /**
    * Play a track
-   * @param {Object} track - Track object with url
+   * @param {Object} track - Track object with url (or unresolved Spotify track)
    * @param {Object} connection - Voice connection
+   * @returns {Promise<boolean>} True if playback started, false if track failed
    */
   async play(track, connection) {
     try {
-      console.log('Player.play() called with track:', JSON.stringify(track, null, 2));
-      console.log('Track URL:', track?.url);
+      console.log('Player.play() called with track:', track?.title);
+
+      // Check if track needs resolution
+      if (!track.url || ResolutionManager.needsResolution(track)) {
+        console.log('Track needs resolution, resolving on-demand:', track.title);
+        const resolved = await resolutionManager.ensureResolved(track);
+
+        if (!resolved) {
+          console.warn('Failed to resolve track, skipping:', track.title);
+          this.emit('trackFailed', track);
+          return false;
+        }
+
+        // Track object is mutated by ensureResolved
+        track = resolved;
+      }
+
+      console.log('Playing track URL:', track.url);
       const stream = await getStream(track.url);
       const resource = createAudioResource(stream.stream, {
         inputType: StreamType.Arbitrary,
@@ -72,6 +90,7 @@ class MusicPlayer extends EventEmitter {
       this.audioPlayer.play(resource);
 
       this.emit('trackStart', track);
+      return true;
     } catch (error) {
       console.error('Play error:', error);
       this.emit('error', error);

@@ -84,6 +84,10 @@ export function setupSocketServer(httpServer) {
     io.emit(ServerEvents.PLAYER_STATE, state);
   });
 
+  musicManager.on('resolution:progress', (stats) => {
+    io.emit(ServerEvents.RESOLUTION_PROGRESS, stats);
+  });
+
   // Periodically emit track progress
   progressInterval = setInterval(() => {
     const track = musicManager.getCurrentTrack();

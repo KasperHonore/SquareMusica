@@ -18,6 +18,7 @@ export function useSocket() {
     position: 0,
     connected: false
   });
+  const [resolutionStats, setResolutionStats] = useState(null);
 
   useEffect(() => {
     if (!token) return;
@@ -68,6 +69,13 @@ export function useSocket() {
         position: 0,
         connected: false
       });
+      if (state.resolutionStats) {
+        setResolutionStats(state.resolutionStats);
+      }
+    });
+
+    newSocket.on('resolution:progress', (stats) => {
+      setResolutionStats(stats);
     });
 
     newSocket.on('error', (err) => {
@@ -107,6 +115,7 @@ export function useSocket() {
     currentIndex,
     currentTrack,
     playerState,
+    resolutionStats,
     error,
     addToQueue,
     removeFromQueue,

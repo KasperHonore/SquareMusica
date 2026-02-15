@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { db } from '../database/db.js';
+import { resolutionManager } from '../music/resolutionManager.js';
 
 class MusicManager extends EventEmitter {
   constructor() {
@@ -8,6 +9,7 @@ class MusicManager extends EventEmitter {
     this.queue = null;
     this.guildId = null;
     this.getConnection = null; // Will be set by playback.js
+    this._resolutionListenersSetup = false;
   }
 
   // Inject dependencies from bot
@@ -24,6 +26,23 @@ class MusicManager extends EventEmitter {
 
   setQueue(queue) {
     this.queue = queue;
+    // Also set queue in resolution manager
+    resolutionManager.setQueue(queue);
+    resolutionManager.start();
+
+    // Forward resolution events to clients (only set up once)
+    if (!this._resolutionListenersSetup) {
+      this._resolutionListenersSetup = true;
+      resolutionManager.on('resolution:progress', (stats) => {
+        this.emit('resolution:progress', stats);
+      });
+      resolutionManager.on('resolution:complete', (track) => {
+        this.emitQueueUpdate();
+      });
+      resolutionManager.on('resolution:failed', (track) => {
+        this.emitQueueUpdate();
+      });
+    }
   }
 
   setGuildId(guildId) {
@@ -99,15 +118,34 @@ class MusicManager extends EventEmitter {
 
   async skip() {
     if (!this.player || !this.queue) return false;
-    const next = this.queue.next();
-    if (next) {
+
+    let next = this.queue.next();
+    let playedSuccessfully = false;
+
+    // Try to find a playable track (skip failed resolution tracks)
+    while (next) {
       const connection = this.getConnection?.(this.guildId);
       if (connection) {
-        await this.player.play(next, connection);
+        const success = await this.player.play(next, connection);
+        if (success) {
+          playedSuccessfully = true;
+          // Trigger lookahead resolution
+          resolutionManager.processLookahead(this.queue.currentIndex).catch(err => {
+            console.error('Lookahead resolution error:', err);
+          });
+          break;
+        }
+        // Track failed to resolve, try next
+        next = this.queue.next();
+      } else {
+        break;
       }
-    } else {
+    }
+
+    if (!playedSuccessfully && !next) {
       this.player.stop();
     }
+
     this.emitQueueUpdate();
     return true;
   }
@@ -183,7 +221,8 @@ class MusicManager extends EventEmitter {
       queue: this.getQueue(),
       currentIndex: this.getCurrentIndex(),
       currentTrack: this.getCurrentTrack(),
-      playerState: this.getPlayerState()
+      playerState: this.getPlayerState(),
+      resolutionStats: this.queue?.getResolutionStats() || null
     };
   }
 }

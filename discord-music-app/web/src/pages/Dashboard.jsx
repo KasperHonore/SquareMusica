@@ -71,28 +71,27 @@ export function Dashboard() {
     switch (activeView) {
       case 'nowplaying':
         return (
-          <div className="h-full flex flex-col">
-            {/* Voice channel warning */}
+          <div className="h-full flex flex-col -mx-4 md:-mx-6 -mt-4 md:-mt-6">
+            {/* Voice channel warning - positioned absolutely over the hero */}
             {!playerState.connected && (
               <div
-                className="mx-auto max-w-lg px-4 py-3 rounded-lg mb-4"
+                className="absolute top-4 left-1/2 -translate-x-1/2 z-20 max-w-lg px-4 py-3 rounded-lg"
                 style={{
-                  backgroundColor: 'rgba(234, 179, 8, 0.1)',
+                  backgroundColor: 'rgba(234, 179, 8, 0.15)',
                   border: '1px solid rgba(234, 179, 8, 0.3)',
-                  color: '#fcd34d'
+                  color: '#fcd34d',
+                  backdropFilter: 'blur(8px)',
                 }}
               >
                 Bot is not connected to a voice channel. Use <code className="bg-black/20 px-1 rounded">/join</code> in Discord.
               </div>
             )}
 
-            {/* Now Playing hero - purely informational, no controls */}
-            <div className="flex-1 flex items-center justify-center">
-              <NowPlaying
-                track={currentTrack}
-                playerState={playerState}
-              />
-            </div>
+            {/* Now Playing hero - anchored to top, full width */}
+            <NowPlaying
+              track={currentTrack}
+              playerState={playerState}
+            />
           </div>
         );
 

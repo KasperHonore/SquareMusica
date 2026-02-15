@@ -503,12 +503,8 @@ export function MiniPlayer({ currentTrack, playerState, onControl }) {
       <div
         className="miniplayer-dock fixed bottom-0 left-0 right-0 z-50 border-t"
         style={{
-          borderColor: `hsla(${albumColor.h}, ${albumColor.s}%, ${albumColor.l}%, 0.25)`,
-          boxShadow: `
-            0 -8px 40px hsla(${albumColor.h}, ${albumColor.s}%, ${albumColor.l}%, 0.12),
-            0 0 80px hsla(${albumColor.h}, ${albumColor.s}%, ${albumColor.l}%, 0.06),
-            inset 0 1px 0 rgba(255, 255, 255, 0.05)
-          `
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.05)'
         }}
         role="region"
         aria-label={`Now playing: ${currentTrack.title}`}

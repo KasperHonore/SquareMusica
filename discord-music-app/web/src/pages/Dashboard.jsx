@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { useAuth } from '../context/AuthContext';
 import { NowPlaying } from '../components/NowPlaying';
@@ -12,11 +13,21 @@ export function Dashboard() {
     queue,
     currentTrack,
     playerState,
+    error,
     addToQueue,
     removeFromQueue,
     reorderQueue,
-    playerControl
+    playerControl,
+    clearError
   } = useSocket();
+
+  // Auto-dismiss error after 5 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => clearError(), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, clearError]);
 
   const currentIndex = currentTrack
     ? queue.findIndex(t => t.url === currentTrack.url)
@@ -24,6 +35,19 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
+      {/* Error Toast */}
+      {error && (
+        <div className="fixed top-4 right-4 z-50 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in">
+          <span>{error}</span>
+          <button
+            onClick={clearError}
+            className="text-white/80 hover:text-white"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-gray-800 border-b border-gray-700">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">

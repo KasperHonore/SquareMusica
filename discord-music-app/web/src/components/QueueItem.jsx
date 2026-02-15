@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { formatTime } from '../utils/formatTime';
-import { DragHandle, Remove } from './icons';
+import { Remove } from './icons';
 
 /**
  * User avatar component with fallback to first letter
@@ -27,7 +27,7 @@ function UserAvatar({ userId, avatarHash, username, size = 16 }) {
   const letter = username ? username.charAt(0).toUpperCase() : '?';
   return (
     <div
-      className="rounded-full bg-brand-primary/20 text-brand-primary flex items-center justify-center text-xs font-medium"
+      className="rounded-full bg-accent-muted text-accent flex items-center justify-center text-xs font-medium"
       style={{ width: size, height: size }}
     >
       {letter}
@@ -82,9 +82,30 @@ function Spinner({ className = '' }) {
 }
 
 /**
+ * Grip texture drag handle - tactile visual feedback
+ */
+function GripHandle({ className = '' }) {
+  return (
+    <svg
+      width="12"
+      height="16"
+      viewBox="0 0 12 16"
+      fill="currentColor"
+      className={className}
+    >
+      {/* 2x3 grid of dots for grip texture */}
+      <circle cx="3" cy="3" r="1.5" />
+      <circle cx="9" cy="3" r="1.5" />
+      <circle cx="3" cy="8" r="1.5" />
+      <circle cx="9" cy="8" r="1.5" />
+      <circle cx="3" cy="13" r="1.5" />
+      <circle cx="9" cy="13" r="1.5" />
+    </svg>
+  );
+}
+
+/**
  * Get status indicator for a track
- * @param {Object} track - Track object
- * @returns {{ icon: JSX.Element|null, className: string, tooltip: string }}
  */
 function getStatusIndicator(track) {
   // If track has URL and isn't failed, it's resolved (no indicator needed)
@@ -133,70 +154,145 @@ function getStatusIndicator(track) {
   }
 }
 
-export function QueueItem({ track, index, trackId, onRemove }) {
+export function QueueItem({
+  track,
+  index,
+  trackId,
+  onRemove,
+  isUpNext = false,
+  isRemoving = false,
+  isDraggingActive = false,
+  isBeingDragged = false,
+  isOverlay = false,
+}) {
   const {
     attributes,
     listeners,
     setNodeRef,
     transform,
     transition,
-    isDragging
-  } = useSortable({ id: trackId });
+    isDragging,
+    over,
+  } = useSortable({ id: trackId, disabled: isOverlay });
 
+  // Calculate staggered animation delay
+  const animationDelay = `${index * 50}ms`;
+
+  // Build transform and transition styles
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
+    transition: isOverlay ? undefined : transition,
+    // Stagger fade-in animation
+    '--animation-delay': animationDelay,
+    animationDelay: animationDelay,
   };
+
+  // Determine if this item is a drop target
+  const isDropTarget = isDraggingActive && !isBeingDragged && over?.id === trackId;
 
   const statusIndicator = getStatusIndicator(track);
   const isFailed = track.status === 'failed';
 
+  // Alternating background tint for scanability
+  const isEven = index % 2 === 0;
+
+  // Build class names based on state
+  const containerClasses = [
+    'queue-item',
+    'flex items-start gap-3 p-3 rounded-lg',
+    'transition-all duration-200',
+    'group relative',
+    // Staggered fade-in animation on initial render
+    !isOverlay && 'animate-queue-item-in',
+    // Alternating backgrounds
+    isEven ? 'bg-surface-base' : 'bg-surface-elevated/30',
+    // "Up Next" highlight styling
+    isUpNext && 'queue-item-up-next',
+    // Hover lift effect
+    !isDragging && !isOverlay && 'hover:translate-y-[-2px] hover:shadow-lg hover:z-10',
+    // Dragging states
+    isDragging && 'opacity-40 scale-95',
+    isBeingDragged && 'ring-2 ring-accent/50',
+    // Drop target indicator
+    isDropTarget && 'queue-item-drop-target',
+    // Removing animation
+    isRemoving && 'animate-queue-item-out',
+    // Overlay styling
+    isOverlay && 'shadow-2xl ring-2 ring-accent scale-105 bg-surface-raised',
+    // Failed track styling
+    isFailed && 'opacity-60',
+  ].filter(Boolean).join(' ');
+
   return (
     <div
-      ref={setNodeRef}
+      ref={!isOverlay ? setNodeRef : undefined}
       style={style}
-      className={`flex items-start gap-3 p-3 rounded-lg bg-surface-base hover:bg-white/5 transition-colors group ${isDragging ? 'shadow-lg ring-1 ring-brand-primary/50' : ''} ${isFailed ? 'opacity-60' : ''}`}
+      className={containerClasses}
+      role="listitem"
+      aria-label={`${isUpNext ? 'Up next: ' : ''}${track.title}${track.duration ? `, duration ${formatTime(track.duration, '')}` : ''}`}
     >
+      {/* Drop zone indicator line */}
+      {isDropTarget && (
+        <div className="absolute -top-1 left-0 right-0 h-0.5 bg-accent rounded-full shadow-[0_0_8px_rgba(29,185,84,0.6)]" />
+      )}
+
+      {/* "Up Next" badge for first item */}
+      {isUpNext && !isOverlay && (
+        <div className="absolute -top-2 left-3 px-2 py-0.5 bg-accent text-xs font-semibold text-black rounded-full">
+          Next
+        </div>
+      )}
+
+      {/* Thumbnail */}
       {track.thumbnail ? (
-        <img
-          src={track.thumbnail}
-          alt=""
-          className="w-12 h-12 rounded object-cover flex-shrink-0"
-        />
+        <div className="relative flex-shrink-0">
+          <img
+            src={track.thumbnail}
+            alt=""
+            className="w-12 h-12 rounded-md object-cover"
+          />
+          {/* Play indicator overlay on up-next */}
+          {isUpNext && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-md opacity-0 group-hover:opacity-100 transition-opacity">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          )}
+        </div>
       ) : (
-        <div className="w-12 h-12 rounded bg-surface-raised flex items-center justify-center flex-shrink-0">
+        <div className="w-12 h-12 rounded-md bg-surface-elevated flex items-center justify-center flex-shrink-0">
           {statusIndicator?.icon || (
-            <span className="text-text-secondary text-xs">♪</span>
+            <span className="text-text-muted text-lg">&#9835;</span>
           )}
         </div>
       )}
 
-      <div className="flex-1 min-w-0">
+      {/* Track info */}
+      <div className="flex-1 min-w-0 pt-0.5">
         <div className="flex items-center gap-2">
           {statusIndicator && track.thumbnail && (
-            <span title={statusIndicator.tooltip}>
+            <span title={statusIndicator.tooltip} className="flex-shrink-0">
               {statusIndicator.icon}
             </span>
           )}
-          <p className={`truncate font-medium text-sm ${statusIndicator?.className || ''}`}>
+          <p className={`truncate font-medium text-sm text-primary ${statusIndicator?.className || ''}`}>
             {track.title}
           </p>
         </div>
-        <div className="flex items-center gap-1 text-text-secondary text-xs mt-0.5">
-          <span>{formatTime(track.duration, '')}</span>
+        <div className="flex items-center gap-1.5 text-text-muted text-xs mt-0.5">
+          <span className="text-mono">{formatTime(track.duration, '')}</span>
           {track.spotifyData?.artists?.length > 0 && (
             <>
-              <span className="text-text-muted">•</span>
-              <span className="truncate">
+              <span className="text-text-muted/50">&#8226;</span>
+              <span className="truncate text-secondary">
                 {track.spotifyData.artists.join(', ')}
               </span>
             </>
           )}
         </div>
         {track.requestedBy && (
-          <div className="flex items-center gap-1.5 text-text-muted text-xs mt-1">
-            <span>Added by</span>
+          <div className="flex items-center gap-1.5 text-xs mt-1 text-text-muted">
             <UserAvatar
               userId={track.requestedById}
               avatarHash={track.requestedByAvatar}
@@ -208,24 +304,32 @@ export function QueueItem({ track, index, trackId, onRemove }) {
         )}
       </div>
 
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <div
-          {...attributes}
-          {...listeners}
-          className="cursor-grab active:cursor-grabbing text-text-muted hover:text-text-secondary p-1"
-          aria-label="Drag to reorder"
-          role="button"
-        >
-          <DragHandle size={16} />
-        </div>
-        <button
-          onClick={() => onRemove(index)}
-          className="text-text-muted hover:text-red-400 transition-colors p-1"
-          title="Remove"
-          aria-label={`Remove ${track.title} from queue`}
-        >
-          <Remove size={16} />
-        </button>
+      {/* Action buttons */}
+      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
+        {/* Drag handle with grip texture */}
+        {!isOverlay && (
+          <div
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing text-text-muted hover:text-text-secondary p-1.5 rounded hover:bg-white/5 transition-colors focus-ring min-w-[32px] min-h-[32px] flex items-center justify-center"
+            aria-label={`Drag to reorder ${track.title}`}
+            role="button"
+            tabIndex={0}
+          >
+            <GripHandle className="w-3 h-4" aria-hidden="true" />
+          </div>
+        )}
+        {/* Remove button */}
+        {!isOverlay && (
+          <button
+            onClick={() => onRemove(index, trackId)}
+            className="text-text-muted hover:text-red-400 transition-colors p-1.5 rounded hover:bg-red-400/10 focus-ring min-w-[32px] min-h-[32px] flex items-center justify-center"
+            title="Remove from queue"
+            aria-label={`Remove ${track.title} from queue`}
+          >
+            <Remove size={14} aria-hidden="true" />
+          </button>
+        )}
       </div>
     </div>
   );

@@ -44,13 +44,23 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center" role="status" aria-live="polite">
         <div className="text-white text-xl">Loading...</div>
       </div>
     );
   }
 
-  return user ? <Dashboard /> : <Login />;
+  return (
+    <>
+      {/* Skip link for keyboard/screen reader navigation */}
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+      <div id="main-content">
+        {user ? <Dashboard /> : <Login />}
+      </div>
+    </>
+  );
 }
 
 export default function App() {

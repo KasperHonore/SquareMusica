@@ -22,7 +22,7 @@ function getTrackId(track, index) {
  */
 function EmptyQueue({ onShuffle }) {
   return (
-    <div className="h-full flex flex-col" role="region" aria-label="Music queue">
+    <div className="h-full flex-1 min-h-0 flex flex-col" role="region" aria-label="Music queue">
       <div className="flex items-center justify-between mb-4 px-1">
         <h3 className="text-heading text-lg" id="queue-heading">Up Next</h3>
         <button
@@ -142,7 +142,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, resolutionStats 
     : -1;
 
   return (
-    <div className="h-full flex flex-col" role="region" aria-labelledby="queue-heading">
+    <div className="h-full flex-1 min-h-0 flex flex-col" role="region" aria-labelledby="queue-heading">
       {/* Header */}
       <div className="flex items-center justify-between mb-3 px-1">
         <div className="flex items-center gap-2">
@@ -184,7 +184,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, resolutionStats 
           strategy={verticalListSortingStrategy}
         >
           <div
-            className="flex-1 space-y-1.5 overflow-y-auto pr-1 queue-list"
+            className="flex-1 min-h-0 space-y-1.5 overflow-y-auto pr-1 queue-list"
             style={{
               scrollbarGutter: 'stable',
             }}

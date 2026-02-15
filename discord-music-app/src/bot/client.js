@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Collection } from 'discord.js';
+import { Client, GatewayIntentBits } from 'discord.js';
 
 const client = new Client({
   intents: [
@@ -7,8 +7,6 @@ const client = new Client({
     GatewayIntentBits.GuildMessages
   ]
 });
-
-client.commands = new Collection();
 
 client.once('ready', () => {
   console.log(`Ready! Logged in as ${client.user.tag}`);

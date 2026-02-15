@@ -8,7 +8,6 @@ export const ServerEvents = {
   TRACK_CHANGE: 'track:change',
   PLAYER_STATE: 'player:state',
   TRACK_PROGRESS: 'track:progress',
-  CONNECTION_STATUS: 'connection:status',
   INITIAL_STATE: 'initial:state'
 };
 

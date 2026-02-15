@@ -49,5 +49,3 @@ export function getConnection(guildId) {
 export function isConnected(guildId) {
   return !!getConnection(guildId);
 }
-
-export { connections };

@@ -61,7 +61,9 @@ export function AuthProvider({ children }) {
         credentials: 'include',
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
-    } catch (e) {}
+    } catch (e) {
+      console.error('Logout error:', e);
+    }
     localStorage.removeItem('token');
     setUser(null);
     setToken(null);

@@ -7,6 +7,7 @@ This file provides guidance to Claude Code when working with this repository.
 This is a **Discord Music Bot with Web UI** - a music bot that allows users to control playback and manage the queue through both Discord slash commands and a web-based control panel. Multiple users can collaborate on the queue in real-time.
 
 **Key Features**:
+
 - Play music from YouTube in Discord voice channels
 - Full queue management (add, remove, reorder, shuffle)
 - Real-time web UI for controlling the bot
@@ -30,33 +31,37 @@ Discord <-> Bot (discord.js) <-> Music Manager <-> Web API (Express)
 ## Commands
 
 ### Development
+
 ```bash
-npm install              # Install dependencies
-npm run dev              # Start bot + API with hot reload
+npm install              # Install dependencies (auto-runs yt-dlp setup)
+npm run dev              # Start bot + API server
 npm run register         # Register slash commands with Discord
+npm run setup            # Manually run yt-dlp setup
 ```
 
 ### Web UI
+
 ```bash
 cd web
 npm install              # Install frontend dependencies
-npm run dev              # Start React dev server
+npm run dev              # Start React dev server (Vite)
 npm run build            # Build for production
 ```
 
 ### Production
+
 ```bash
 npm start                # Start bot + API server
-npm run start:all        # Start everything (bot + built web UI)
 ```
 
 ## Project Structure
 
 ```
-discord-music-bot/
+discord-music-app/
 ├── src/
 │   ├── bot/             # Discord.js bot client and voice handling
 │   ├── commands/        # Slash command implementations
+│   │   └── utils/       # Shared command utilities
 │   ├── music/           # Player, queue, and YouTube integration
 │   ├── api/             # Express routes and middleware
 │   ├── realtime/        # Socket.io server
@@ -64,6 +69,15 @@ discord-music-bot/
 │   ├── state/           # Shared state management
 │   └── index.js         # Entry point
 ├── web/                 # React frontend
+│   └── src/
+│       ├── components/  # React components
+│       ├── context/     # Auth context
+│       ├── hooks/       # Custom hooks (useSocket)
+│       ├── pages/       # Dashboard, Login
+│       └── utils/       # Shared utilities
+├── scripts/             # Setup scripts (yt-dlp)
+├── bin/                 # Downloaded binaries (yt-dlp)
+├── data/                # SQLite database (auto-created)
 ├── package.json
 └── .env
 ```
@@ -87,26 +101,30 @@ OAUTH_REDIRECT_URI=http://localhost:3000/api/auth/callback
 PORT=3000                # API server port
 JWT_SECRET=              # Secret for JWT tokens
 WEB_URL=http://localhost:5173  # React dev server URL
+
+# yt-dlp (optional)
+YT_DLP_PATH=             # Custom yt-dlp path (default: auto-downloaded to bin/)
+YT_DLP_COOKIES=          # Path to cookies file for restricted content
 ```
 
 ## Slash Commands
 
-| Command | Description |
-|---------|-------------|
-| `/play <query>` | Play a song or add to queue |
-| `/pause` | Pause playback |
-| `/resume` | Resume playback |
-| `/skip` | Skip to next track |
-| `/stop` | Stop and clear queue |
-| `/queue` | View current queue |
-| `/nowplaying` | Show current track |
-| `/volume <0-100>` | Set volume |
-| `/join` | Join voice channel |
-| `/leave` | Leave voice channel |
-| `/shuffle` | Shuffle the queue |
-| `/loop <mode>` | Set loop mode |
-| `/remove <pos>` | Remove from queue |
-| `/webui` | Get web control panel link |
+| Command           | Description                 |
+| ----------------- | --------------------------- |
+| `/play <query>`   | Play a song or add to queue |
+| `/pause`          | Pause playback              |
+| `/resume`         | Resume playback             |
+| `/skip`           | Skip to next track          |
+| `/stop`           | Stop and clear queue        |
+| `/queue`          | View current queue          |
+| `/nowplaying`     | Show current track          |
+| `/volume <0-100>` | Set volume                  |
+| `/join`           | Join voice channel          |
+| `/leave`          | Leave voice channel         |
+| `/shuffle`        | Shuffle the queue           |
+| `/loop <mode>`    | Set loop mode               |
+| `/remove <pos>`   | Remove from queue           |
+| `/webui`          | Get web control panel link  |
 
 ## Local Development
 
@@ -122,3 +140,7 @@ For local testing, the bot needs to be in your Discord server with appropriate p
 # Commit rules
 
 When generating commit messages, never include Co-authored-by: trailers or any additional authors. All commits must attribute only the current git user.
+
+# Agent teams
+
+When using Agent Teams, be sure to use the model claude-opus-4-5.

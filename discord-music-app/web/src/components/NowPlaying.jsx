@@ -1,3 +1,5 @@
+import { formatTime } from '../utils/formatTime';
+
 export function NowPlaying({ track, playerState, onControl }) {
   if (!track) {
     return (
@@ -50,6 +52,7 @@ export function NowPlaying({ track, playerState, onControl }) {
           onClick={() => onControl('previous')}
           className="text-2xl hover:text-green-400 transition-colors"
           title="Previous"
+          aria-label="Previous track"
         >
           ⏮
         </button>
@@ -57,6 +60,7 @@ export function NowPlaying({ track, playerState, onControl }) {
           onClick={() => onControl(playerState.playing ? 'pause' : 'play')}
           className="text-4xl hover:text-green-400 transition-colors"
           title={playerState.playing ? 'Pause' : 'Play'}
+          aria-label={playerState.playing ? 'Pause' : 'Play'}
         >
           {playerState.playing ? '⏸' : '▶️'}
         </button>
@@ -64,17 +68,11 @@ export function NowPlaying({ track, playerState, onControl }) {
           onClick={() => onControl('skip')}
           className="text-2xl hover:text-green-400 transition-colors"
           title="Skip"
+          aria-label="Skip to next track"
         >
           ⏭
         </button>
       </div>
     </div>
   );
-}
-
-function formatTime(seconds) {
-  if (!seconds || isNaN(seconds)) return '0:00';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
 }

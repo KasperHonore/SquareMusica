@@ -6,7 +6,6 @@ class MusicManager extends EventEmitter {
     super();
     this.player = null;
     this.queue = null;
-    this.voiceManager = null;
     this.guildId = null;
     this.getConnection = null; // Will be set by playback.js
   }
@@ -18,17 +17,13 @@ class MusicManager extends EventEmitter {
     // Forward player events
     if (player) {
       player.on('trackStart', (track) => this.onTrackChange(track));
-      player.on('trackEnd', () => this.emit('track:end'));
+      player.on('trackEnd', () => this.emitState());
       player.on('stateChange', () => this.emitState());
     }
   }
 
   setQueue(queue) {
     this.queue = queue;
-  }
-
-  setVoiceManager(voiceManager) {
-    this.voiceManager = voiceManager;
   }
 
   setGuildId(guildId) {

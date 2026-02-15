@@ -10,6 +10,7 @@ export function VolumeSlider({ value, onChange }) {
           value={value}
           onChange={(e) => onChange(parseInt(e.target.value))}
           className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-green-500"
+          aria-label="Volume"
         />
         <span className="text-gray-400 w-12 text-right">{value}%</span>
       </div>

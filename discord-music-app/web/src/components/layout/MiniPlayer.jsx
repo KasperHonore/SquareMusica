@@ -501,7 +501,7 @@ export function MiniPlayer({ currentTrack, playerState, onControl }) {
       `}</style>
 
       <div
-        className="miniplayer-dock fixed bottom-0 left-0 right-0 z-50 border-t"
+        className="miniplayer-dock fixed bottom-0 left-0 right-0 lg:left-60 lg:right-80 z-50 border-t lg:rounded-t-xl"
         style={{
           borderColor: 'rgba(255, 255, 255, 0.1)',
           boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.05)'

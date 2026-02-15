@@ -6,6 +6,12 @@ import { Queue as QueueIcon, MusicNote } from '../icons';
 /**
  * Main application layout with 3-column Spotify-style grid
  *
+ * Following UI-REWORK.md single-control-surface architecture:
+ * - TopBar: Search + Server/User info
+ * - Sidebar: Navigation + Voice channel controls only
+ * - Center: Immersive Now Playing (no controls)
+ * - Bottom Dock: ALL playback controls (handled by MiniPlayer)
+ *
  * Responsive behavior:
  * - Desktop (≥1024px): Full 3-column layout
  * - Tablet (768-1023px): Collapsed sidebar (icons only), queue slide-out
@@ -20,10 +26,10 @@ export function AppLayout({
   user,
   activeView,
   onViewChange,
-  onVolumeChange,
-  onLoopChange,
   onLeaveChannel,
   onLogout,
+  onAdd,
+  connected,
   showMiniPlayerPadding = false,
 }) {
   const [queueOpen, setQueueOpen] = useState(false);
@@ -34,13 +40,15 @@ export function AppLayout({
       className="h-screen flex flex-col overflow-hidden"
       style={{ backgroundColor: 'var(--color-bg)' }}
     >
-      {/* TopBar */}
+      {/* TopBar with integrated search */}
       <div className="flex-shrink-0">
         <TopBar
           voiceContext={voiceContext}
-          connected={!!voiceContext?.channelName}
+          connected={connected}
           user={user}
           onLogout={onLogout}
+          onAdd={onAdd}
+          searchDisabled={!connected}
         />
       </div>
 
@@ -70,11 +78,7 @@ export function AppLayout({
               setSidebarOpen(false);
             }}
             voiceContext={voiceContext}
-            playerState={playerState}
-            onVolumeChange={onVolumeChange}
-            onLoopChange={onLoopChange}
             onLeaveChannel={onLeaveChannel}
-            collapsed={false}
           />
         </div>
 

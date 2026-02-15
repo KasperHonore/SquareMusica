@@ -5,7 +5,6 @@ import { AppLayout } from '../components/layout/AppLayout';
 import { MiniPlayer } from '../components/layout/MiniPlayer';
 import { NowPlaying } from '../components/NowPlaying';
 import { Queue } from '../components/Queue';
-import { SearchBar } from '../components/SearchBar';
 import { History } from './History';
 import { Settings } from './Settings';
 
@@ -57,14 +56,6 @@ export function Dashboard() {
     playerControl('shuffle');
   };
 
-  const handleVolumeChange = (volume) => {
-    playerControl('volume', volume);
-  };
-
-  const handleLoopChange = (mode) => {
-    playerControl('loop', mode);
-  };
-
   const handleLeaveChannel = () => {
     playerControl('leave');
   };
@@ -74,17 +65,11 @@ export function Dashboard() {
     switch (activeView) {
       case 'nowplaying':
         return (
-          <div className="space-y-6">
-            {/* Search bar at top */}
-            <SearchBar
-              onAdd={addToQueue}
-              disabled={!connected}
-            />
-
+          <div className="h-full flex flex-col">
             {/* Voice channel warning */}
             {!playerState.connected && (
               <div
-                className="px-4 py-3 rounded-lg"
+                className="mx-auto max-w-lg px-4 py-3 rounded-lg mb-4"
                 style={{
                   backgroundColor: 'rgba(234, 179, 8, 0.1)',
                   border: '1px solid rgba(234, 179, 8, 0.3)',
@@ -95,19 +80,20 @@ export function Dashboard() {
               </div>
             )}
 
-            {/* Now Playing hero */}
-            <NowPlaying
-              track={currentTrack}
-              playerState={playerState}
-              onControl={playerControl}
-            />
+            {/* Now Playing hero - purely informational, no controls */}
+            <div className="flex-1 flex items-center justify-center">
+              <NowPlaying
+                track={currentTrack}
+                playerState={playerState}
+              />
+            </div>
           </div>
         );
 
       case 'queue':
         return (
           <div className="max-w-2xl mx-auto">
-            <h1 className="text-2xl font-bold mb-6">Queue</h1>
+            <h1 className="text-2xl font-bold mb-6" style={{ fontFamily: 'var(--font-heading)' }}>Queue</h1>
             <Queue
               tracks={upcomingTracks}
               onReorder={handleReorder}
@@ -165,16 +151,16 @@ export function Dashboard() {
         user={user}
         activeView={activeView}
         onViewChange={setActiveView}
-        onVolumeChange={handleVolumeChange}
-        onLoopChange={handleLoopChange}
         onLeaveChannel={handleLeaveChannel}
         onLogout={logout}
+        onAdd={addToQueue}
+        connected={connected}
         showMiniPlayerPadding={!!currentTrack}
       >
         {renderMainContent()}
       </AppLayout>
 
-      {/* MiniPlayer (fixed position) */}
+      {/* MiniPlayer - The ONLY playback control surface */}
       <MiniPlayer
         currentTrack={currentTrack}
         playerState={playerState}

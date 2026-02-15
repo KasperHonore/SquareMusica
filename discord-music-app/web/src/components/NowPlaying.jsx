@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { formatTime } from '../utils/formatTime';
-import { Play, Pause, SkipNext, SkipPrevious, Shuffle, Loop, MusicNote } from './icons/index.jsx';
+import { useState, useEffect } from 'react';
+import { MusicNote } from './icons/index.jsx';
 import { PlaybackIndicator } from './PlaybackIndicator';
 
 // Floating music note component for empty state animation
@@ -33,7 +32,7 @@ function EmptyState() {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-8 relative">
+    <div className="flex flex-col items-center justify-center h-full min-h-[60vh] px-8 relative">
       {/* Floating music notes animation */}
       <style>
         {`
@@ -77,24 +76,24 @@ function EmptyState() {
       </style>
 
       {/* Album art placeholder with animated rings */}
-      <div className="relative mb-10">
+      <div className="relative mb-8">
         {/* Pulsing rings */}
         <div
-          className="absolute inset-0 rounded-2xl bg-accent/10"
+          className="absolute inset-0 rounded-3xl bg-accent/10"
           style={{
             animation: 'pulse-ring 3s ease-in-out infinite',
           }}
         />
         <div
-          className="absolute inset-0 rounded-2xl bg-accent/5"
+          className="absolute inset-0 rounded-3xl bg-accent/5"
           style={{
             animation: 'pulse-ring 3s ease-in-out infinite',
             animationDelay: '1s',
           }}
         />
 
-        {/* Main placeholder */}
-        <div className="w-72 h-72 bg-surface-elevated rounded-2xl flex items-center justify-center relative overflow-hidden">
+        {/* Main placeholder - larger size */}
+        <div className="w-80 h-80 md:w-96 md:h-96 bg-surface-elevated rounded-3xl flex items-center justify-center relative overflow-hidden">
           {/* Floating notes container */}
           <div className="absolute inset-0 overflow-hidden">
             {notes.map((note, i) => (
@@ -107,17 +106,18 @@ function EmptyState() {
             className="relative z-10"
             style={{ animation: 'gentle-bounce 2s ease-in-out infinite' }}
           >
-            <MusicNote size={96} className="text-gray-600" />
+            <MusicNote size={112} className="text-gray-600" />
           </div>
         </div>
       </div>
 
       {/* Text content */}
-      <h2 className="text-heading text-2xl text-white mb-3">
+      <h2 className="text-heading text-3xl text-white mb-3">
         Nothing playing
       </h2>
-      <p className="text-body text-secondary text-center max-w-sm leading-relaxed">
-        Ready when you are. Use <span className="text-mono text-accent">/play</span> in Discord or search above to start the music.
+      <p className="text-body text-secondary text-center max-w-md leading-relaxed text-lg">
+        Ready when you are. Search for a track above or use{' '}
+        <span className="text-mono text-accent">/play</span> in Discord.
       </p>
     </div>
   );
@@ -204,21 +204,14 @@ function useImageDominantColor(imageUrl) {
   return color;
 }
 
-export function NowPlaying({ track, playerState, onControl }) {
-  const [isPlayPauseActive, setIsPlayPauseActive] = useState(false);
-  const [skipDirection, setSkipDirection] = useState(null);
-  const [isProgressHovered, setIsProgressHovered] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+export function NowPlaying({ track, playerState }) {
   const [isAlbumArtHovered, setIsAlbumArtHovered] = useState(false);
-  const progressRef = useRef(null);
 
   const dominantColor = useImageDominantColor(track?.thumbnail);
 
   if (!track) {
     return <EmptyState />;
   }
-
-  const progress = track.duration ? (playerState.position / track.duration) * 100 : 0;
 
   const getAvatarUrl = () => {
     if (!track.requestedById || !track.requestedByAvatar) return null;
@@ -227,31 +220,8 @@ export function NowPlaying({ track, playerState, onControl }) {
 
   const avatarUrl = getAvatarUrl();
 
-  // Handle play/pause with animation
-  const handlePlayPause = () => {
-    setIsPlayPauseActive(true);
-    onControl(playerState.playing ? 'pause' : 'play');
-    setTimeout(() => setIsPlayPauseActive(false), 200);
-  };
-
-  // Handle skip with directional animation
-  const handleSkip = (direction) => {
-    setSkipDirection(direction);
-    onControl(direction === 'next' ? 'skip' : 'previous');
-    setTimeout(() => setSkipDirection(null), 250);
-  };
-
-  // Progress bar interaction
-  const handleProgressClick = (e) => {
-    if (!progressRef.current || !track.duration) return;
-    const rect = progressRef.current.getBoundingClientRect();
-    const percentage = (e.clientX - rect.left) / rect.width;
-    const newPosition = Math.max(0, Math.min(1, percentage)) * track.duration;
-    onControl('seek', { position: Math.floor(newPosition) });
-  };
-
   return (
-    <div className="flex flex-col items-center py-8 px-4 relative">
+    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 relative">
       {/* CSS for animations */}
       <style>
         {`
@@ -262,60 +232,33 @@ export function NowPlaying({ track, playerState, onControl }) {
 
           @keyframes color-pulse {
             0%, 100% { opacity: 0.5; }
-            50% { opacity: 0.7; }
+            50% { opacity: 0.8; }
           }
 
-          @keyframes skip-left {
-            0% { transform: translateX(0); }
-            50% { transform: translateX(-4px); }
-            100% { transform: translateX(0); }
-          }
-
-          @keyframes skip-right {
-            0% { transform: translateX(0); }
-            50% { transform: translateX(4px); }
-            100% { transform: translateX(0); }
-          }
-
-          @keyframes button-press {
-            0% { transform: scale(1); }
-            50% { transform: scale(0.92); }
-            100% { transform: scale(1); }
-          }
-
-          .progress-glow {
-            box-shadow: 0 0 12px rgba(29, 185, 84, 0.5), 0 0 4px rgba(29, 185, 84, 0.8);
-          }
-
-          .progress-thumb-visible::-webkit-slider-thumb {
-            opacity: 1 !important;
-            transform: scale(1.2);
-          }
-
-          .progress-thumb-visible::-moz-range-thumb {
-            opacity: 1 !important;
-            transform: scale(1.2);
+          @keyframes subtle-float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
           }
         `}
       </style>
 
-      {/* Album Art with Ambient Lighting */}
+      {/* Album Art with Ambient Lighting - INCREASED SIZE */}
       <div className="relative mb-8">
-        {/* Ambient glow layer - positioned behind album art */}
+        {/* Ambient glow layer - larger and more dramatic */}
         {track.thumbnail && dominantColor && (
           <div
-            className="absolute -inset-8 rounded-3xl blur-3xl transition-all duration-1000"
+            className="absolute -inset-12 rounded-[40px] blur-[60px] transition-all duration-1000"
             style={{
-              background: `radial-gradient(circle at center, rgba(${dominantColor}, 0.4) 0%, rgba(${dominantColor}, 0.15) 50%, transparent 70%)`,
-              animation: playerState.playing ? 'color-pulse 3s ease-in-out infinite' : 'none',
-              opacity: playerState.playing ? 1 : 0.5,
+              background: `radial-gradient(circle at center, rgba(${dominantColor}, 0.5) 0%, rgba(${dominantColor}, 0.2) 40%, transparent 70%)`,
+              animation: playerState.playing ? 'color-pulse 4s ease-in-out infinite' : 'none',
+              opacity: playerState.playing ? 1 : 0.6,
             }}
           />
         )}
 
-        {/* Album Art Container */}
+        {/* Album Art Container - LARGER */}
         <div
-          className="relative cursor-pointer"
+          className="relative"
           onMouseEnter={() => setIsAlbumArtHovered(true)}
           onMouseLeave={() => setIsAlbumArtHovered(false)}
         >
@@ -323,12 +266,14 @@ export function NowPlaying({ track, playerState, onControl }) {
             <div className="relative">
               {/* Vinyl record effect behind album art - visible on hover */}
               <div
-                className="absolute inset-0 rounded-full bg-gradient-to-br from-gray-800 via-gray-900 to-black transition-all duration-500"
+                className="absolute rounded-full bg-gradient-to-br from-gray-800 via-gray-900 to-black transition-all duration-500"
                 style={{
-                  width: '320px',
-                  height: '320px',
+                  width: '420px',
+                  height: '420px',
+                  top: '10px',
+                  left: '10px',
                   transform: isAlbumArtHovered
-                    ? 'translateX(40px) scale(0.95)'
+                    ? 'translateX(50px) scale(0.95)'
                     : 'translateX(0) scale(0.9)',
                   opacity: isAlbumArtHovered ? 0.9 : 0,
                   animation: playerState.playing && isAlbumArtHovered
@@ -337,48 +282,50 @@ export function NowPlaying({ track, playerState, onControl }) {
                 }}
               >
                 {/* Vinyl grooves */}
-                <div className="absolute inset-6 rounded-full border border-gray-700/50" />
-                <div className="absolute inset-12 rounded-full border border-gray-700/30" />
-                <div className="absolute inset-20 rounded-full border border-gray-700/20" />
+                <div className="absolute inset-8 rounded-full border border-gray-700/50" />
+                <div className="absolute inset-16 rounded-full border border-gray-700/30" />
+                <div className="absolute inset-24 rounded-full border border-gray-700/20" />
+                <div className="absolute inset-32 rounded-full border border-gray-700/10" />
                 {/* Center label */}
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center">
-                    <div className="w-4 h-4 rounded-full bg-gray-900" />
+                  <div className="w-28 h-28 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center">
+                    <div className="w-5 h-5 rounded-full bg-gray-900" />
                   </div>
                 </div>
               </div>
 
-              {/* Main album art image */}
+              {/* Main album art image - INCREASED SIZE (30-40% larger: 320px -> 440px) */}
               <img
                 src={track.thumbnail}
                 alt={track.title}
-                className="w-80 h-80 rounded-xl object-cover relative z-10 transition-all duration-300"
+                className="w-[340px] h-[340px] md:w-[420px] md:h-[420px] rounded-2xl object-cover relative z-10 transition-all duration-500"
                 style={{
                   transform: isAlbumArtHovered ? 'scale(1.02)' : 'scale(1)',
                   filter: isAlbumArtHovered ? 'brightness(1.05)' : 'brightness(1)',
                   boxShadow: isAlbumArtHovered
-                    ? '0 20px 60px rgba(0,0,0,0.6), 0 8px 24px rgba(0,0,0,0.4)'
-                    : '0 8px 24px rgba(0,0,0,0.5)',
+                    ? `0 30px 80px rgba(0,0,0,0.7), 0 10px 30px rgba(0,0,0,0.5), 0 0 60px rgba(${dominantColor || '29, 185, 84'}, 0.2)`
+                    : '0 12px 40px rgba(0,0,0,0.6)',
+                  animation: playerState.playing ? 'subtle-float 6s ease-in-out infinite' : 'none',
                 }}
               />
             </div>
           ) : (
-            <div className="w-80 h-80 bg-surface-elevated rounded-xl flex items-center justify-center shadow-soft">
-              <MusicNote size={80} className="text-gray-600" />
+            <div className="w-[340px] h-[340px] md:w-[420px] md:h-[420px] bg-surface-elevated rounded-2xl flex items-center justify-center shadow-soft">
+              <MusicNote size={100} className="text-gray-600" />
             </div>
           )}
 
           {/* Playback indicator overlay */}
           {playerState.playing && (
             <div
-              className="absolute bottom-4 right-4 bg-black/70 backdrop-blur-sm rounded-lg p-2.5 z-20 transition-all duration-300"
+              className="absolute bottom-5 right-5 bg-black/80 backdrop-blur-md rounded-xl p-3 z-20 transition-all duration-300"
               style={{
-                boxShadow: `0 0 20px rgba(${dominantColor || '29, 185, 84'}, 0.3)`,
+                boxShadow: `0 0 30px rgba(${dominantColor || '29, 185, 84'}, 0.4)`,
               }}
             >
               <PlaybackIndicator
                 playing={true}
-                size="lg"
+                size="xl"
                 className="text-accent"
                 glowColor={dominantColor ? `rgb(${dominantColor})` : 'var(--color-accent)'}
               />
@@ -387,178 +334,31 @@ export function NowPlaying({ track, playerState, onControl }) {
         </div>
       </div>
 
-      {/* Track info */}
-      <div className="text-center mb-6 max-w-md">
-        <h2 className="text-heading text-2xl text-white mb-2 line-clamp-2 tracking-tight">
+      {/* Track info - ENHANCED */}
+      <div className="text-center max-w-lg">
+        <h2 className="text-heading text-2xl md:text-3xl text-white mb-3 line-clamp-2 tracking-tight leading-tight">
           {track.title}
         </h2>
         {track.artist && (
-          <p className="text-body text-secondary text-lg mb-4">{track.artist}</p>
+          <p className="text-body text-secondary text-lg md:text-xl mb-5">{track.artist}</p>
         )}
 
-        {/* Requested by - more prominent styling */}
-        <div className="inline-flex items-center gap-2.5 px-4 py-2 bg-surface-elevated/80 rounded-full border border-white/5">
-          <span className="text-label text-muted">Requested by</span>
+        {/* Requested by - elegant pill design */}
+        <div className="inline-flex items-center gap-3 px-5 py-2.5 bg-surface-elevated/60 backdrop-blur-sm rounded-full border border-white/5 transition-all duration-300 hover:bg-surface-elevated/80">
+          <span className="text-label text-muted text-xs">Requested by</span>
           {avatarUrl ? (
             <img
               src={avatarUrl}
               alt={track.requestedBy}
-              className="w-6 h-6 rounded-full ring-2 ring-accent/30"
+              className="w-7 h-7 rounded-full ring-2 ring-accent/40"
             />
           ) : (
-            <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center text-xs font-medium text-accent">
+            <div className="w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center text-sm font-medium text-accent">
               {track.requestedBy?.charAt(0)?.toUpperCase() || '?'}
             </div>
           )}
           <span className="text-body text-primary font-medium">{track.requestedBy}</span>
         </div>
-      </div>
-
-      {/* Progress bar - larger hit area with glow effects */}
-      <div className="w-full max-w-md mb-6" role="group" aria-label="Playback progress">
-        <div
-          ref={progressRef}
-          className="relative py-3 -my-3 cursor-pointer group"
-          onMouseEnter={() => setIsProgressHovered(true)}
-          onMouseLeave={() => {
-            if (!isDragging) setIsProgressHovered(false);
-          }}
-          onClick={handleProgressClick}
-          role="slider"
-          aria-label="Seek"
-          aria-valuemin={0}
-          aria-valuemax={track.duration || 0}
-          aria-valuenow={playerState.position}
-          aria-valuetext={`${formatTime(playerState.position)} of ${formatTime(track.duration)}`}
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (!track.duration) return;
-            const step = track.duration * 0.05; // 5% of total duration
-            if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
-              e.preventDefault();
-              const newPos = Math.min(track.duration, playerState.position + step);
-              onControl('seek', { position: Math.floor(newPos) });
-            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
-              e.preventDefault();
-              const newPos = Math.max(0, playerState.position - step);
-              onControl('seek', { position: Math.floor(newPos) });
-            }
-          }}
-        >
-          {/* Progress track background */}
-          <div
-            className={`h-1.5 rounded-full bg-surface-elevated transition-all duration-200 ${
-              isProgressHovered || isDragging ? 'h-2' : ''
-            }`}
-          >
-            {/* Progress fill */}
-            <div
-              className={`h-full rounded-full bg-accent transition-all duration-200 relative ${
-                isProgressHovered || isDragging ? 'progress-glow' : ''
-              }`}
-              style={{ width: `${progress}%` }}
-            >
-              {/* Thumb indicator */}
-              <div
-                className={`absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg transition-all duration-200 ${
-                  isProgressHovered || isDragging
-                    ? 'opacity-100 scale-100'
-                    : 'opacity-0 scale-75'
-                }`}
-                style={{
-                  boxShadow: isProgressHovered || isDragging
-                    ? '0 0 12px rgba(29, 185, 84, 0.5), 0 2px 8px rgba(0,0,0,0.3)'
-                    : '0 2px 4px rgba(0,0,0,0.2)',
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Time display */}
-        <div className="flex justify-between text-mono text-xs text-muted mt-2">
-          <span>{formatTime(playerState.position)}</span>
-          <span>{formatTime(track.duration)}</span>
-        </div>
-      </div>
-
-      {/* Playback controls */}
-      <div className="flex items-center justify-center gap-4" role="group" aria-label="Playback controls">
-        {/* Shuffle */}
-        <button
-          onClick={() => onControl('shuffle')}
-          className={`p-2.5 rounded-full transition-all duration-200 focus-ring min-w-[44px] min-h-[44px] flex items-center justify-center ${
-            playerState.shuffle
-              ? 'text-accent bg-accent/10'
-              : 'text-muted hover:text-primary hover:bg-white/5'
-          }`}
-          title="Shuffle"
-          aria-label={`Shuffle queue ${playerState.shuffle ? '(on)' : '(off)'}`}
-          aria-pressed={playerState.shuffle}
-        >
-          <Shuffle size={20} />
-        </button>
-
-        {/* Previous */}
-        <button
-          onClick={() => handleSkip('prev')}
-          className="p-3 text-muted hover:text-primary transition-all duration-200 hover:bg-white/5 rounded-full focus-ring min-w-[44px] min-h-[44px] flex items-center justify-center"
-          title="Previous"
-          aria-label="Previous track"
-          style={{
-            animation: skipDirection === 'prev' ? 'skip-left 0.25s ease-out' : 'none',
-          }}
-        >
-          <SkipPrevious size={28} />
-        </button>
-
-        {/* Play/Pause - main control */}
-        <button
-          onClick={handlePlayPause}
-          className="w-16 h-16 bg-white rounded-full flex items-center justify-center text-black shadow-lg transition-all duration-200 hover:scale-105 focus-ring"
-          title={playerState.playing ? 'Pause' : 'Play'}
-          aria-label={playerState.playing ? 'Pause playback' : 'Resume playback'}
-          style={{
-            animation: isPlayPauseActive ? 'button-press 0.2s ease-out' : 'none',
-            boxShadow: isPlayPauseActive
-              ? `0 0 30px rgba(${dominantColor || '29, 185, 84'}, 0.5), 0 4px 20px rgba(0,0,0,0.3)`
-              : '0 4px 20px rgba(0,0,0,0.3)',
-          }}
-        >
-          {playerState.playing ? (
-            <Pause size={28} />
-          ) : (
-            <Play size={28} className="ml-1" />
-          )}
-        </button>
-
-        {/* Next */}
-        <button
-          onClick={() => handleSkip('next')}
-          className="p-3 text-muted hover:text-primary transition-all duration-200 hover:bg-white/5 rounded-full focus-ring min-w-[44px] min-h-[44px] flex items-center justify-center"
-          title="Next"
-          aria-label="Skip to next track"
-          style={{
-            animation: skipDirection === 'next' ? 'skip-right 0.25s ease-out' : 'none',
-          }}
-        >
-          <SkipNext size={28} />
-        </button>
-
-        {/* Loop */}
-        <button
-          onClick={() => onControl('loop')}
-          className={`p-2.5 rounded-full transition-all duration-200 focus-ring min-w-[44px] min-h-[44px] flex items-center justify-center ${
-            playerState.loop && playerState.loop !== 'off'
-              ? 'text-accent bg-accent/10'
-              : 'text-muted hover:text-primary hover:bg-white/5'
-          }`}
-          title={`Loop: ${playerState.loop || 'off'}`}
-          aria-label={`Loop mode: ${playerState.loop || 'off'}`}
-          aria-pressed={playerState.loop && playerState.loop !== 'off'}
-        >
-          <Loop size={20} mode={playerState.loop || 'off'} />
-        </button>
       </div>
     </div>
   );

@@ -1,438 +1,346 @@
-```markdown
-# Discord Music Bot Web UI Overhaul (Spotify-Inspired)
+# Discord Music Bot – UI Consolidation Update
 
-Designer handoff document
+Transition to Single-Control-Surface Architecture (Spotify Model)
 
-## Goal
+## Purpose of This Document
 
-Redesign the current web control panel from a functional “control panel” into a Spotify-inspired music experience while keeping all existing bot capabilities intact.
+This document describes the required changes to the current implementation in order to remove duplication, fix hierarchy issues, and fully commit to a Spotify-inspired single control surface layout.
 
-The core shift is:
+The goal is to:
 
-- From utility-first UI
-- To music-first experience
+- Remove duplicated playback controls
+- Reduce visual noise
+- Eliminate unnecessary empty space
+- Strengthen visual hierarchy
+- Make the bottom dock the only operational control area
 
-This means stronger visual hierarchy, clearer states, and a more immersive playback view, without hiding functionality.
-
----
-
-## Product Context
-
-This is not a standalone streaming app. It is a collaborative music experience for a Discord server.
-
-Users are not only controlling playback, they are:
-
-- Adding tracks for a shared queue
-- Listening together in a voice channel
-- Negotiating control implicitly (who added what, what’s next)
-
-The UI should express that multiplayer context, not just mimic Spotify.
+This document references the current implemented design and clearly outlines what must change and why.
 
 ---
 
-## Existing Capabilities to Support
+# 1. Core Architectural Decision
 
-### Slash Commands (UI mapping)
+We are committing to:
 
-| Command         | UI Equivalent                                |
-| --------------- | -------------------------------------------- |
-| /play <query>   | Search input + results                       |
-| /pause, /resume | Play/Pause toggle                            |
-| /skip           | Next button                                  |
-| /stop           | Stop action (overflow menu or queue actions) |
-| /queue          | Queue panel / queue page                     |
-| /nowplaying     | Main Now Playing view                        |
-| /volume <0-100> | Persistent volume slider                     |
-| /join, /leave   | Voice channel controls                       |
-| /shuffle        | Shuffle toggle                               |
-| /loop <mode>    | Repeat/loop state toggle                     |
-| /remove <pos>   | Remove action per queue row                  |
-| /webui          | Not needed in UI (entrypoint command)        |
+> Bottom Dock = Only Playback Control Surface
+
+The center area becomes informational and immersive.
+All playback interactions move to the sticky bottom dock.
+
+This removes control duplication and creates a clear mental model.
 
 ---
 
-## Design Intent
+# 2. Current Problems in the Old Design
 
-### What we want the UI to feel like
+### 2.1 Playback Controls Exist Twice
 
-- Like Spotify: calm, premium, consistent
-- But clearly Discord-native: server, voice channel, multiple people contributing
-- Minimal chrome: fewer borders, more spacing, soft shadows
-- Strong hierarchy: album art + track title are the hero elements
+Currently:
 
-### What we want to avoid
+- Play / Pause exists in the center
+- Play / Pause exists in the bottom dock
 
-- “Admin panel” look
-- Flat lists with no context
-- Controls scattered across the page
-- Overly prominent settings that compete with music experience
+This creates:
 
----
-
-## Layout Overview (Desktop First)
-
-Spotify-inspired 3-column layout:
-```
-
-| Sidebar (Nav + Session Controls) | Main Now Playing (Hero) | Queue / Context Panel |
-
-```
-
-Additionally:
-- Sticky bottom mini-player dock for persistent control, even when switching pages/tabs
+- Interaction confusion
+- Competing focal points
+- Unnecessary UI weight
 
 ---
 
-## Wireframe (High-Level)
-```
+### 2.2 Progress Bar Exists Twice
 
-┌────────────────────────────────────────────────────────────────────────────┐
-│ Top Bar │
-│ Logo Server Name Voice Channel Connected ● User Avatar │
-└────────────────────────────────────────────────────────────────────────────┘
+Currently:
 
-┌──────────────┬──────────────────────────────────────┬──────────────────────┐
-│ Sidebar │ Now Playing View │ Queue Panel │
-│ │ │ │
-└──────────────┴──────────────────────────────────────┴──────────────────────┘
+- Progress bar under artwork
+- Progress bar in bottom dock
 
-┌────────────────────────────────────────────────────────────────────────────┐
-│ Mini Player Dock (Sticky Bottom) │
-└────────────────────────────────────────────────────────────────────────────┘
-
-```
+This creates visual redundancy and dilutes hierarchy.
 
 ---
 
-## Section Details
+### 2.3 Volume Exists Twice
 
-## 1) Top Bar (Session Context)
-### Purpose
-Top bar shows the environment the playback is happening inside.
-This is session-level context, not song-level context.
+Currently:
 
-### Contents
-- Brand (Music Bot)
-- Server name
-- Voice channel name
-- Connection status
-- Logged-in user avatar/name
+- Volume in sidebar
+- Volume in bottom dock
 
-### Why it is placed here
-Discord context belongs to the environment. Users should always know:
-- Which server they are controlling
-- Which voice channel is active
-- If the UI is connected and live
-
-Placing this at the top keeps it visible and prevents the player from feeling like a generic music app.
+Persistent system controls should live in one place only.
 
 ---
 
-## 2) Left Sidebar (Navigation + Persistent Controls)
-### Approx width
-~220–260px fixed
+### 2.4 Excess Vertical Empty Space
 
-### Wireframe
-```
+The center section has:
 
-┌──────────────────────────────┐
-│ 🎵 Music Bot │
-│ │
-│ ● Now Playing │
-│ Queue │
-│ History │
-│ Settings │
-│ │
-│ ─────────────────────────── │
-│ Voice Channel │
-│ # Music Lounge │
-│ [ Leave Channel ] │
-│ │
-│ ─────────────────────────── │
-│ Volume │
-│ [───────●──────] 62% │
-│ Shuffle ☐ │
-│ Loop Off / Track / Queue │
-└──────────────────────────────┘
+- Large vertical padding above album art
+- Search bar visually pushing content downward
+- Artwork not large enough to justify the empty space
+
+This makes the layout feel sparse and disconnected.
+
+---
+
+### 2.5 Search Competes With Music
+
+The search bar currently sits above the hero area.
+
+It feels like:
+
+- An admin input tool
+- Not integrated into the layout
+- Visually heavier than it should be
+
+Music should be the hero. Not search.
+
+---
+
+# 3. Required Structural Changes
+
+---
+
+# 3.1 Remove All Center Playback Controls
+
+REMOVE from center:
+
+- Play / Pause button
+- Skip button
+- Shuffle icon
+- Loop icon
+- Progress bar
+
+The center becomes:
 
 ```
 
-### Why these controls live here
-These are session-level controls.
-They should be accessible regardless of what view the user is in.
+[ Large Album Art ]
 
-This reduces clutter in the central player and avoids a “button grid” feel.
-
----
-
-## 3) Main Center (Now Playing View)
-### Purpose
-Make the music the hero.
-
-### Key principle
-Album art + title are the primary focus.
-Controls are secondary but immediately accessible.
-
-### Wireframe
-```
-
-┌──────────────────────────────────────────────────────┐
-│ │
-│ [ LARGE ALBUM ART ] │
-│ │
-│ Track Title (Large Bold) │
-│ Artist Name │
-│ Requested by: Avatar + Username │
-│ │
-│ 1:21 ────────────────●────────────── 3:50 │
-│ │
-│ ⟲ ⏮ ▶ / ⏸ ⏭ ⟲ │
-│ │
-└──────────────────────────────────────────────────────┘
+Track Title
+Artist Name
+Requested by: Avatar + Username
 
 ```
 
-### Why this structure
-Spotify works because it is calm:
-- One clear focus area
-- Predictable control placement
-- Plenty of breathing room
-
-Users should understand state at a glance:
-- What is playing
-- Progress
-- What’s next (right panel)
+Nothing interactive remains in the center except optional click-to-open artwork.
 
 ---
 
-## 4) Right Panel (Queue + Social Context)
-### Approx width
-~300–360px
+# 3.2 Bottom Dock Becomes the Only Control Surface
 
-### Purpose
-Queue is collaborative, so it should show social metadata.
-This panel is where the “Discord-ness” is most visible.
+The bottom dock must contain:
 
-### Wireframe
-```
+- Track thumbnail
+- Track title + artist
+- Full progress bar
+- Play / Pause
+- Previous
+- Next
+- Shuffle
+- Loop
+- Volume slider
 
-┌────────────────────────────────┐
-│ Up Next (19) [Shuffle] │
-│ │
-│ ───────────────────────────── │
-│ ▶ Track Title - Artist 4:19 │
-│ Added by @kalle │
-│ [drag] [remove] │
-│ │
-│ Track Title - Artist 3:07 │
-│ Added by @mads │
-│ │
-│ ... scroll ... │
-└────────────────────────────────┘
+Example structure:
 
 ```
 
-### Why “Added by” belongs in the queue rows
-This is the biggest social/UX upgrade:
-- Adds ownership
-- Reduces conflict (“why is this here?”)
-- Encourages participation
-- Makes the queue feel like a group playlist
+[Cover] Track – Artist
 
-Now Playing is universal.
-Queue is personal and social.
+1:26 ────────────────●────────────── 4:26
 
----
-
-## 5) Sticky Mini Player Dock (Bottom)
-### Purpose
-Persistent control while navigating other views (Queue, History, Settings).
-
-### Wireframe
-```
-
-┌───────────────────────────────────────────────────────────────┐
-│ [Cover] Track Name – Artist │
-│ 1:21 ────────────────●────────────── 3:50 │
-│ ⏮ ▶ / ⏸ ⏭ Volume Loop Shuffle │
-└───────────────────────────────────────────────────────────────┘
+⏮   ▶ / ⏸   ⏭      Shuffle   Loop      Volume
 
 ```
 
-### Why this is valuable
-It removes the need to return to Now Playing just to control playback.
-This matches Spotify’s “always available” control model.
+This mirrors Spotify and eliminates duplication.
 
 ---
 
-## Search Experience (Play)
-### Current issue
-Search field feels like a single input box, not a music search.
+# 3.3 Remove Volume From Sidebar
 
-### Target behavior
-Search field with suggestion dropdown:
-- Works for YouTube search terms + YouTube URLs
-- Future: Spotify URLs/playlists support can feel native here
+DELETE:
 
-### Wireframe
+- Volume slider in sidebar
+
+Volume is now controlled only in bottom dock.
+
+Sidebar becomes navigation + session controls only.
+
+---
+
+# 3.4 Increase Album Artwork Size
+
+Artwork should dominate the center.
+
+Current issue:
+Artwork feels small relative to available space.
+
+Required change:
+
+- Increase artwork size by 30–40%
+- Reduce top spacing
+- Center vertically in available space
+
+Artwork should feel immersive, not floating.
+
+---
+
+# 3.5 Move Search Into Top Bar
+
+Currently:
+Search sits above the center hero area.
+
+Change:
+Move search into top bar.
+
+New Top Bar Layout:
+
 ```
 
-┌──────────────────────────────────────────────┐
-│ 🔍 Search or paste YouTube / Spotify URL... │
-└──────────────────────────────────────────────┘
-
-Dropdown:
-┌──────────────────────────────────────────────┐
-│ [Thumb] Song Title – Artist │
-│ [Thumb] Song Title – Artist │
-│ [Thumb] Song Title – Artist │
-└──────────────────────────────────────────────┘
+Logo | Search Field | Server Name | User Avatar
 
 ```
 
----
+Search becomes part of global navigation, not the hero section.
 
-## Visual Style Direction
-### Tone
-- Premium, calm, music-first
-- Minimal borders
-- Soft shadows
-- Rounded corners (12–16px)
+This:
 
-### Color direction
-- Deep dark background
-- Slightly lighter card surfaces
-- One accent color (Spotify green or product accent)
-
-### Typography direction
-- Clean, modern sans-serif (Inter style)
-- Track title: bold, large
-- Metadata: smaller, muted
-
-### Why this works
-The UI should not shout. Music is the content.
-Calm styling increases perceived quality and reduces fatigue.
+- Reduces visual clutter
+- Prevents pushing artwork down
+- Feels more native to app layouts
 
 ---
 
-## Advanced Features (Placement + Rationale)
+# 3.6 Reduce Vertical Spacing Above Artwork
 
-## A) Playback Wave Animation (Playing State Indicator)
-### What it is
-Subtle animated bars indicating playback is active.
+Currently:
+There is excessive space between top bar and album art.
 
-### Why include it
-The UI currently feels static. This provides:
-- Instant feedback that playback is running
-- Clear difference between play vs pause
-- A premium touch without adding clutter
+Required:
 
-### Where it should be placed
-Best:
-- Overlay on album art bottom corner
-Alternative:
-- Next to track title
+- Tighten vertical padding
+- Align artwork closer to visual center of viewport
 
-### Why not elsewhere
-Playback state is track-level, not navigation-level, so it should live near the artwork or track info.
+The center should feel balanced, not empty.
 
 ---
 
-## B) Discord Context Card (Server + Channel + Connected Users)
-### What it is
-A small context section showing:
-- Server name
-- Voice channel name
-- Connected users count (optional: avatars)
+# 4. Final Layout After Changes
 
-### Why include it
-This is what makes it feel Discord-native.
-Without it, it feels like a generic Spotify clone.
-
-### Where it should be placed
-Top bar (session-level)
-Optional: expandable card in sidebar
-
-### Why this placement
-This is environment/session info, so it belongs outside the player content hierarchy.
-
----
-
-## C) Multi-User Activity (Avatars next to tracks)
-### What it is
-Small avatars in queue items showing who added the track.
-
-### Why include it
-High impact collaborative UX:
-- Social ownership
-- Encourages participation
-- Reduces confusion and conflict
-
-### Where it should be placed
-Inside each queue row:
-- Secondary line: “Added by” plus avatar
-
-### Why this placement
-Queue is where collaboration happens.
-Now Playing is universal, queue is social.
-
----
-
-## D) Dark / Light Toggle
-### Why include it
-- Accessibility
-- Personal preference
-- Signals product maturity
-
-### Where it should be placed
-Settings page or bottom of sidebar.
-Optionally in top bar, but not prominent.
-
-### Why not prominent
-Theme selection is personalization, not primary playback interaction.
-It should not compete with music controls.
-
----
-
-## Responsive Behavior Notes
-### Tablet
-- Sidebar collapses to icon-only
-- Queue becomes a toggleable slide-out panel
-
-### Mobile
-Stacked layout:
-- Top bar
-- Album art
-- Track info
-- Controls
-- Collapsible queue
-- Sticky mini player
-
----
-
-## Priority Recommendation (If not building everything at once)
-If implementing in phases, highest impact first:
-1) Multi-user activity in queue rows (Added by avatars)
-2) Discord context in top bar
-3) Sticky mini player dock
-4) Playback wave animation
-5) Theme toggle (optional)
-
-Rationale:
-The strongest differentiator is collaborative music in Discord, not general music playback.
-
----
-
-## Summary of the Core Design Logic
-- Session context lives at the top (server + voice channel)
-- Persistent controls live in the sidebar or bottom dock (volume, loop, shuffle, leave)
-- The center is for the music (artwork + title + progress)
-- The right side is for collaboration (queue + who added what)
-- Advanced features are placed according to what they represent:
-  - Track state near artwork
-  - Session state in top bar
-  - Social state in queue
-  - Personal preference in settings
-
-This keeps hierarchy clean and prevents feature clutter.
 ```
+
+┌──────────────────────────────────────────────────────────────┐
+│ Top Bar: Logo | Search | Server | User                      │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────┬──────────────────────────────┬────────────────┐
+│ Sidebar      │       Now Playing (Hero)     │ Queue Panel    │
+│              │                              │                │
+│ Navigation   │        [ Large Artwork ]     │ Up Next        │
+│ Join/Leave   │                              │ Tracks         │
+│ Loop Status  │        Track Title           │ Added by ...   │
+│ Shuffle      │        Requested by ...      │                │
+└──────────────┴──────────────────────────────┴────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│ Sticky Bottom Dock (Only Playback Controls)                 │
+└──────────────────────────────────────────────────────────────┘
+
+```
+
+No duplicated controls.
+Clear hierarchy.
+
+---
+
+# 5. Visual Hierarchy Rules Going Forward
+
+1. Album art is the visual anchor.
+2. Track title is the primary text.
+3. Queue is secondary context.
+4. Controls live only in bottom dock.
+5. Navigation lives in sidebar.
+6. Search lives in top bar.
+
+No feature should break these rules.
+
+---
+
+# 6. Why This Improves the Experience
+
+### 6.1 Reduces Cognitive Load
+
+Users know exactly where playback lives.
+No scanning for which play button to press.
+
+---
+
+### 6.2 Improves Visual Calm
+
+Fewer buttons in the center.
+More breathing room.
+Clear separation of concerns.
+
+---
+
+### 6.3 Matches User Expectations
+
+Spotify-trained users expect:
+
+- Persistent bottom controls
+- Artwork-focused center
+- Clean navigation
+
+We are aligning with that mental model.
+
+---
+
+### 6.4 Removes “Dashboard” Feel
+
+Old layout felt like:
+
+- A control panel
+- A utility interface
+
+New layout feels like:
+
+- A music experience
+- A shared listening environment
+
+---
+
+# 7. What Stays the Same
+
+- Sidebar navigation
+- Queue panel
+- Server/user info
+- Collaborative features
+
+Only duplication and hierarchy are being fixed.
+
+---
+
+# 8. Implementation Priority Order
+
+1. Remove center playback controls
+2. Remove sidebar volume
+3. Expand bottom dock controls
+4. Increase artwork size
+5. Move search into top bar
+6. Tighten vertical spacing
+
+Do not implement partial duplication.  
+Commit fully to the single-control-surface architecture.
+
+---
+
+# 9. Final Principle
+
+If a user asks:
+"Where do I control playback?"
+
+There must be exactly one answer:
+
+> The bottom dock.
+
+Everything else supports that.

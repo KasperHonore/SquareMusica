@@ -2,7 +2,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { QueueItem } from './QueueItem';
 
-export function Queue({ tracks, currentIndex, onReorder, onRemove }) {
+export function Queue({ tracks, onReorder, onRemove }) {
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -22,15 +22,15 @@ export function Queue({ tracks, currentIndex, onReorder, onRemove }) {
   if (tracks.length === 0) {
     return (
       <div className="bg-gray-800 p-6 rounded-lg">
-        <h3 className="text-lg font-bold mb-4">Queue</h3>
-        <p className="text-gray-400 text-center py-8">Queue is empty</p>
+        <h3 className="text-lg font-bold mb-4">Up Next</h3>
+        <p className="text-gray-400 text-center py-8">No upcoming tracks</p>
       </div>
     );
   }
 
   return (
     <div className="bg-gray-800 p-4 rounded-lg">
-      <h3 className="text-lg font-bold mb-4">Queue ({tracks.length} tracks)</h3>
+      <h3 className="text-lg font-bold mb-4">Up Next ({tracks.length} {tracks.length === 1 ? 'track' : 'tracks'})</h3>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -46,7 +46,6 @@ export function Queue({ tracks, currentIndex, onReorder, onRemove }) {
                 key={`${track.url}-${index}`}
                 track={track}
                 index={index}
-                isCurrent={index === currentIndex}
                 onRemove={onRemove}
               />
             ))}

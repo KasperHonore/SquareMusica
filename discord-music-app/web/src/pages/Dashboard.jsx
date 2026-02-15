@@ -11,6 +11,7 @@ export function Dashboard() {
   const {
     connected,
     queue,
+    currentIndex,
     currentTrack,
     playerState,
     error,
@@ -29,9 +30,21 @@ export function Dashboard() {
     }
   }, [error, clearError]);
 
-  const currentIndex = currentTrack
-    ? queue.findIndex(t => t.url === currentTrack.url)
-    : -1;
+  // Filter queue to show only upcoming tracks (not the currently playing one)
+  const upcomingTracks = currentTrack && currentIndex >= 0
+    ? queue.slice(currentIndex + 1)
+    : queue;
+
+  // Handlers that adjust indices to account for filtered display
+  const handleReorder = (from, to) => {
+    const offset = currentTrack ? currentIndex + 1 : 0;
+    reorderQueue(offset + from, offset + to);
+  };
+
+  const handleRemove = (position) => {
+    const offset = currentTrack ? currentIndex + 1 : 0;
+    removeFromQueue(offset + position);
+  };
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -132,10 +145,9 @@ export function Dashboard() {
           {/* Right Column - Queue */}
           <div>
             <Queue
-              tracks={queue}
-              currentIndex={currentIndex}
-              onReorder={reorderQueue}
-              onRemove={removeFromQueue}
+              tracks={upcomingTracks}
+              onReorder={handleReorder}
+              onRemove={handleRemove}
             />
           </div>
         </div>

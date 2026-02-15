@@ -7,6 +7,7 @@ export function useSocket() {
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
   const [queue, setQueue] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [currentTrack, setCurrentTrack] = useState(null);
   const [error, setError] = useState(null);
   const [playerState, setPlayerState] = useState({
@@ -33,8 +34,14 @@ export function useSocket() {
       setConnected(false);
     });
 
-    newSocket.on('queue:update', (newQueue) => {
-      setQueue(newQueue);
+    newSocket.on('queue:update', (data) => {
+      // Handle both old format (array) and new format (object with tracks and currentIndex)
+      if (Array.isArray(data)) {
+        setQueue(data);
+      } else if (data && typeof data === 'object') {
+        setQueue(Array.isArray(data.tracks) ? data.tracks : []);
+        setCurrentIndex(typeof data.currentIndex === 'number' ? data.currentIndex : 0);
+      }
     });
 
     newSocket.on('track:change', (track) => {
@@ -50,9 +57,17 @@ export function useSocket() {
     });
 
     newSocket.on('initial:state', (state) => {
-      setQueue(state.queue);
-      setCurrentTrack(state.currentTrack);
-      setPlayerState(state.playerState);
+      setQueue(Array.isArray(state.queue) ? state.queue : []);
+      setCurrentIndex(typeof state.currentIndex === 'number' ? state.currentIndex : 0);
+      setCurrentTrack(state.currentTrack || null);
+      setPlayerState(state.playerState || {
+        playing: false,
+        paused: false,
+        volume: 100,
+        loop: 'off',
+        position: 0,
+        connected: false
+      });
     });
 
     newSocket.on('error', (err) => {
@@ -89,6 +104,7 @@ export function useSocket() {
   return {
     connected,
     queue,
+    currentIndex,
     currentTrack,
     playerState,
     error,

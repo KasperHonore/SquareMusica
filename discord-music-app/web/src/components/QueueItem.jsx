@@ -2,7 +2,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { formatTime } from '../utils/formatTime';
 
-export function QueueItem({ track, index, isCurrent, onRemove }) {
+export function QueueItem({ track, index, onRemove }) {
   const {
     attributes,
     listeners,
@@ -22,9 +22,7 @@ export function QueueItem({ track, index, isCurrent, onRemove }) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-3 p-3 rounded-lg ${
-        isCurrent ? 'bg-green-900/30 border border-green-500/50' : 'bg-gray-700/50'
-      } ${isDragging ? 'shadow-lg' : ''}`}
+      className={`flex items-center gap-3 p-3 rounded-lg bg-gray-700/50 ${isDragging ? 'shadow-lg' : ''}`}
     >
       <div
         {...attributes}
@@ -48,7 +46,6 @@ export function QueueItem({ track, index, isCurrent, onRemove }) {
 
       <div className="flex-1 min-w-0">
         <p className="truncate font-medium">
-          {isCurrent && <span className="text-green-400 mr-2">▶</span>}
           {track.title}
         </p>
         <p className="text-gray-400 text-sm truncate">

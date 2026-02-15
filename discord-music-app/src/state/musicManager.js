@@ -34,11 +34,19 @@ class MusicManager extends EventEmitter {
     this.getConnection = fn;
   }
 
+  // Helper to emit queue updates with currentIndex
+  emitQueueUpdate() {
+    this.emit('queue:update', {
+      tracks: this.queue?.getAll() || [],
+      currentIndex: this.queue?.currentIndex || 0
+    });
+  }
+
   // Queue operations (emit events for Socket.io)
   addToQueue(track) {
     if (!this.queue) return false;
     this.queue.add(track);
-    this.emit('queue:update', this.queue.getAll());
+    this.emitQueueUpdate();
     return true;
   }
 
@@ -46,7 +54,7 @@ class MusicManager extends EventEmitter {
     if (!this.queue) return false;
     const removed = this.queue.remove(index);
     if (removed) {
-      this.emit('queue:update', this.queue.getAll());
+      this.emitQueueUpdate();
     }
     return removed;
   }
@@ -55,7 +63,7 @@ class MusicManager extends EventEmitter {
     if (!this.queue) return false;
     const success = this.queue.reorder(from, to);
     if (success) {
-      this.emit('queue:update', this.queue.getAll());
+      this.emitQueueUpdate();
     }
     return success;
   }
@@ -63,14 +71,14 @@ class MusicManager extends EventEmitter {
   clearQueue() {
     if (!this.queue) return false;
     this.queue.clear();
-    this.emit('queue:update', this.queue.getAll());
+    this.emitQueueUpdate();
     return true;
   }
 
   shuffleQueue() {
     if (!this.queue) return false;
     this.queue.shuffle();
-    this.emit('queue:update', this.queue.getAll());
+    this.emitQueueUpdate();
     return true;
   }
 
@@ -100,7 +108,7 @@ class MusicManager extends EventEmitter {
     } else {
       this.player.stop();
     }
-    this.emit('queue:update', this.queue.getAll());
+    this.emitQueueUpdate();
     return true;
   }
 
@@ -111,7 +119,7 @@ class MusicManager extends EventEmitter {
       this.queue.clear();
       this.queue.currentIndex = 0;
     }
-    this.emit('queue:update', []);
+    this.emit('queue:update', { tracks: [], currentIndex: 0 });
     this.emit('track:change', null);
     this.emitState();
     return true;
@@ -166,7 +174,7 @@ class MusicManager extends EventEmitter {
       db.addToHistory(track);
     }
     this.emit('track:change', track);
-    this.emit('queue:update', this.queue?.getAll() || []);
+    this.emitQueueUpdate();
   }
 
   // Get full state for initial sync

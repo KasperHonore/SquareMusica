@@ -38,13 +38,15 @@ export function Sidebar({
   onViewChange,
   voiceContext,
   onLeaveChannel,
+  bottomPadding = 0,
 }) {
   return (
     <aside
       className="w-60 flex flex-col flex-shrink-0 border-r h-full"
       style={{
         backgroundColor: 'var(--color-bg)',
-        borderColor: 'var(--color-border)'
+        borderColor: 'var(--color-border)',
+        paddingBottom: bottomPadding ? `${bottomPadding}px` : undefined,
       }}
     >
       {/* Logo section */}

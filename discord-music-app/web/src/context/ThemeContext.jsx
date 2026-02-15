@@ -1,50 +1,17 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useEffect } from 'react';
 
 const ThemeContext = createContext(null);
 
-const THEME_KEY = 'theme-preference';
-
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(() => {
-    // Check localStorage first
-    const stored = localStorage.getItem(THEME_KEY);
-    if (stored === 'light' || stored === 'dark') {
-      return stored;
-    }
-    // Fall back to system preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-      return 'light';
-    }
-    return 'dark';
-  });
-
   useEffect(() => {
-    // Persist preference
-    localStorage.setItem(THEME_KEY, theme);
-
-    // Apply theme class to document root
+    // Always enforce dark mode
     const root = document.documentElement;
-    if (theme === 'light') {
-      root.classList.add('light-theme');
-      root.classList.remove('dark-theme');
-    } else {
-      root.classList.add('dark-theme');
-      root.classList.remove('light-theme');
-    }
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
-
-  const setThemeMode = (mode) => {
-    if (mode === 'light' || mode === 'dark') {
-      setTheme(mode);
-    }
-  };
+    root.classList.add('dark-theme');
+    root.classList.remove('light-theme');
+  }, []);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, setThemeMode }}>
+    <ThemeContext.Provider value={{ theme: 'dark' }}>
       {children}
     </ThemeContext.Provider>
   );

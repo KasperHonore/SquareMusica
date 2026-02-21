@@ -44,13 +44,6 @@ router.post('/:action', authMiddleware, (req, res) => {
       success = musicManager.stop();
       break;
 
-    case 'volume':
-      if (typeof value !== 'number' || value < 0 || value > 100) {
-        return res.status(400).json({ error: 'Volume must be 0-100' });
-      }
-      success = musicManager.setVolume(value);
-      break;
-
     case 'loop':
       if (!['off', 'track', 'queue'].includes(value)) {
         return res.status(400).json({ error: 'Invalid loop mode' });

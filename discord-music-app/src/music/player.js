@@ -17,7 +17,6 @@ class MusicPlayer extends EventEmitter {
         noSubscriber: NoSubscriberBehavior.Pause
       }
     });
-    this.volume = 100;
     this.currentTrack = null;
     this.startTime = null;
     this.pausedAt = null;
@@ -76,11 +75,8 @@ class MusicPlayer extends EventEmitter {
       console.log('Playing track URL:', track.url);
       const stream = await getStream(track.url);
       const resource = createAudioResource(stream.stream, {
-        inputType: StreamType.Arbitrary,
-        inlineVolume: true
+        inputType: StreamType.Arbitrary
       });
-
-      resource.volume?.setVolume(this.volume / 100);
 
       this.currentTrack = track;
       this.startTime = Date.now();
@@ -134,18 +130,6 @@ class MusicPlayer extends EventEmitter {
     this.currentTrack = null;
     this.startTime = null;
     this.pausedAt = null;
-  }
-
-  /**
-   * Set volume (0-100)
-   * @param {number} level
-   */
-  setVolume(level) {
-    this.volume = Math.max(0, Math.min(100, level));
-    const resource = this.audioPlayer.state.resource;
-    if (resource?.volume) {
-      resource.volume.setVolume(this.volume / 100);
-    }
   }
 
   /**

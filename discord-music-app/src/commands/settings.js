@@ -1,18 +1,6 @@
-import { getPlayer, getQueue } from './playback.js';
+import { getQueue } from './playback.js';
 import { musicManager } from '../state/musicManager.js';
 import { requireVoiceConnection } from './utils/checks.js';
-
-export async function handleVolume(interaction) {
-  if (!await requireVoiceConnection(interaction)) return;
-
-  const level = interaction.options.getInteger('level');
-  const p = getPlayer();
-
-  p.setVolume(level);
-  musicManager.emitState();
-
-  await interaction.reply(`Volume set to **${level}%**`);
-}
 
 export async function handleLoop(interaction) {
   if (!await requireVoiceConnection(interaction)) return;

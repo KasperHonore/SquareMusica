@@ -7,9 +7,6 @@ import {
   SkipPrevious,
   Shuffle,
   Loop,
-  VolumeHigh,
-  VolumeLow,
-  VolumeMute,
   MusicNote
 } from '../icons';
 
@@ -24,7 +21,7 @@ import {
  * ┌──────────────────────────────────────────────────────────────────┐
  * │ Progress Bar (full width, interactive)                          │
  * ├──────────────────────────────────────────────────────────────────┤
- * │ [Cover] Track – Artist     ⏮  ▶/⏸  ⏭     🔀 🔁    🔊────●── │
+ * │ [Cover] Track – Artist     ⏮  ▶/⏸  ⏭     🔀 🔁                │
  * │          0:00 / 3:45                                            │
  * └──────────────────────────────────────────────────────────────────┘
  */
@@ -232,59 +229,6 @@ function ProgressBar({ progress, duration, position, onSeek, albumColor, isPlayi
 }
 
 /**
- * Volume control with slider
- */
-function VolumeControl({ value, onChange, onMute, glowColor }) {
-  const [showSlider, setShowSlider] = useState(false);
-  const [prevVolume, setPrevVolume] = useState(100);
-
-  const VolumeIcon = value === 0 ? VolumeMute : value < 50 ? VolumeLow : VolumeHigh;
-
-  const handleMute = () => {
-    if (value > 0) {
-      setPrevVolume(value);
-      onMute(0);
-    } else {
-      onMute(prevVolume);
-    }
-  };
-
-  return (
-    <div
-      className="relative flex items-center gap-2"
-      onMouseEnter={() => setShowSlider(true)}
-      onMouseLeave={() => setShowSlider(false)}
-    >
-      <button
-        onClick={handleMute}
-        className="miniplayer-btn-icon"
-        title={value === 0 ? 'Unmute' : 'Mute'}
-        aria-label={value === 0 ? 'Unmute' : `Mute (volume ${value}%)`}
-      >
-        <VolumeIcon size={20} />
-      </button>
-
-      {/* Volume slider - always visible on desktop, hover on mobile */}
-      <div className={`hidden sm:flex items-center gap-2 transition-all duration-200 ${showSlider ? 'opacity-100' : 'opacity-70'}`}>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={value}
-          onChange={(e) => onChange(parseInt(e.target.value))}
-          className="volume-slider-dock w-20"
-          style={{
-            '--thumb-color': `hsl(${glowColor.h}, ${glowColor.s}%, ${Math.min(glowColor.l + 10, 60)}%)`
-          }}
-          aria-label="Volume"
-        />
-        <span className="text-xs font-mono text-muted w-8">{value}%</span>
-      </div>
-    </div>
-  );
-}
-
-/**
  * Main control button (Play/Pause)
  */
 function PlayPauseButton({ isPlaying, onClick, glowColor, size = 'normal' }) {
@@ -403,10 +347,6 @@ export function MiniPlayer({
     onControl('seek', Math.floor(position));
   };
 
-  const handleVolumeChange = (value) => {
-    onControl('volume', value);
-  };
-
   const cycleLoopMode = () => {
     const modes = ['off', 'track', 'queue'];
     const currentIndex = modes.indexOf(playerState.loop || 'off');
@@ -465,39 +405,6 @@ export function MiniPlayer({
           background: currentColor;
         }
 
-        .volume-slider-dock {
-          -webkit-appearance: none;
-          appearance: none;
-          height: 4px;
-          border-radius: 2px;
-          background: rgba(255, 255, 255, 0.2);
-          cursor: pointer;
-        }
-
-        .volume-slider-dock::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          background: var(--thumb-color, var(--color-accent));
-          cursor: pointer;
-          transition: transform 0.15s ease, box-shadow 0.15s ease;
-          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-        }
-
-        .volume-slider-dock::-webkit-slider-thumb:hover {
-          transform: scale(1.2);
-        }
-
-        .volume-slider-dock::-moz-range-thumb {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          background: var(--thumb-color, var(--color-accent));
-          border: none;
-          cursor: pointer;
-        }
-
         @keyframes wave {
           0%, 100% { transform: scaleY(0.4); }
           50% { transform: scaleY(1); }
@@ -527,7 +434,7 @@ export function MiniPlayer({
           isPlaying={playerState.playing}
         />
 
-        {/* Main content - 3 column layout: track info | controls | volume */}
+        {/* Main content */}
         <div className="h-[72px] flex items-center px-4 sm:px-6">
           {/* Left section - Empty (compact) or Track info (full) */}
           <div className="flex items-center gap-3 sm:gap-4 min-w-0 w-[30%] max-w-[300px]">
@@ -624,16 +531,6 @@ export function MiniPlayer({
                 glowColor={albumColor}
               />
             </div>
-          </div>
-
-          {/* Volume - right, fixed width (hidden on mobile) */}
-          <div className="hidden sm:flex items-center justify-end w-[30%] max-w-[300px]">
-            <VolumeControl
-              value={playerState.volume}
-              onChange={handleVolumeChange}
-              onMute={handleVolumeChange}
-              glowColor={albumColor}
-            />
           </div>
         </div>
       </div>

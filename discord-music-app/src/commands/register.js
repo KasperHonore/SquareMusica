@@ -64,16 +64,6 @@ const commands = [
 
   // Settings commands
   new SlashCommandBuilder()
-    .setName('volume')
-    .setDescription('Set playback volume')
-    .addIntegerOption(option =>
-      option.setName('level')
-        .setDescription('Volume level (0-100)')
-        .setRequired(true)
-        .setMinValue(0)
-        .setMaxValue(100)),
-
-  new SlashCommandBuilder()
     .setName('loop')
     .setDescription('Set loop mode')
     .addStringOption(option =>

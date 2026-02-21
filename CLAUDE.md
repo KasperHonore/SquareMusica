@@ -118,7 +118,6 @@ YT_DLP_COOKIES=          # Path to cookies file for restricted content
 | `/stop`           | Stop and clear queue        |
 | `/queue`          | View current queue          |
 | `/nowplaying`     | Show current track          |
-| `/volume <0-100>` | Set volume                  |
 | `/join`           | Join voice channel          |
 | `/leave`          | Leave voice channel         |
 | `/shuffle`        | Shuffle the queue           |

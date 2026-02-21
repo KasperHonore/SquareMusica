@@ -17,6 +17,7 @@ export function Dashboard() {
     playerState,
     resolutionStats,
     voiceContext,
+    botInfo,
     error,
     addToQueue,
     removeFromQueue,
@@ -153,6 +154,7 @@ export function Dashboard() {
         onAdd={addToQueue}
         connected={connected}
         showMiniPlayerPadding={!!currentTrack}
+        botInfo={botInfo}
       >
         {renderMainContent()}
       </AppLayout>

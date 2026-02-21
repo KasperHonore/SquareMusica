@@ -32,6 +32,7 @@ export function AppLayout({
   onAdd,
   connected,
   showMiniPlayerPadding = false,
+  botInfo,
 }) {
   const [queueOpen, setQueueOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -81,6 +82,7 @@ export function AppLayout({
             voiceContext={voiceContext}
             onJoinChannel={onJoinChannel}
             onLeaveChannel={onLeaveChannel}
+            botInfo={botInfo}
           />
         </div>
 

@@ -134,7 +134,7 @@ export function AppLayout({
                 borderColor: 'var(--color-border)',
               }}
             >
-              <div className="flex-1 p-4 overflow-hidden flex flex-col min-h-0">
+              <div className="flex-1 p-4 pb-0 overflow-hidden flex flex-col min-h-0">
                 {queueComponent}
               </div>
             </aside>
@@ -175,7 +175,7 @@ export function AppLayout({
                   </svg>
                 </button>
               </div>
-              <div className="flex-1 p-4 overflow-hidden flex flex-col min-h-0">
+              <div className="flex-1 p-4 pb-0 overflow-hidden flex flex-col min-h-0">
                 {queueComponent}
               </div>
             </aside>

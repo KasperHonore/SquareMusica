@@ -1,9 +1,24 @@
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { PassThrough } from 'stream';
+import { existsSync } from 'fs';
 
 const execFileAsync = promisify(execFile);
-const YT_DLP_PATH = process.env.YT_DLP_PATH || 'yt-dlp';
+
+/**
+ * Get the yt-dlp binary path, auto-detecting Docker vs local environments
+ */
+function getYtDlpPath() {
+  if (process.env.YT_DLP_PATH) return process.env.YT_DLP_PATH;
+  // Docker path
+  if (existsSync('/app/bin/yt-dlp')) return '/app/bin/yt-dlp';
+  // Local development path
+  if (existsSync('./bin/yt-dlp')) return './bin/yt-dlp';
+  // System-installed fallback
+  return 'yt-dlp';
+}
+
+const YT_DLP_PATH = getYtDlpPath();
 
 /**
  * Check if URL is a valid YouTube link

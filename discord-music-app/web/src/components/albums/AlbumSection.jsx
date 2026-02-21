@@ -50,7 +50,7 @@ export function AlbumSection({
   return (
     <>
       {/* Section container */}
-      <div className="flex flex-col min-h-0">
+      <div className="flex flex-col min-h-0 h-full">
         {/* Section header */}
         <div className="flex items-center justify-between px-3 py-2">
           <div className="flex items-center gap-2">
@@ -82,7 +82,6 @@ export function AlbumSection({
         ) : (
           <div
             className="flex-1 overflow-y-auto px-2 pb-2"
-            style={{ maxHeight: 'calc(40vh - 100px)' }}
             role="list"
             aria-label="Saved albums"
           >

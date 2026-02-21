@@ -97,7 +97,6 @@ Copy `.env.sample` to `.env.docker` and configure:
 |----------|-------------|
 | `DISCORD_TOKEN` | Bot token from [Discord Developer Portal](https://discord.com/developers/applications) |
 | `APP_ID` | Your Discord application ID |
-| `PUBLIC_KEY` | Your Discord application public key |
 | `GUILD_ID` | Your Discord server ID |
 | `DISCORD_CLIENT_SECRET` | OAuth2 client secret |
 | `OAUTH_REDIRECT_URI` | OAuth callback URL (e.g., `https://music.yourdomain.com/api/auth/callback`) |
@@ -109,8 +108,8 @@ Copy `.env.sample` to `.env.docker` and configure:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3000` | Internal container port |
-| `NODE_ENV` | - | Set to `production` for secure cookies |
-| `YT_DLP_PATH` | `/app/bin/yt-dlp` | Path to yt-dlp binary |
+| `NODE_ENV` | - | Set to `development` for non-secure cookies (secure by default) |
+| `YT_DLP_PATH` | Auto-detected | Path to yt-dlp binary (auto-detects `/app/bin/yt-dlp` in Docker) |
 | `YT_DLP_COOKIES` | - | Path to cookies file for age-restricted content |
 | `SPOTIFY_CLIENT_ID` | - | Spotify API client ID |
 | `SPOTIFY_CLIENT_SECRET` | - | Spotify API client secret |
@@ -121,7 +120,6 @@ Copy `.env.sample` to `.env.docker` and configure:
 # Discord Bot
 DISCORD_TOKEN=MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.XXXXXX.XXXXXXXXXXXXXXXXXXXXXXXXXX
 APP_ID=123456789012345678
-PUBLIC_KEY=abcdef1234567890abcdef1234567890abcdef1234567890
 GUILD_ID=987654321098765432
 
 # OAuth
@@ -129,10 +127,8 @@ DISCORD_CLIENT_SECRET=your_client_secret_here
 OAUTH_REDIRECT_URI=https://music.example.com/api/auth/callback
 
 # Server
-PORT=3000
 JWT_SECRET=your-super-secret-jwt-key-at-least-32-chars
 WEB_URL=https://music.example.com
-NODE_ENV=production
 ```
 
 ---

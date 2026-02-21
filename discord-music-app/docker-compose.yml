@@ -6,7 +6,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/app/data # Persist SQLite database
+      - discord-music-bot-data:/app/data # Persist SQLite database
       # - ./cookies.txt:/app/cookies.txt:ro  # Uncomment if using YouTube cookies
     env_file:
       - .env
@@ -16,3 +16,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+volumes:
+  discord-music-bot-data:

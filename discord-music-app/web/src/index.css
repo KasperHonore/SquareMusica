@@ -607,7 +607,6 @@
 
   .queue-list::-webkit-scrollbar-track {
     background: transparent;
-    margin: 4px 0;
   }
 
   .queue-list::-webkit-scrollbar-thumb {

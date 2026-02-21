@@ -6,7 +6,6 @@ import { MiniPlayer } from '../components/layout/MiniPlayer';
 import { NowPlaying } from '../components/NowPlaying';
 import { Queue } from '../components/Queue';
 import { History } from './History';
-import { Settings } from './Settings';
 
 export function Dashboard() {
   const { user, logout } = useAuth();
@@ -108,9 +107,6 @@ export function Dashboard() {
 
       case 'history':
         return <History />;
-
-      case 'settings':
-        return <Settings />;
 
       default:
         return null;

@@ -1,0 +1,11 @@
+node_modules/
+web/node_modules/
+data/
+.env
+.env.*
+!.env.sample
+*.log
+.git/
+.gitignore
+*.md
+.DS_Store

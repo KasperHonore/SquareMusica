@@ -95,8 +95,8 @@ export function AlbumItem({
       role="listitem"
       aria-label={`Album: ${album.name}`}
     >
-      {/* Cover image thumbnail */}
-      <div className="w-10 h-10 rounded overflow-hidden bg-white/10 flex-shrink-0 relative">
+      {/* Cover image thumbnail with play overlay */}
+      <div className="w-10 h-10 rounded overflow-hidden bg-white/10 flex-shrink-0 relative group/cover">
         {album.coverImage ? (
           <img
             src={album.coverImage}
@@ -109,10 +109,20 @@ export function AlbumItem({
             <AlbumIcon size={20} className="text-text-muted" />
           </div>
         )}
-        {isLoading && (
+        {isLoading ? (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
           </div>
+        ) : (
+          /* Play button overlay on hover */
+          <button
+            onClick={() => onPlay?.(album)}
+            className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-pointer"
+            title="Play album"
+            aria-label={`Play album ${album.name}`}
+          >
+            <Play size={16} className="text-white" aria-hidden="true" />
+          </button>
         )}
       </div>
 
@@ -138,42 +148,23 @@ export function AlbumItem({
         </p>
       </div>
 
-      {/* Action buttons - visible on hover, collapse when hidden to give text more space */}
-      <div className="flex items-center gap-0.5 opacity-0 w-0 overflow-hidden group-hover:opacity-100 group-hover:w-auto focus-within:opacity-100 focus-within:w-auto transition-all duration-150">
-        {/* Play button */}
-        <button
-          onClick={() => onPlay?.(album)}
-          disabled={isLoading}
-          className={[
-            'text-text-muted hover:text-accent transition-colors',
-            'p-1.5 rounded hover:bg-accent/10',
-            'focus-ring min-w-[32px] min-h-[32px]',
-            'flex items-center justify-center',
-            isLoading && 'opacity-50 cursor-not-allowed'
-          ].filter(Boolean).join(' ')}
-          title="Play album"
-          aria-label={`Play album ${album.name}`}
-        >
-          <Play size={14} aria-hidden="true" />
-        </button>
-
-        {/* Delete button */}
-        <button
-          onClick={() => onDelete?.(album)}
-          disabled={isLoading}
-          className={[
-            'text-text-muted hover:text-red-400 transition-colors',
-            'p-1.5 rounded hover:bg-red-400/10',
-            'focus-ring min-w-[32px] min-h-[32px]',
-            'flex items-center justify-center',
-            isLoading && 'opacity-50 cursor-not-allowed'
-          ].filter(Boolean).join(' ')}
-          title="Delete album"
-          aria-label={`Delete album ${album.name}`}
-        >
-          <Remove size={14} aria-hidden="true" />
-        </button>
-      </div>
+      {/* Delete button - visible on hover */}
+      <button
+        onClick={() => onDelete?.(album)}
+        disabled={isLoading}
+        className={[
+          'text-text-muted hover:text-red-400 transition-all duration-150',
+          'p-1.5 rounded hover:bg-red-400/10',
+          'focus-ring min-w-[32px] min-h-[32px]',
+          'flex items-center justify-center',
+          'opacity-0 w-0 overflow-hidden group-hover:opacity-100 group-hover:w-auto focus-within:opacity-100',
+          isLoading && 'opacity-50 cursor-not-allowed'
+        ].filter(Boolean).join(' ')}
+        title="Delete album"
+        aria-label={`Delete album ${album.name}`}
+      >
+        <Remove size={14} aria-hidden="true" />
+      </button>
 
       {/* Purple accent bar on hover - subtle visual distinction for albums */}
       <div

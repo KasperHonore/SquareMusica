@@ -6,6 +6,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(() => localStorage.getItem('token'));
+  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
     // Check for token in URL (from OAuth callback)
@@ -16,6 +17,12 @@ export function AuthProvider({ children }) {
       // Store token and clear from URL
       localStorage.setItem('token', urlToken);
       setToken(urlToken);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    const errorParam = params.get('error');
+    if (errorParam) {
+      setAuthError(errorParam);
       window.history.replaceState({}, '', window.location.pathname);
     }
 
@@ -70,7 +77,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, token }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, token, authError }}>
       {children}
     </AuthContext.Provider>
   );

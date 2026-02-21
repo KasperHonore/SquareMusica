@@ -2,7 +2,6 @@ import {
   MusicNote,
   Queue,
   History,
-  Settings,
   Leave,
 } from '../icons/index.jsx';
 
@@ -17,7 +16,6 @@ import {
  * │ * Now Playing      │
  * │   Queue            │
  * │   History          │
- * │   Settings         │
  * ├────────────────────┤
  * │ [JOIN CHANNEL] or  │
  * │ [I'm in a channel] │
@@ -28,7 +26,6 @@ const navItems = [
   { id: 'nowplaying', label: 'Now Playing', icon: MusicNote },
   { id: 'queue', label: 'Queue', icon: Queue },
   { id: 'history', label: 'History', icon: History },
-  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 export function Sidebar({

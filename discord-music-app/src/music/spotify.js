@@ -85,8 +85,8 @@ export function parseSpotifyUrl(input) {
 
   const trimmed = input.trim();
 
-  // Handle Spotify URI format (spotify:track:xxx, spotify:playlist:xxx)
-  const uriMatch = trimmed.match(/^spotify:(track|playlist):([a-zA-Z0-9]+)$/);
+  // Handle Spotify URI format (spotify:track:xxx, spotify:playlist:xxx, spotify:album:xxx)
+  const uriMatch = trimmed.match(/^spotify:(track|playlist|album):([a-zA-Z0-9]+)$/);
   if (uriMatch) {
     return { type: uriMatch[1], id: uriMatch[2] };
   }
@@ -100,8 +100,8 @@ export function parseSpotifyUrl(input) {
       return { type: null, id: null };
     }
 
-    // Parse path: /track/{id} or /playlist/{id}
-    const pathMatch = url.pathname.match(/^\/(track|playlist)\/([a-zA-Z0-9]+)/);
+    // Parse path: /track/{id}, /playlist/{id}, or /album/{id}
+    const pathMatch = url.pathname.match(/^\/(track|playlist|album)\/([a-zA-Z0-9]+)/);
     if (pathMatch) {
       return { type: pathMatch[1], id: pathMatch[2] };
     }
@@ -132,6 +132,36 @@ function normalizeTrack(track) {
  * @param {string} playlistId - Spotify playlist ID
  * @returns {Promise<{ name: string, owner: string, images: Array }|null>}
  */
+/**
+ * Get public album metadata
+ * @param {string} albumId - Spotify album ID
+ * @returns {Promise<{ name: string, images: Array, artists: string[], totalTracks: number }|null>}
+ */
+export async function getPublicAlbum(albumId) {
+  const client = getClient();
+  if (!client) {
+    return null;
+  }
+
+  try {
+    const album = await withRetry(() => client.albums.get(albumId));
+    return {
+      name: album.name,
+      images: album.images || [],
+      artists: album.artists?.map(a => a.name) || [],
+      totalTracks: album.total_tracks
+    };
+  } catch (error) {
+    console.error('Failed to get Spotify album:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Get public playlist metadata
+ * @param {string} playlistId - Spotify playlist ID
+ * @returns {Promise<{ name: string, owner: string, images: Array, totalTracks: number }|null>}
+ */
 export async function getPublicPlaylist(playlistId) {
   const client = getClient();
   if (!client) {
@@ -140,13 +170,14 @@ export async function getPublicPlaylist(playlistId) {
 
   try {
     const playlist = await withRetry(() =>
-      client.playlists.getPlaylist(playlistId, undefined, 'name,owner,images')
+      client.playlists.getPlaylist(playlistId, undefined, 'name,owner,images,tracks.total')
     );
 
     return {
       name: playlist.name,
       owner: playlist.owner?.display_name || playlist.owner?.id || 'Unknown',
-      images: playlist.images || []
+      images: playlist.images || [],
+      totalTracks: playlist.tracks?.total || 0
     };
   } catch (error) {
     console.error('Failed to get Spotify playlist:', error.message);

@@ -47,7 +47,6 @@ export function Sidebar({
   onLoadAlbum,
   onDeleteAlbum,
   onCreateAlbum,
-  currentQueue = [],
 }) {
   const isConnected = !!voiceContext?.channelName;
   return (
@@ -121,7 +120,6 @@ export function Sidebar({
           onLoadAlbum={onLoadAlbum}
           onDeleteAlbum={onDeleteAlbum}
           onCreateAlbum={onCreateAlbum}
-          currentQueue={currentQueue}
         />
       </div>
 

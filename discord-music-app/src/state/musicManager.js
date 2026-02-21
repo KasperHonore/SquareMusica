@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { db } from '../database/db.js';
 import { resolutionManager } from '../music/resolutionManager.js';
 import { getChannelInfo } from '../bot/voiceManager.js';
+import { getBotInfo } from '../bot/client.js';
 
 class MusicManager extends EventEmitter {
   constructor() {
@@ -227,7 +228,8 @@ class MusicManager extends EventEmitter {
       currentTrack: this.getCurrentTrack(),
       playerState: this.getPlayerState(),
       resolutionStats: this.queue?.getResolutionStats() || null,
-      voiceContext: this.getVoiceContext()
+      voiceContext: this.getVoiceContext(),
+      botInfo: getBotInfo()
     };
   }
 }

@@ -20,6 +20,7 @@ export function useSocket() {
   const [resolutionStats, setResolutionStats] = useState(null);
   const [voiceContext, setVoiceContext] = useState(null);
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [botInfo, setBotInfo] = useState(null);
 
   useEffect(() => {
     if (!token) return;
@@ -74,6 +75,9 @@ export function useSocket() {
       }
       if (state.voiceContext !== undefined) {
         setVoiceContext(state.voiceContext);
+      }
+      if (state.botInfo !== undefined) {
+        setBotInfo(state.botInfo);
       }
     });
 
@@ -138,6 +142,7 @@ export function useSocket() {
     resolutionStats,
     voiceContext,
     historyVersion,
+    botInfo,
     error,
     addToQueue,
     removeFromQueue,

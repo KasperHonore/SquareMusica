@@ -31,4 +31,12 @@ client.on('error', (error) => {
   console.error('Discord client error:', error);
 });
 
+export function getBotInfo() {
+  if (!client.user) return null;
+  return {
+    name: client.user.username,
+    avatarUrl: client.user.displayAvatarURL({ size: 64 })
+  };
+}
+
 export { client };

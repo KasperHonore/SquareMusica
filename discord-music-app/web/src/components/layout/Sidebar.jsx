@@ -34,6 +34,7 @@ export function Sidebar({
   voiceContext,
   onJoinChannel,
   onLeaveChannel,
+  botInfo,
 }) {
   const isConnected = !!voiceContext?.channelName;
   return (
@@ -47,11 +48,19 @@ export function Sidebar({
       {/* Logo section */}
       <div className="p-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-accent/20">
-            <MusicNote size={26} className="text-accent" />
-          </div>
+          {botInfo?.avatarUrl ? (
+            <img
+              src={botInfo.avatarUrl}
+              alt={botInfo.name}
+              className="w-10 h-10 rounded-xl"
+            />
+          ) : (
+            <div className="p-2.5 rounded-xl bg-accent/20">
+              <MusicNote size={26} className="text-accent" />
+            </div>
+          )}
           <span className="text-lg font-bold tracking-tight" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-heading)' }}>
-            Music Bot
+            {botInfo?.name || 'Music Bot'}
           </span>
         </div>
       </div>

@@ -15,7 +15,7 @@ router.get('/discord', (req, res) => {
     client_id: process.env.APP_ID,
     redirect_uri: process.env.OAUTH_REDIRECT_URI,
     response_type: 'code',
-    scope: 'identify'
+    scope: 'identify guilds'
   });
   res.redirect(`https://discord.com/api/oauth2/authorize?${params}`);
 });
@@ -66,6 +66,25 @@ router.get('/callback', async (req, res) => {
     }
 
     const discordUser = await userResponse.json();
+
+    // Fetch user's guilds to verify membership
+    const guildsResponse = await fetch(`${DISCORD_API}/users/@me/guilds`, {
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`
+      }
+    });
+
+    if (!guildsResponse.ok) {
+      console.error('Guild fetch failed:', await guildsResponse.text());
+      return res.redirect(`${process.env.WEB_URL}?error=guild_fetch`);
+    }
+
+    const guilds = await guildsResponse.json();
+    const isMember = guilds.some(g => g.id === process.env.GUILD_ID);
+
+    if (!isMember) {
+      return res.redirect(`${process.env.WEB_URL}?error=not_member`);
+    }
 
     // Create or update user in database
     const user = db.findOrCreateUser(

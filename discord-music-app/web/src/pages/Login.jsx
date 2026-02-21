@@ -117,8 +117,13 @@ function SoundWave() {
   );
 }
 
+const errorMessages = {
+  not_member: "You must be a member of the Discord server to use this app.",
+  guild_fetch: "Failed to verify server membership. Please try again.",
+};
+
 export function Login() {
-  const { login } = useAuth();
+  const { login, authError } = useAuth();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -248,6 +253,21 @@ export function Login() {
           >
             Control your server's music from anywhere
           </p>
+
+          {/* Auth error message */}
+          {authError && (
+            <div
+              className={`
+                mb-6 p-4 rounded-lg border
+                bg-red-500/10 border-red-500/30 text-red-200
+                transition-all duration-500 ease-out
+                ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}
+              `}
+              style={{ transitionDelay: '550ms' }}
+            >
+              {errorMessages[authError] || "An error occurred. Please try again."}
+            </div>
+          )}
 
           {/* Discord Login Button with glow effect */}
           <div

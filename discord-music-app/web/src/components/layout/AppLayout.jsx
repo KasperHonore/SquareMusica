@@ -38,7 +38,6 @@ export function AppLayout({
   onLoadAlbum,
   onDeleteAlbum,
   onCreateAlbum,
-  currentQueue = [],
 }) {
   const [queueOpen, setQueueOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -93,7 +92,6 @@ export function AppLayout({
             onLoadAlbum={onLoadAlbum}
             onDeleteAlbum={onDeleteAlbum}
             onCreateAlbum={onCreateAlbum}
-            currentQueue={currentQueue}
           />
         </div>
 

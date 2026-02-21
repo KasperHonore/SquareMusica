@@ -1,0 +1,5 @@
+// Album components - re-exports for convenient importing
+export { MosaicThumbnail } from './MosaicThumbnail';
+export { AlbumItem } from './AlbumItem';
+export { AddAlbumModal } from './AddAlbumModal';
+export { AlbumSection } from './AlbumSection';

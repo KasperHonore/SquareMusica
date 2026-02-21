@@ -95,32 +95,40 @@ export function Dashboard() {
 
   // Album handlers
   const handleLoadAlbum = useCallback((album) => {
-    if (!album.tracks || album.tracks.length === 0) {
+    if (!album.spotifyUrl) {
+      // Legacy support: if album has tracks array instead of spotifyUrl
+      if (album.tracks && album.tracks.length > 0) {
+        album.tracks.forEach(track => {
+          if (track.url) {
+            addToQueue(track.url);
+          }
+        });
+      }
       return;
     }
-    // Add each track from the album to the queue
-    album.tracks.forEach(track => {
-      if (track.url) {
-        addToQueue(track.url);
-      }
-    });
-  }, [addToQueue]);
+
+    // Clear the current queue by stopping playback
+    // playerControl('stop') calls musicManager.stop() which:
+    // 1. Stops playback
+    // 2. Clears the queue (queue.clear())
+    // 3. Resets currentIndex to 0
+    playerControl('stop');
+
+    // Then add the Spotify URL (uses existing lazy resolution)
+    addToQueue(album.spotifyUrl);
+  }, [addToQueue, playerControl]);
 
   const handleDeleteAlbum = useCallback((albumId) => {
     setAlbums(prev => prev.filter(album => album.id !== albumId));
   }, []);
 
-  const handleCreateAlbum = useCallback((name, tracks) => {
+  const handleCreateAlbum = useCallback((name, spotifyUrl, coverImage) => {
     const newAlbum = {
       id: generateId(),
       name,
+      spotifyUrl,
+      coverImage,
       createdAt: new Date().toISOString(),
-      tracks: tracks.map(track => ({
-        url: track.url,
-        title: track.title,
-        thumbnail: track.thumbnail,
-        duration: track.duration,
-      })),
     };
     setAlbums(prev => [...prev, newAlbum]);
   }, []);
@@ -218,7 +226,6 @@ export function Dashboard() {
         onLoadAlbum={handleLoadAlbum}
         onDeleteAlbum={handleDeleteAlbum}
         onCreateAlbum={handleCreateAlbum}
-        currentQueue={upcomingTracks}
       >
         {renderMainContent()}
       </AppLayout>

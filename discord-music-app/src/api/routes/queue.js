@@ -47,6 +47,13 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
     // Check for Spotify URL first
     const spotifyParsed = parseSpotifyUrl(query);
 
+    // User info for requestedBy
+    const userInfo = {
+      username: req.user.username,
+      id: req.user.discord_id,
+      avatar: req.user.avatar
+    };
+
     if (spotifyParsed.type === 'playlist') {
       // Handle Spotify playlist - add tracks immediately without resolution (lazy)
       const spotifyTracks = await getPublicPlaylistTracks(spotifyParsed.id);
@@ -56,7 +63,7 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
 
       // Convert to unresolved queue tracks (lazy resolution)
       tracks = spotifyTracks.map(st =>
-        ResolutionManager.createUnresolvedTrack(st, req.user.username)
+        ResolutionManager.createUnresolvedTrack(st, userInfo)
       );
 
       // Tracks will be resolved lazily - no skipped tracks at add time
@@ -94,10 +101,12 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
       tracks = [results[0]];
     }
 
-    // Add requestedBy to all tracks
+    // Add requestedBy with full user info to all tracks
     tracks = tracks.map(track => ({
       ...track,
-      requestedBy: req.user.username
+      requestedBy: userInfo.username,
+      requestedById: userInfo.id,
+      requestedByAvatar: userInfo.avatar
     }));
 
     // Add to queue

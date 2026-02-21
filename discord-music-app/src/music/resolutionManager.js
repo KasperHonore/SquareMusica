@@ -273,15 +273,22 @@ class ResolutionManager extends EventEmitter {
   /**
    * Create an unresolved track from Spotify data
    * @param {Object} spotifyTrack - Spotify track data
-   * @param {string} requestedBy - User who requested the track
+   * @param {Object|string} userInfo - User who requested the track (object with username/id/avatar or just username string)
    * @returns {Object} Unresolved queue track
    */
-  static createUnresolvedTrack(spotifyTrack, requestedBy) {
+  static createUnresolvedTrack(spotifyTrack, userInfo) {
+    // Handle both string (legacy) and object formats
+    const user = typeof userInfo === 'string'
+      ? { username: userInfo, id: null, avatar: null }
+      : userInfo;
+
     return {
       title: spotifyTrack.title,
       duration: Math.floor(spotifyTrack.durationMs / 1000),
       thumbnail: null,
-      requestedBy,
+      requestedBy: user.username,
+      requestedById: user.id,
+      requestedByAvatar: user.avatar,
       url: null,
       channel: null,
       spotifyData: {

@@ -138,8 +138,8 @@ export function AlbumItem({
         </p>
       </div>
 
-      {/* Action buttons - visible on hover */}
-      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
+      {/* Action buttons - visible on hover, collapse when hidden to give text more space */}
+      <div className="flex items-center gap-0.5 opacity-0 w-0 overflow-hidden group-hover:opacity-100 group-hover:w-auto focus-within:opacity-100 focus-within:w-auto transition-all duration-150">
         {/* Play button */}
         <button
           onClick={() => onPlay?.(album)}

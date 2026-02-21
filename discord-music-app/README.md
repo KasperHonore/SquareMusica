@@ -49,7 +49,7 @@ pip install yt-dlp
 yt-dlp --version
 ```
 
-If yt-dlp is installed in a non-standard location, set `YT_DLP_PATH` in your `.env` file.
+`YT_DLP_PATH` is auto-detected (local `./bin/yt-dlp`, Docker `/app/bin/yt-dlp`, or system `yt-dlp`). Set it manually only for custom paths.
 
 ## Quick Start
 
@@ -70,10 +70,11 @@ cp .env.sample .env
 Required variables:
 - `DISCORD_TOKEN` - Your bot token from Discord Developer Portal
 - `APP_ID` - Your application ID
-- `PUBLIC_KEY` - Your application's public key
-- `GUILD_ID` - Guild ID for development (optional, for faster command registration)
+- `GUILD_ID` - Your Discord server ID
 - `DISCORD_CLIENT_SECRET` - OAuth client secret (for web UI)
 - `JWT_SECRET` - Random string for JWT signing
+- `OAUTH_REDIRECT_URI` - OAuth callback URL
+- `WEB_URL` - Frontend URL (for CORS)
 
 ### 3. Register Commands
 

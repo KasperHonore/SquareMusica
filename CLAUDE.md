@@ -87,24 +87,24 @@ discord-music-app/
 Required in `.env`:
 
 ```env
-# Discord Bot
+# Discord Bot (required)
 DISCORD_TOKEN=           # Bot token from Discord Developer Portal
 APP_ID=                  # Application ID
-PUBLIC_KEY=              # Public key for verification
 GUILD_ID=                # Your Discord server ID
 
-# OAuth (for web UI authentication)
+# OAuth (required for web UI)
 DISCORD_CLIENT_SECRET=   # OAuth client secret
 OAUTH_REDIRECT_URI=http://localhost:3000/api/auth/callback
 
-# Server
-PORT=3000                # API server port
+# Server (required)
 JWT_SECRET=              # Secret for JWT tokens
-WEB_URL=http://localhost:5173  # React dev server URL
+WEB_URL=http://localhost:5173  # Frontend URL (used for CORS)
 
-# yt-dlp (optional)
-YT_DLP_PATH=             # Custom yt-dlp path (default: auto-downloaded to bin/)
-YT_DLP_COOKIES=          # Path to cookies file for restricted content
+# Optional
+NODE_ENV=development     # Set to 'development' for non-secure cookies (secure by default)
+# PORT=3000              # Defaults to 3000
+# YT_DLP_PATH=           # Auto-detected: ./bin/yt-dlp (local) or /app/bin/yt-dlp (Docker)
+# YT_DLP_COOKIES=        # Path to cookies file for age-restricted content
 ```
 
 ## Slash Commands

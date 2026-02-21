@@ -31,7 +31,11 @@ export function handleQueueAdd(socket) {
 
     try {
       let tracks = [];
-      const requestedBy = socket.user?.username || 'Web User';
+      const userInfo = {
+        username: socket.user?.username || 'Web User',
+        id: socket.user?.discord_id || null,
+        avatar: socket.user?.avatar || null
+      };
 
       // Check for Spotify URL first
       const spotifyParsed = parseSpotifyUrl(query);
@@ -46,7 +50,7 @@ export function handleQueueAdd(socket) {
 
         // Convert to unresolved queue tracks (lazy resolution)
         tracks = spotifyTracks.map(st =>
-          ResolutionManager.createUnresolvedTrack(st, requestedBy)
+          ResolutionManager.createUnresolvedTrack(st, userInfo)
         );
       } else if (spotifyParsed.type === 'track') {
         // Handle Spotify track - resolve immediately
@@ -90,7 +94,9 @@ export function handleQueueAdd(socket) {
       // Add requestedBy to all tracks
       tracks = tracks.map(track => ({
         ...track,
-        requestedBy
+        requestedBy: userInfo.username,
+        requestedById: userInfo.id,
+        requestedByAvatar: userInfo.avatar
       }));
 
       // Add to queue

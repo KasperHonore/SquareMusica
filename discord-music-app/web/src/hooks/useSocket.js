@@ -13,7 +13,6 @@ export function useSocket() {
   const [playerState, setPlayerState] = useState({
     playing: false,
     paused: false,
-    volume: 100,
     loop: 'off',
     position: 0,
     connected: false
@@ -66,7 +65,6 @@ export function useSocket() {
       setPlayerState(state.playerState || {
         playing: false,
         paused: false,
-        volume: 100,
         loop: 'off',
         position: 0,
         connected: false

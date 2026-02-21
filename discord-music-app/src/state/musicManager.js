@@ -164,13 +164,6 @@ class MusicManager extends EventEmitter {
     return true;
   }
 
-  setVolume(level) {
-    if (!this.player) return false;
-    this.player.setVolume(level);
-    this.emitState();
-    return true;
-  }
-
   setLoop(mode) {
     if (!this.queue) return false;
     this.queue.loopMode = mode;
@@ -196,7 +189,6 @@ class MusicManager extends EventEmitter {
     return {
       playing: this.player?.isPlaying() || false,
       paused: this.player?.isPaused() || false,
-      volume: this.player?.volume ?? 100,
       loop: this.queue?.loopMode || 'off',
       position: this.player?.getPosition() || 0,
       connected: !!this.getConnection?.(guildId)

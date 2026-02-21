@@ -8,7 +8,7 @@ A feature-rich Discord music bot with a web control panel. Stream music from You
 - Playlist support
 - Queue management (add, remove, reorder, shuffle)
 - Playback controls (play, pause, skip, stop)
-- Volume and loop controls
+- Loop controls
 - Web UI with Discord OAuth authentication
 - Real-time updates via Socket.io
 
@@ -105,7 +105,6 @@ npm run dev
 | `/remove <position>` | Remove track from queue |
 | `/shuffle` | Shuffle the queue |
 | `/clear` | Clear the queue |
-| `/volume <0-100>` | Set volume |
 | `/loop <off/track/queue>` | Set loop mode |
 | `/webui` | Get web control panel link |
 

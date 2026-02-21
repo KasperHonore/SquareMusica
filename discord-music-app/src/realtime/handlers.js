@@ -198,11 +198,6 @@ export function handlePlayerControl(socket) {
         case 'stop':
           musicManager.stop();
           break;
-        case 'volume':
-          if (typeof value === 'number') {
-            musicManager.setVolume(value);
-          }
-          break;
         case 'loop':
           if (value) {
             musicManager.setLoop(value);

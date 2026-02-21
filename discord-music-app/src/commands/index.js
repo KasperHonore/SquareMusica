@@ -2,7 +2,7 @@ import { registerCommand } from '../bot/commandHandler.js';
 import { handleJoin, handleLeave } from './voice.js';
 import { handlePlay, handlePause, handleResume, handleSkip, handleStop } from './playback.js';
 import { handleQueue, handleNowPlaying, handleRemove, handleShuffle, handleClear } from './queue.js';
-import { handleVolume, handleLoop } from './settings.js';
+import { handleLoop } from './settings.js';
 import { handleWebUI } from './utility.js';
 
 export function registerAllCommands() {
@@ -25,7 +25,6 @@ export function registerAllCommands() {
   registerCommand('clear', handleClear);
 
   // Settings
-  registerCommand('volume', handleVolume);
   registerCommand('loop', handleLoop);
 
   // Utility

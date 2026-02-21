@@ -416,7 +416,7 @@ export function MiniPlayer({
       `}</style>
 
       <div
-        className="miniplayer-dock fixed bottom-0 left-0 right-0 lg:left-60 lg:right-80 z-50 border-t lg:rounded-t-xl"
+        className="miniplayer-dock fixed bottom-0 left-0 right-0 lg:left-60 lg:right-80 z-50 border-t"
         style={{
           borderColor: 'rgba(255, 255, 255, 0.1)',
           boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.05)'
@@ -434,10 +434,10 @@ export function MiniPlayer({
           isPlaying={playerState.playing}
         />
 
-        {/* Main content */}
-        <div className="h-[72px] flex items-center px-4 sm:px-6">
-          {/* Left section - Empty (compact) or Track info (full) */}
-          <div className="flex items-center gap-3 sm:gap-4 min-w-0 w-[30%] max-w-[300px]">
+        {/* Main content - Three-column grid for true centering */}
+        <div className="h-[72px] grid grid-cols-[1fr_auto_1fr] items-center px-4 sm:px-6">
+          {/* Left section - Track info (or empty in compact mode) */}
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
             {isCompact ? null : (
               /* Full mode: Album art + track details */
               <>
@@ -467,7 +467,7 @@ export function MiniPlayer({
                 </div>
 
                 {/* Track details */}
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 max-w-[250px]">
                   <div className="flex items-center gap-2">
                     <p className="font-semibold truncate text-sm sm:text-base" style={{ fontFamily: 'var(--font-heading)' }}>
                       {currentTrack.title}
@@ -488,8 +488,8 @@ export function MiniPlayer({
             )}
           </div>
 
-          {/* Playback controls - center, takes remaining space */}
-          <div className="flex-1 flex items-center justify-center gap-1 sm:gap-2">
+          {/* Playback controls - True center column */}
+          <div className="flex items-center justify-center gap-1 sm:gap-2">
             {/* Shuffle - hidden on mobile */}
             <div className="hidden sm:block">
               <ToggleButton
@@ -531,6 +531,11 @@ export function MiniPlayer({
                 glowColor={albumColor}
               />
             </div>
+          </div>
+
+          {/* Right section - Empty spacer for symmetry */}
+          <div className="flex items-center justify-end gap-2">
+            {/* Future: volume control, queue button, etc. could go here */}
           </div>
         </div>
       </div>

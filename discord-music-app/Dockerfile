@@ -1,16 +1,24 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 # Install build dependencies for native modules (better-sqlite3, opus, sodium)
-RUN apk add --no-cache python3 make g++ git
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy package files and install dependencies
+# Copy package files and scripts needed for postinstall
 COPY package*.json ./
+COPY scripts ./scripts
+
+# Install dependencies (postinstall runs setup-ytdlp.js)
 RUN npm ci
 
-# Copy source code
+# Copy remaining source code
 COPY . .
 
 # Build frontend
@@ -20,12 +28,16 @@ RUN npm ci && npm run build
 WORKDIR /app
 
 # Production stage
-FROM node:20-alpine
+FROM node:20-slim
 
 # Install runtime dependencies
 # - python3: required for yt-dlp
 # - ffmpeg: required for audio processing
-RUN apk add --no-cache python3 ffmpeg
+RUN apt-get update && apt-get install -y \
+    python3 \
+    ffmpeg \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

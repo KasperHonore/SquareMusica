@@ -630,4 +630,41 @@
       opacity: 0;
     }
   }
+
+  /* =========================================================================
+     MARQUEE TEXT ANIMATION
+     Scrolls long text on hover to reveal full content
+     ========================================================================= */
+
+  @keyframes marquee-scroll {
+    0%, 10% {
+      transform: translateX(0);
+    }
+    90%, 100% {
+      transform: translateX(var(--scroll-distance, -50%));
+    }
+  }
+
+  .marquee-container {
+    position: relative;
+    mask-image: linear-gradient(90deg, black 90%, transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, black 90%, transparent 100%);
+  }
+
+  .marquee-text {
+    display: inline-block;
+    white-space: nowrap;
+    padding-right: 1rem;
+  }
+
+  .group:hover .marquee-text.should-scroll {
+    animation: marquee-scroll 3s ease-in-out infinite;
+  }
+
+  /* Pause animation when user prefers reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .group:hover .marquee-text.should-scroll {
+      animation: none;
+    }
+  }
 }

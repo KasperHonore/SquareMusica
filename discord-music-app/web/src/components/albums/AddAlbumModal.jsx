@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * Close icon for modal
@@ -285,7 +286,7 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
 
   if (!isOpen && !isClosing) return null;
 
-  return (
+  return createPortal(
     <div
       className={`
         fixed inset-0 z-50 flex items-center justify-center p-4
@@ -301,14 +302,14 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
       <div
         ref={modalRef}
         className={`
-          card-glass w-full max-w-md
-          p-6 relative
+          card-glass w-full max-w-xl
+          p-8 relative
           ${isClosing ? 'animate-scale-out' : 'animate-scale-in'}
         `}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-[#8B5CF6]/20 flex items-center justify-center">
               <AlbumIcon size={22} className="text-[#8B5CF6]" />
@@ -332,7 +333,7 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
         {/* Form */}
         <form onSubmit={handleSubmit}>
           {/* Spotify URL input */}
-          <div className="mb-5">
+          <div className="mb-6">
             <label
               htmlFor="spotify-url"
               className="block text-sm font-medium text-secondary mb-2"
@@ -376,10 +377,10 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
 
           {/* Metadata preview (shown after successful fetch) */}
           {metadataLoaded && (
-            <div className="mb-5 p-4 rounded-lg bg-white/5 border border-white/10 animate-fade-in">
-              <div className="flex gap-4">
-                {/* Cover image */}
-                <div className="w-20 h-20 rounded-lg overflow-hidden bg-white/10 flex-shrink-0">
+            <div className="mb-6 p-6 rounded-xl bg-white/5 border border-white/10 animate-fade-in">
+              <div className="flex gap-5">
+                {/* Cover image - larger preview */}
+                <div className="w-32 h-32 rounded-xl overflow-hidden bg-white/10 flex-shrink-0 shadow-lg">
                   {coverImage ? (
                     <img
                       src={coverImage}
@@ -388,16 +389,16 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <AlbumIcon size={32} className="text-text-muted" />
+                      <AlbumIcon size={48} className="text-text-muted" />
                     </div>
                   )}
                 </div>
 
                 {/* Name input and track count */}
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
                   <label
                     htmlFor="album-name"
-                    className="block text-xs font-medium text-text-muted mb-1"
+                    className="block text-sm font-medium text-text-muted mb-2"
                   >
                     Album Name
                   </label>
@@ -407,15 +408,15 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
                     value={albumName}
                     onChange={(e) => setAlbumName(e.target.value)}
                     className="
-                      w-full px-3 py-2 rounded-lg
+                      w-full px-4 py-3 rounded-lg
                       bg-white/5 border border-white/10
-                      text-primary text-sm
+                      text-primary text-base
                       focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/30 focus:border-[#8B5CF6]/50
                       transition-all duration-200
                     "
                     maxLength={100}
                   />
-                  <p className="text-xs text-text-muted mt-2">
+                  <p className="text-sm text-text-muted mt-3">
                     {trackCount} {trackCount === 1 ? 'track' : 'tracks'} &bull; {contentType === 'album' ? 'Album' : 'Playlist'}
                   </p>
                 </div>
@@ -480,7 +481,8 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
           animation: scale-out 0.15s ease-out forwards;
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 }
 

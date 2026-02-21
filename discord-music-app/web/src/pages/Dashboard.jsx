@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSocket } from '../hooks/useSocket';
+import { useBrowserMeta } from '../hooks/useBrowserMeta';
 import { useAuth } from '../context/AuthContext';
 import { AppLayout } from '../components/layout/AppLayout';
 import { MiniPlayer } from '../components/layout/MiniPlayer';
@@ -35,6 +36,8 @@ export function Dashboard() {
     voiceLeave,
     clearError
   } = useSocket();
+
+  useBrowserMeta(botInfo, currentTrack);
 
   const [activeView, setActiveView] = useState('nowplaying');
 

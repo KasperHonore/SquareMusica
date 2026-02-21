@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import { Play, Remove } from '../icons';
 
 /**
@@ -45,11 +46,33 @@ export function AlbumItem({
   onPlay,
   onDelete
 }) {
+  const [shouldScroll, setShouldScroll] = useState(false);
+  const textRef = useRef(null);
+  const containerRef = useRef(null);
+
   // Calculate staggered animation delay
   const animationDelay = `${index * 50}ms`;
 
   // Alternating background tint for scanability
   const isEven = index % 2 === 0;
+
+  // Check if text overflows container
+  useEffect(() => {
+    const checkOverflow = () => {
+      if (textRef.current && containerRef.current) {
+        const textWidth = textRef.current.scrollWidth;
+        const containerWidth = containerRef.current.clientWidth;
+        setShouldScroll(textWidth > containerWidth);
+        // Set CSS variable for scroll distance
+        if (textWidth > containerWidth) {
+          textRef.current.style.setProperty('--scroll-distance', `-${textWidth - containerWidth + 16}px`);
+        }
+      }
+    };
+    checkOverflow();
+    window.addEventListener('resize', checkOverflow);
+    return () => window.removeEventListener('resize', checkOverflow);
+  }, [album.name]);
 
   return (
     <div
@@ -95,9 +118,21 @@ export function AlbumItem({
 
       {/* Album info */}
       <div className="flex-1 min-w-0">
-        <p className="truncate font-heading text-sm font-semibold text-primary">
-          {album.name}
-        </p>
+        <div
+          ref={containerRef}
+          className="marquee-container overflow-hidden"
+        >
+          <p
+            ref={textRef}
+            className={`
+              font-heading text-sm font-semibold text-primary
+              whitespace-nowrap inline-block
+              ${shouldScroll ? 'marquee-text should-scroll' : ''}
+            `}
+          >
+            {album.name}
+          </p>
+        </div>
         <p className="text-xs text-text-muted mt-0.5">
           {album.spotifyUrl?.includes('playlist') ? 'Playlist' : 'Album'}
         </p>

@@ -45,6 +45,12 @@
   --color-error: #ef4444;
   --color-info: #3b82f6;
 
+  /* Album accent - Purple for saved albums section */
+  --color-album-accent: #8B5CF6;
+  --color-album-accent-hover: #7C3AED;
+  --color-album-accent-muted: rgba(139, 92, 246, 0.2);
+  --color-album-accent-subtle: rgba(139, 92, 246, 0.1);
+
   /* -------------------------------------------------------------------------
      Typography Tokens
      ------------------------------------------------------------------------- */
@@ -373,6 +379,20 @@
     animation: pulse-glow 2s ease-in-out infinite;
   }
 
+  /* Purple pulse glow for albums */
+  @keyframes pulse-glow-album {
+    0%, 100% {
+      box-shadow: 0 0 20px var(--color-album-accent-muted);
+    }
+    50% {
+      box-shadow: 0 0 35px rgba(139, 92, 246, 0.4);
+    }
+  }
+
+  .animate-pulse-glow-album {
+    animation: pulse-glow-album 2.5s ease-in-out infinite;
+  }
+
   /* Stagger animation delays for orchestrated reveals */
   .delay-75 { animation-delay: 75ms; }
   .delay-100 { animation-delay: 100ms; }
@@ -471,6 +491,14 @@
   .border-default { border-color: var(--color-border); }
   .border-strong { border-color: var(--color-border-strong); }
   .border-accent { border-color: var(--color-accent); }
+
+  /* Album accent colors */
+  .bg-album-accent { background-color: var(--color-album-accent); }
+  .bg-album-accent-hover { background-color: var(--color-album-accent-hover); }
+  .bg-album-accent-muted { background-color: var(--color-album-accent-muted); }
+  .bg-album-accent-subtle { background-color: var(--color-album-accent-subtle); }
+  .text-album-accent { color: var(--color-album-accent); }
+  .border-album-accent { border-color: var(--color-album-accent); }
 
   /* Divide colors */
   .divide-default > :not([hidden]) ~ :not([hidden]) {

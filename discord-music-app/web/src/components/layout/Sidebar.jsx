@@ -4,9 +4,10 @@ import {
   History,
   Leave,
 } from '../icons/index.jsx';
+import { AlbumSection } from '../albums';
 
 /**
- * Sidebar component with navigation only
+ * Sidebar component with navigation and albums section
  * Volume and Loop controls have been moved to the bottom dock (MiniPlayer)
  *
  * Wireframe:
@@ -16,6 +17,12 @@ import {
  * │ * Now Playing      │
  * │   Queue            │
  * │   History          │
+ * ├─ ─ ─ ─ ─ ─ ─ ─ ─ ─┤  ← Gradient divider
+ * │ Your Albums    [+] │
+ * │ ┌──────────────┐   │
+ * │ │ Album 1      │   │
+ * │ │ Album 2      │   │  ← Scrollable
+ * │ └──────────────┘   │
  * ├────────────────────┤
  * │ [JOIN CHANNEL] or  │
  * │ [I'm in a channel] │
@@ -35,6 +42,12 @@ export function Sidebar({
   onJoinChannel,
   onLeaveChannel,
   botInfo,
+  // Album props
+  albums = [],
+  onLoadAlbum,
+  onDeleteAlbum,
+  onCreateAlbum,
+  currentQueue = [],
 }) {
   const isConnected = !!voiceContext?.channelName;
   return (
@@ -66,7 +79,7 @@ export function Sidebar({
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3">
+      <nav className="p-3">
         <ul className="space-y-1">
           {navItems.map(({ id, label, icon: Icon }) => {
             const isActive = activeView === id;
@@ -97,6 +110,20 @@ export function Sidebar({
           })}
         </ul>
       </nav>
+
+      {/* Gradient divider */}
+      <div className="mx-3 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+      {/* Albums section */}
+      <div className="flex-1 min-h-0 py-2">
+        <AlbumSection
+          albums={albums}
+          onLoadAlbum={onLoadAlbum}
+          onDeleteAlbum={onDeleteAlbum}
+          onCreateAlbum={onCreateAlbum}
+          currentQueue={currentQueue}
+        />
+      </div>
 
       {/* Voice channel button */}
       <div className="p-4 border-t mt-auto" style={{ borderColor: 'var(--color-border)' }}>

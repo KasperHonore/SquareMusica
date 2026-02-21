@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { useAuth } from '../context/AuthContext';
 import { AppLayout } from '../components/layout/AppLayout';
@@ -6,6 +6,14 @@ import { MiniPlayer } from '../components/layout/MiniPlayer';
 import { NowPlaying } from '../components/NowPlaying';
 import { Queue } from '../components/Queue';
 import { History } from './History';
+
+// Storage key for albums persistence
+const ALBUMS_STORAGE_KEY = 'music-bot-albums';
+
+// Generate a simple UUID for album IDs
+function generateId() {
+  return 'album_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+}
 
 export function Dashboard() {
   const { user, logout } = useAuth();
@@ -29,6 +37,25 @@ export function Dashboard() {
   } = useSocket();
 
   const [activeView, setActiveView] = useState('nowplaying');
+
+  // Albums state with localStorage persistence
+  const [albums, setAlbums] = useState(() => {
+    try {
+      const saved = localStorage.getItem(ALBUMS_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Persist albums to localStorage when changed
+  useEffect(() => {
+    try {
+      localStorage.setItem(ALBUMS_STORAGE_KEY, JSON.stringify(albums));
+    } catch (e) {
+      console.error('Failed to save albums to localStorage:', e);
+    }
+  }, [albums]);
 
   // Auto-dismiss error after 5 seconds
   useEffect(() => {
@@ -65,6 +92,38 @@ export function Dashboard() {
   const handleLeaveChannel = () => {
     voiceLeave();
   };
+
+  // Album handlers
+  const handleLoadAlbum = useCallback((album) => {
+    if (!album.tracks || album.tracks.length === 0) {
+      return;
+    }
+    // Add each track from the album to the queue
+    album.tracks.forEach(track => {
+      if (track.url) {
+        addToQueue(track.url);
+      }
+    });
+  }, [addToQueue]);
+
+  const handleDeleteAlbum = useCallback((albumId) => {
+    setAlbums(prev => prev.filter(album => album.id !== albumId));
+  }, []);
+
+  const handleCreateAlbum = useCallback((name, tracks) => {
+    const newAlbum = {
+      id: generateId(),
+      name,
+      createdAt: new Date().toISOString(),
+      tracks: tracks.map(track => ({
+        url: track.url,
+        title: track.title,
+        thumbnail: track.thumbnail,
+        duration: track.duration,
+      })),
+    };
+    setAlbums(prev => [...prev, newAlbum]);
+  }, []);
 
   // Render the main content based on active view
   const renderMainContent = () => {
@@ -155,6 +214,11 @@ export function Dashboard() {
         connected={connected}
         showMiniPlayerPadding={!!currentTrack}
         botInfo={botInfo}
+        albums={albums}
+        onLoadAlbum={handleLoadAlbum}
+        onDeleteAlbum={handleDeleteAlbum}
+        onCreateAlbum={handleCreateAlbum}
+        currentQueue={upcomingTracks}
       >
         {renderMainContent()}
       </AppLayout>

@@ -33,6 +33,12 @@ export function AppLayout({
   connected,
   showMiniPlayerPadding = false,
   botInfo,
+  // Album props
+  albums = [],
+  onLoadAlbum,
+  onDeleteAlbum,
+  onCreateAlbum,
+  currentQueue = [],
 }) {
   const [queueOpen, setQueueOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -83,6 +89,11 @@ export function AppLayout({
             onJoinChannel={onJoinChannel}
             onLeaveChannel={onLeaveChannel}
             botInfo={botInfo}
+            albums={albums}
+            onLoadAlbum={onLoadAlbum}
+            onDeleteAlbum={onDeleteAlbum}
+            onCreateAlbum={onCreateAlbum}
+            currentQueue={currentQueue}
           />
         </div>
 

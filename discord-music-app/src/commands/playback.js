@@ -81,6 +81,13 @@ export async function handlePlay(interaction) {
     let tracks = [];
     let skippedTracks = [];
 
+    // User info for requestedBy
+    const userInfo = {
+      username: interaction.user.username,
+      id: interaction.user.id,
+      avatar: interaction.user.avatar
+    };
+
     // Check for Spotify URL first
     const spotifyParsed = parseSpotifyUrl(query);
 
@@ -93,7 +100,7 @@ export async function handlePlay(interaction) {
 
       // Convert to unresolved queue tracks (lazy resolution)
       tracks = spotifyTracks.map(st =>
-        ResolutionManager.createUnresolvedTrack(st, interaction.user.username)
+        ResolutionManager.createUnresolvedTrack(st, userInfo)
       );
 
       // Tracks will be resolved lazily by the resolution manager
@@ -129,10 +136,12 @@ export async function handlePlay(interaction) {
       tracks = [results[0]];
     }
 
-    // Add requestedBy
+    // Add requestedBy with full user info
     tracks = tracks.map(t => ({
       ...t,
-      requestedBy: interaction.user.username
+      requestedBy: userInfo.username,
+      requestedById: userInfo.id,
+      requestedByAvatar: userInfo.avatar
     }));
 
     // Add to queue

@@ -54,6 +54,14 @@ npm run build            # Build for production
 npm start                # Start bot + API server
 ```
 
+### Docker
+
+```bash
+cd discord-music-app
+docker build -t kasperhonore/discord-music .   # Build image
+docker push kasperhonore/discord-music         # Push to Docker Hub
+```
+
 ## Project Structure
 
 ```

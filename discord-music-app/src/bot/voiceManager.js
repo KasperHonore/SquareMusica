@@ -93,3 +93,7 @@ export function getChannelInfo(guildId) {
     connectedUsers
   };
 }
+
+export function getChannelCache(guildId) {
+  return channelCache.get(guildId);
+}

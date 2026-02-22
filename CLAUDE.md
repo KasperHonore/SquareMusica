@@ -90,7 +90,9 @@ Required in `.env`:
 # Discord Bot (required)
 DISCORD_TOKEN=           # Bot token from Discord Developer Portal
 APP_ID=                  # Application ID
-GUILD_ID=                # Your Discord server ID
+
+# Guild ID (optional - affects slash command registration)
+# GUILD_ID=              # Set for dev (instant updates), omit for production (global)
 
 # OAuth (required for web UI)
 DISCORD_CLIENT_SECRET=   # OAuth client secret
@@ -106,6 +108,13 @@ NODE_ENV=development     # Set to 'development' for non-secure cookies (secure b
 # YT_DLP_PATH=           # Auto-detected: ./bin/yt-dlp (local) or /app/bin/yt-dlp (Docker)
 # YT_DLP_COOKIES=        # Path to cookies file for age-restricted content
 ```
+
+## Registering Slash Commands
+
+Run `npm run register` to register commands with Discord. This only needs to be run once (or when commands change).
+
+- **Development**: Set `GUILD_ID` in `.env` for instant command updates on your test server
+- **Production**: Omit `GUILD_ID` to register globally—commands work on all servers the bot joins
 
 ## Slash Commands
 

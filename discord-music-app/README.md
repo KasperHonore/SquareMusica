@@ -70,7 +70,7 @@ cp .env.sample .env
 Required variables:
 - `DISCORD_TOKEN` - Your bot token from Discord Developer Portal
 - `APP_ID` - Your application ID
-- `GUILD_ID` - Your Discord server ID
+- `GUILD_ID` - Your Discord server ID (restricts web UI to this server's members)
 - `DISCORD_CLIENT_SECRET` - OAuth client secret (for web UI)
 - `JWT_SECRET` - Random string for JWT signing
 - `OAUTH_REDIRECT_URI` - OAuth callback URL
@@ -142,8 +142,7 @@ Features:
 # Start with auto-reload
 npm run dev
 
-# Register commands to test guild (faster)
-# Set GUILD_ID in .env first
+# Register commands globally
 npm run register
 ```
 

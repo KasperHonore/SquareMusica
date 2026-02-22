@@ -17,5 +17,16 @@ services:
       timeout: 10s
       retries: 3
 
+  # One-off service for registering slash commands
+  # Run with: docker compose run --rm register-commands
+  register-commands:
+    build: .
+    container_name: discord-register-commands
+    command: npm run register
+    env_file:
+      - .env
+    profiles:
+      - setup
+
 volumes:
   discord-music-bot-data:

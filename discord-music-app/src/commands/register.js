@@ -88,21 +88,12 @@ async function register() {
   try {
     console.log('Registering slash commands...');
 
-    if (process.env.GUILD_ID) {
-      // Register to specific guild (faster for development)
-      await rest.put(
-        Routes.applicationGuildCommands(process.env.APP_ID, process.env.GUILD_ID),
-        { body: commands.map(c => c.toJSON()) }
-      );
-      console.log(`Registered ${commands.length} commands to guild ${process.env.GUILD_ID}`);
-    } else {
-      // Register globally
-      await rest.put(
-        Routes.applicationCommands(process.env.APP_ID),
-        { body: commands.map(c => c.toJSON()) }
-      );
-      console.log(`Registered ${commands.length} commands globally`);
-    }
+    // Register globally - works on all servers
+    await rest.put(
+      Routes.applicationCommands(process.env.APP_ID),
+      { body: commands.map(c => c.toJSON()) }
+    );
+    console.log(`Registered ${commands.length} commands globally`);
   } catch (error) {
     console.error('Failed to register commands:', error);
   }

@@ -97,7 +97,7 @@ Copy `.env.sample` to `.env.docker` and configure:
 |----------|-------------|
 | `DISCORD_TOKEN` | Bot token from [Discord Developer Portal](https://discord.com/developers/applications) |
 | `APP_ID` | Your Discord application ID |
-| `GUILD_ID` | Your Discord server ID |
+| `GUILD_ID` | Server ID for web UI access control |
 | `DISCORD_CLIENT_SECRET` | OAuth2 client secret |
 | `OAUTH_REDIRECT_URI` | OAuth callback URL (e.g., `https://music.yourdomain.com/api/auth/callback`) |
 | `JWT_SECRET` | Random 32+ character string for signing tokens |

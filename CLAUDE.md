@@ -91,8 +91,8 @@ Required in `.env`:
 DISCORD_TOKEN=           # Bot token from Discord Developer Portal
 APP_ID=                  # Application ID
 
-# Guild ID (optional - affects slash command registration)
-# GUILD_ID=              # Set for dev (instant updates), omit for production (global)
+# Guild ID (required for web UI authentication)
+GUILD_ID=                # Restricts web UI access to members of this Discord server
 
 # OAuth (required for web UI)
 DISCORD_CLIENT_SECRET=   # OAuth client secret
@@ -111,10 +111,7 @@ NODE_ENV=development     # Set to 'development' for non-secure cookies (secure b
 
 ## Registering Slash Commands
 
-Run `npm run register` to register commands with Discord. This only needs to be run once (or when commands change).
-
-- **Development**: Set `GUILD_ID` in `.env` for instant command updates on your test server
-- **Production**: Omit `GUILD_ID` to register globally—commands work on all servers the bot joins
+Run `npm run register` to register commands with Discord. Commands are registered globally and work on all servers the bot joins. This only needs to be run once (or when commands change).
 
 ## Slash Commands
 

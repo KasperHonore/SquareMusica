@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+for all agents or tasks use opus-4.5
+
 This file provides guidance to Claude Code when working with this repository.
 
 ## Project Vision
@@ -123,21 +125,21 @@ Run `npm run register` to register commands with Discord. Commands are registere
 
 ## Slash Commands
 
-| Command           | Description                 |
-| ----------------- | --------------------------- |
-| `/play <query>`   | Play a song or add to queue |
-| `/pause`          | Pause playback              |
-| `/resume`         | Resume playback             |
-| `/skip`           | Skip to next track          |
-| `/stop`           | Stop and clear queue        |
-| `/queue`          | View current queue          |
-| `/nowplaying`     | Show current track          |
-| `/join`           | Join voice channel          |
-| `/leave`          | Leave voice channel         |
-| `/shuffle`        | Shuffle the queue           |
-| `/loop <mode>`    | Set loop mode               |
-| `/remove <pos>`   | Remove from queue           |
-| `/webui`          | Get web control panel link  |
+| Command         | Description                 |
+| --------------- | --------------------------- |
+| `/play <query>` | Play a song or add to queue |
+| `/pause`        | Pause playback              |
+| `/resume`       | Resume playback             |
+| `/skip`         | Skip to next track          |
+| `/stop`         | Stop and clear queue        |
+| `/queue`        | View current queue          |
+| `/nowplaying`   | Show current track          |
+| `/join`         | Join voice channel          |
+| `/leave`        | Leave voice channel         |
+| `/shuffle`      | Shuffle the queue           |
+| `/loop <mode>`  | Set loop mode               |
+| `/remove <pos>` | Remove from queue           |
+| `/webui`        | Get web control panel link  |
 
 ## Local Development
 

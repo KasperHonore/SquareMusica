@@ -57,7 +57,7 @@ export function Dashboard() {
   // Filter queue to show only upcoming tracks (not the currently playing one)
   const upcomingTracks = currentTrack && currentIndex >= 0
     ? queue.slice(currentIndex + 1)
-    : queue;
+    : [];
 
   // Handlers that adjust indices to account for filtered display
   const handleReorder = (from, to) => {

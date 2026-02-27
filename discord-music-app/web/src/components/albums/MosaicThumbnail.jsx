@@ -77,7 +77,7 @@ export function MosaicThumbnail({
       {/* Loading overlay */}
       {isLoading && (
         <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm">
-          <Spinner className="text-purple-400" />
+          <Spinner className="text-accent" />
         </div>
       )}
     </div>

@@ -45,11 +45,11 @@
   --color-error: #ef4444;
   --color-info: #3b82f6;
 
-  /* Album accent - Purple for saved albums section */
-  --color-album-accent: #8B5CF6;
-  --color-album-accent-hover: #7C3AED;
-  --color-album-accent-muted: rgba(139, 92, 246, 0.2);
-  --color-album-accent-subtle: rgba(139, 92, 246, 0.1);
+  /* Album accent - Now unified with main accent (Spotify green) */
+  --color-album-accent: var(--color-accent);
+  --color-album-accent-hover: var(--color-accent-hover);
+  --color-album-accent-muted: var(--color-accent-muted);
+  --color-album-accent-subtle: var(--color-accent-subtle);
 
   /* -------------------------------------------------------------------------
      Typography Tokens
@@ -379,13 +379,13 @@
     animation: pulse-glow 2s ease-in-out infinite;
   }
 
-  /* Purple pulse glow for albums */
+  /* Green pulse glow for albums (unified with main accent) */
   @keyframes pulse-glow-album {
     0%, 100% {
-      box-shadow: 0 0 20px var(--color-album-accent-muted);
+      box-shadow: 0 0 20px var(--color-accent-muted);
     }
     50% {
-      box-shadow: 0 0 35px rgba(139, 92, 246, 0.4);
+      box-shadow: 0 0 35px rgba(29, 185, 84, 0.4);
     }
   }
 

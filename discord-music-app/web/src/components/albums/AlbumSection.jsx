@@ -9,7 +9,7 @@ import { PlaylistDetailModal } from './PlaylistDetailModal';
  *
  * Features:
  * - Header with album count badge
- * - Add album button (purple plus icon)
+ * - Add album button (green plus icon)
  * - Scrollable album list with staggered animations
  * - Empty state with inviting visuals
  * - AddAlbumModal integration
@@ -82,14 +82,14 @@ export function AlbumSection({
               Your Playlists
             </span>
             {albums.length > 0 && (
-              <span className="px-1.5 py-0.5 text-xs font-medium rounded-md bg-purple-500/20 text-purple-400">
+              <span className="px-1.5 py-0.5 text-xs font-medium rounded-md bg-accent-muted text-accent">
                 {albums.length}
               </span>
             )}
           </div>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="p-1.5 rounded-md text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 transition-all duration-200 focus-ring"
+            className="p-1.5 rounded-md text-accent hover:text-accent-hover hover:bg-accent-subtle transition-all duration-200 focus-ring"
             title="Create new playlist"
             aria-label="Create new playlist"
           >
@@ -147,16 +147,16 @@ function EmptyState({ onClick }) {
   return (
     <button
       onClick={onClick}
-      className="group mx-2 mb-2 p-4 rounded-lg bg-white/[0.02] hover:bg-white/[0.05] border border-dashed border-white/10 hover:border-purple-500/30 transition-all duration-300 cursor-pointer focus-ring"
+      className="group mx-2 mb-2 p-4 rounded-lg bg-white/[0.02] hover:bg-white/[0.05] border border-dashed border-white/10 hover:border-accent/30 transition-all duration-300 cursor-pointer focus-ring"
       aria-label="Create your first album"
     >
       <div className="flex flex-col items-center text-center">
         {/* Album icon with glow */}
         <div className="relative mb-3">
-          <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center group-hover:bg-purple-500/20 transition-colors duration-300">
+          <div className="w-12 h-12 rounded-xl bg-accent-subtle flex items-center justify-center group-hover:bg-accent-muted transition-colors duration-300">
             <Album
               size={24}
-              className="text-purple-400 group-hover:text-purple-300 transition-colors duration-300"
+              className="text-accent group-hover:text-accent-hover transition-colors duration-300"
             />
           </div>
           {/* Subtle glow ring on hover */}

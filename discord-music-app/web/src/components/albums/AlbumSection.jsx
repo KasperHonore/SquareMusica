@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Album, Plus } from '../icons';
 import { AlbumItem } from './AlbumItem';
 import { AddAlbumModal } from './AddAlbumModal';
+import { PlaylistDetailModal } from './PlaylistDetailModal';
 
 /**
  * AlbumSection - Container for the "Your Albums" section in the sidebar
@@ -23,9 +24,11 @@ export function AlbumSection({
   onLoadAlbum,
   onDeleteAlbum,
   onCreateAlbum,
+  onAddToQueue,
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loadingAlbumId, setLoadingAlbumId] = useState(null);
+  const [inspectedPlaylist, setInspectedPlaylist] = useState(null);
 
   const handleLoadAlbum = async (album) => {
     setLoadingAlbumId(album.id);
@@ -43,6 +46,24 @@ export function AlbumSection({
 
   const handleCreateAlbum = (name, spotifyUrl, coverImage) => {
     onCreateAlbum?.(name, spotifyUrl, coverImage);
+  };
+
+  // Handle opening detail modal
+  const handleInspect = (album) => {
+    setInspectedPlaylist(album);
+  };
+
+  // Handle adding single track from detail modal
+  const handleAddTrack = (spotifyUrl) => {
+    onAddToQueue?.(spotifyUrl);
+  };
+
+  // Handle adding all tracks (loads entire playlist)
+  const handleAddAll = () => {
+    if (inspectedPlaylist) {
+      handleLoadAlbum(inspectedPlaylist);
+      setInspectedPlaylist(null);
+    }
   };
 
   const isEmpty = albums.length === 0;
@@ -93,6 +114,7 @@ export function AlbumSection({
                 isLoading={loadingAlbumId === album.id}
                 onPlay={handleLoadAlbum}
                 onDelete={handleDeleteAlbum}
+                onInspect={handleInspect}
               />
             ))}
           </div>
@@ -104,6 +126,15 @@ export function AlbumSection({
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onCreate={handleCreateAlbum}
+      />
+
+      {/* Playlist Detail Modal */}
+      <PlaylistDetailModal
+        isOpen={!!inspectedPlaylist}
+        onClose={() => setInspectedPlaylist(null)}
+        playlist={inspectedPlaylist}
+        onAddTrack={handleAddTrack}
+        onAddAll={handleAddAll}
       />
     </>
   );

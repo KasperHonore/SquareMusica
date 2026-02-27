@@ -44,7 +44,8 @@ export function AlbumItem({
   index = 0,
   isLoading = false,
   onPlay,
-  onDelete
+  onDelete,
+  onInspect
 }) {
   const [shouldScroll, setShouldScroll] = useState(false);
   const textRef = useRef(null);
@@ -74,6 +75,14 @@ export function AlbumItem({
     return () => window.removeEventListener('resize', checkOverflow);
   }, [album.name]);
 
+  // Handle click to inspect (opens detail modal)
+  const handleClick = (e) => {
+    // Don't trigger if clicking on the thumbnail area or delete button
+    if (!e.target.closest('.album-thumbnail') && !e.target.closest('.delete-button')) {
+      onInspect?.(album);
+    }
+  };
+
   return (
     <div
       className={[
@@ -90,13 +99,15 @@ export function AlbumItem({
       ].filter(Boolean).join(' ')}
       style={{
         '--animation-delay': animationDelay,
-        animationDelay: animationDelay
+        animationDelay: animationDelay,
+        cursor: 'pointer'
       }}
+      onClick={handleClick}
       role="listitem"
       aria-label={`Playlist: ${album.name}`}
     >
       {/* Cover image thumbnail with play overlay */}
-      <div className="w-10 h-10 rounded overflow-hidden bg-white/10 flex-shrink-0 relative group/cover">
+      <div className="album-thumbnail w-10 h-10 rounded overflow-hidden bg-white/10 flex-shrink-0 relative group/cover">
         {album.coverImage ? (
           <img
             src={album.coverImage}
@@ -153,6 +164,7 @@ export function AlbumItem({
         onClick={() => onDelete?.(album)}
         disabled={isLoading}
         className={[
+          'delete-button',
           'text-text-muted hover:text-red-400 transition-all duration-150',
           'p-1.5 rounded hover:bg-red-400/10',
           'focus-ring min-w-[32px] min-h-[32px]',

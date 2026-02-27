@@ -97,7 +97,8 @@ export async function getInfo(url) {
       url,
       '--dump-json',
       '--no-download',
-      '--no-warnings'
+      '--no-warnings',
+      '--no-playlist'
     ];
 
     // Add cookies support if configured
@@ -105,7 +106,7 @@ export async function getInfo(url) {
       args.push('--cookies', process.env.YT_DLP_COOKIES);
     }
 
-    const { stdout } = await execFileAsync(YT_DLP_PATH, args);
+    const { stdout } = await execFileAsync(YT_DLP_PATH, args, { maxBuffer: 10 * 1024 * 1024 });
 
     const data = JSON.parse(stdout);
 

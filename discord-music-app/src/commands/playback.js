@@ -39,6 +39,9 @@ export function getPlayer() {
             console.error('Lookahead resolution error:', err);
           });
         }
+      } else {
+        // No more tracks - notify UI that nothing is playing
+        musicManager.emit('track:change', null);
       }
       musicManager.emit('queue:update', queue?.getAll() || []);
     });

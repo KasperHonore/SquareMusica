@@ -94,7 +94,7 @@ export function AlbumItem({
         'animate-queue-item-in',
         // Alternating backgrounds
         isEven ? '' : 'bg-white/[0.02]',
-        // Hover effect with purple tint
+        // Hover effect
         'hover:bg-white/[0.05]',
       ].filter(Boolean).join(' ')}
       style={{
@@ -178,9 +178,9 @@ export function AlbumItem({
         <Remove size={14} aria-hidden="true" />
       </button>
 
-      {/* Purple accent bar on hover - subtle visual distinction for albums */}
+      {/* Green accent bar on hover - subtle visual distinction for albums */}
       <div
-        className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-0 bg-purple-500 rounded-full opacity-0 group-hover:h-6 group-hover:opacity-100 transition-all duration-200"
+        className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-0 bg-accent rounded-full opacity-0 group-hover:h-6 group-hover:opacity-100 transition-all duration-200"
         aria-hidden="true"
       />
     </div>

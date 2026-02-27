@@ -38,6 +38,10 @@ class Queue {
    * @param {Track} track
    */
   add(track) {
+    // Reset index when adding to empty queue to prevent stale index issues
+    if (this.tracks.length === 0) {
+      this.currentIndex = 0;
+    }
     this.tracks.push({
       ...track,
       addedAt: new Date()
@@ -114,6 +118,11 @@ class Queue {
       return this.tracks[this.currentIndex];
     }
 
+    // Queue ended naturally - clear immediately to prevent ghost tracks
+    // This eliminates the race window where a user could add a new track
+    // before the async trackEnd handler clears the queue
+    this.tracks = [];
+    this.currentIndex = 0;
     return null;
   }
 
@@ -174,6 +183,13 @@ class Queue {
    * @returns {Track|null}
    */
   getCurrent() {
+    if (this.tracks.length === 0) {
+      return null;
+    }
+    // Bounds check - reset index if it's out of range
+    if (this.currentIndex >= this.tracks.length) {
+      this.currentIndex = 0;
+    }
     return this.tracks[this.currentIndex] || null;
   }
 

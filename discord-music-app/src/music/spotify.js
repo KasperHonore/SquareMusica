@@ -237,6 +237,52 @@ export async function getPublicPlaylistTracks(playlistId) {
 }
 
 /**
+ * Get all tracks from a public album with pagination
+ * @param {string} albumId - Spotify album ID
+ * @returns {Promise<Array>} Array of normalized tracks
+ */
+export async function getPublicAlbumTracks(albumId) {
+  const client = getClient();
+  if (!client) {
+    return [];
+  }
+
+  const tracks = [];
+  let offset = 0;
+  const limit = 50;
+
+  try {
+    while (true) {
+      const response = await withRetry(() =>
+        client.albums.get(albumId)
+      );
+
+      for (const track of response.tracks.items) {
+        tracks.push({
+          spotifyId: track.id,
+          title: track.name,
+          artists: track.artists?.map(a => a.name) || [],
+          durationMs: track.duration_ms,
+          spotifyUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`
+        });
+      }
+
+      // Check if there are more pages
+      if (!response.tracks.next) {
+        break;
+      }
+
+      offset += limit;
+    }
+
+    return tracks;
+  } catch (error) {
+    console.error('Failed to get Spotify album tracks:', error.message);
+    return [];
+  }
+}
+
+/**
  * Get a single track by ID
  * @param {string} trackId - Spotify track ID
  * @returns {Promise<Object|null>} Normalized track or null

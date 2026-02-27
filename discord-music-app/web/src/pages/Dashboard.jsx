@@ -214,6 +214,7 @@ export function Dashboard() {
         onLoadAlbum={handleLoadAlbum}
         onDeleteAlbum={handleDeleteAlbum}
         onCreateAlbum={handleCreateAlbum}
+        onAddToQueue={addToQueue}
       >
         {renderMainContent()}
       </AppLayout>

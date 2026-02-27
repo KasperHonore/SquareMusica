@@ -225,7 +225,7 @@ export function handlePlayerControl(socket) {
           musicManager.shuffleQueue();
           break;
         case 'clear':
-          musicManager.clearQueue();
+          musicManager.clearUpcomingQueue();
           break;
         case 'previous':
           // Handle previous track

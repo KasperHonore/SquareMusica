@@ -96,6 +96,13 @@ class MusicManager extends EventEmitter {
     return true;
   }
 
+  clearUpcomingQueue() {
+    if (!this.queue) return false;
+    this.queue.clearUpcoming();
+    this.emitQueueUpdate();
+    return true;
+  }
+
   shuffleQueue() {
     if (!this.queue) return false;
     this.queue.shuffle();

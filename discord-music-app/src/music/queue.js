@@ -78,6 +78,17 @@ class Queue {
   }
 
   /**
+   * Clear upcoming tracks (after currentIndex), preserving the current track
+   */
+  clearUpcoming() {
+    if (this.currentIndex < this.tracks.length - 1) {
+      // Keep only the current track, remove everything after it
+      this.tracks = this.tracks.slice(0, this.currentIndex + 1);
+    }
+    // If currentIndex is at or past the last track, nothing to clear
+  }
+
+  /**
    * Shuffle the queue (excluding current track)
    */
   shuffle() {

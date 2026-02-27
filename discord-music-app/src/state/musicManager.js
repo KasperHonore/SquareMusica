@@ -158,8 +158,7 @@ class MusicManager extends EventEmitter {
     if (!this.player) return false;
     this.player.stop();
     if (this.queue) {
-      this.queue.clear();
-      this.queue.currentIndex = 0;
+      this.queue.clear(); // clear() already resets currentIndex to 0
     }
     this.emit('queue:update', { tracks: [], currentIndex: 0 });
     this.emit('track:change', null);

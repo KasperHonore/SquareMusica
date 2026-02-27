@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { QueueItem } from './QueueItem';
-import { Shuffle, MusicNote } from './icons';
+import { Shuffle, MusicNote, Trash } from './icons';
 
 /**
  * Get a unique identifier for a track (handles unresolved Spotify tracks)
@@ -20,21 +20,33 @@ function getTrackId(track, index) {
 /**
  * Empty state component with engaging animated visuals
  */
-function EmptyQueue({ onShuffle }) {
+function EmptyQueue({ onShuffle, onClear }) {
   return (
     <div className="h-full flex-1 min-h-0 flex flex-col" role="region" aria-label="Music queue">
       <div className="flex items-center justify-between mb-4 px-1">
         <h3 className="text-heading text-lg" id="queue-heading">Up Next</h3>
-        <button
-          onClick={onShuffle}
-          disabled
-          className="p-2 text-text-secondary opacity-50 cursor-not-allowed min-w-[44px] min-h-[44px] flex items-center justify-center"
-          title="Shuffle queue (queue is empty)"
-          aria-label="Shuffle queue (disabled - queue is empty)"
-          aria-disabled="true"
-        >
-          <Shuffle size={20} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onClear}
+            disabled
+            className="p-2 text-text-secondary opacity-50 cursor-not-allowed min-w-[44px] min-h-[44px] flex items-center justify-center"
+            title="Clear queue (queue is empty)"
+            aria-label="Clear queue (disabled - queue is empty)"
+            aria-disabled="true"
+          >
+            <Trash size={20} />
+          </button>
+          <button
+            onClick={onShuffle}
+            disabled
+            className="p-2 text-text-secondary opacity-50 cursor-not-allowed min-w-[44px] min-h-[44px] flex items-center justify-center"
+            title="Shuffle queue (queue is empty)"
+            aria-label="Shuffle queue (disabled - queue is empty)"
+            aria-disabled="true"
+          >
+            <Shuffle size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Engaging empty state */}
@@ -78,9 +90,31 @@ function EmptyQueue({ onShuffle }) {
   );
 }
 
-export function Queue({ tracks, onReorder, onRemove, onShuffle, resolutionStats }) {
+export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolutionStats }) {
   const [activeId, setActiveId] = useState(null);
   const [removingId, setRemovingId] = useState(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  // Auto-dismiss confirmation after 3 seconds
+  useEffect(() => {
+    if (showClearConfirm) {
+      const timer = setTimeout(() => setShowClearConfirm(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showClearConfirm]);
+
+  const handleClearClick = () => {
+    setShowClearConfirm(true);
+  };
+
+  const handleClearConfirm = () => {
+    onClear();
+    setShowClearConfirm(false);
+  };
+
+  const handleClearCancel = () => {
+    setShowClearConfirm(false);
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -123,7 +157,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, resolutionStats 
   };
 
   if (tracks.length === 0) {
-    return <EmptyQueue onShuffle={onShuffle} />;
+    return <EmptyQueue onShuffle={onShuffle} onClear={onClear} />;
   }
 
   // Check if there are unresolved tracks in the queue
@@ -161,14 +195,51 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, resolutionStats 
             </span>
           )}
         </div>
-        <button
-          onClick={onShuffle}
-          className="p-2 text-text-secondary hover:text-accent transition-colors rounded-full hover:bg-accent-subtle interactive focus-ring min-w-[44px] min-h-[44px] flex items-center justify-center"
-          title="Shuffle queue"
-          aria-label="Shuffle queue"
-        >
-          <Shuffle size={20} />
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Clear button with inline confirmation */}
+          {showClearConfirm ? (
+            <div className="flex items-center gap-1 bg-surface-elevated rounded-full px-2 py-1 animate-fade-in">
+              <span className="text-xs text-text-secondary whitespace-nowrap">Clear queue?</span>
+              <button
+                onClick={handleClearConfirm}
+                className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-400/10 transition-colors rounded-full min-w-[32px] min-h-[32px] flex items-center justify-center"
+                title="Confirm clear"
+                aria-label="Confirm clear queue"
+              >
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                </svg>
+              </button>
+              <button
+                onClick={handleClearCancel}
+                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors rounded-full min-w-[32px] min-h-[32px] flex items-center justify-center"
+                title="Cancel"
+                aria-label="Cancel clear queue"
+              >
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleClearClick}
+              className="p-2 text-text-secondary hover:text-accent transition-colors rounded-full hover:bg-accent-subtle interactive focus-ring min-w-[44px] min-h-[44px] flex items-center justify-center"
+              title="Clear queue"
+              aria-label="Clear queue"
+            >
+              <Trash size={20} />
+            </button>
+          )}
+          <button
+            onClick={onShuffle}
+            className="p-2 text-text-secondary hover:text-accent transition-colors rounded-full hover:bg-accent-subtle interactive focus-ring min-w-[44px] min-h-[44px] flex items-center justify-center"
+            title="Shuffle queue"
+            aria-label="Shuffle queue"
+          >
+            <Shuffle size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Queue list with DnD - fills remaining space */}

@@ -206,6 +206,9 @@ export function handlePlayerControl(socket) {
         case 'shuffle':
           musicManager.shuffleQueue();
           break;
+        case 'clear':
+          musicManager.clearQueue();
+          break;
         case 'previous':
           // Handle previous track
           const queue = musicManager.queue;

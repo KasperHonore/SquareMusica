@@ -43,13 +43,13 @@ export function getPlayer() {
         // No more tracks - notify UI that nothing is playing
         musicManager.emit('track:change', null);
       }
-      musicManager.emit('queue:update', queue?.getAll() || []);
+      musicManager.emitQueueUpdate();
     });
 
     // Handle failed tracks (skip to next)
     player.on('trackFailed', async (failedTrack) => {
       console.warn('Track failed, skipping:', failedTrack.title);
-      musicManager.emit('queue:update', queue?.getAll() || []);
+      musicManager.emitQueueUpdate();
     });
   }
   return player;
@@ -149,7 +149,7 @@ export async function handlePlay(interaction) {
 
     // Add to queue
     tracks.forEach(t => q.add(t));
-    musicManager.emit('queue:update', q.getAll());
+    musicManager.emitQueueUpdate();
 
     // Trigger lookahead resolution for Spotify playlists (non-blocking)
     const hasUnresolvedTracks = tracks.some(t => t.status === 'unresolved');
@@ -281,7 +281,7 @@ export async function handleSkip(interaction) {
     await interaction.reply(`Skipped **${skipped}**. Queue is empty.`);
   }
 
-  musicManager.emit('queue:update', q.getAll());
+  musicManager.emitQueueUpdate();
 }
 
 export async function handleStop(interaction) {
@@ -292,7 +292,7 @@ export async function handleStop(interaction) {
 
   p.stop();
   q.clear();
-  musicManager.emit('queue:update', []);
+  musicManager.emitQueueUpdate();
   musicManager.emit('track:change', null);
 
   await interaction.reply('Stopped playback and cleared the queue.');

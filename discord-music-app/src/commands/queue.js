@@ -91,7 +91,7 @@ export async function handleRemove(interaction) {
   }
 
   const removed = q.remove(position);
-  musicManager.emit('queue:update', q.getAll());
+  musicManager.emitQueueUpdate();
 
   await interaction.reply(`Removed **${removed.title}** from the queue.`);
 }
@@ -109,7 +109,7 @@ export async function handleShuffle(interaction) {
   }
 
   q.shuffle();
-  musicManager.emit('queue:update', q.getAll());
+  musicManager.emitQueueUpdate();
 
   await interaction.reply('Shuffled the queue.');
 }
@@ -123,7 +123,7 @@ export async function handleClear(interaction) {
   // Clear all except current
   q.tracks = current ? [current] : [];
   q.currentIndex = 0;
-  musicManager.emit('queue:update', q.getAll());
+  musicManager.emitQueueUpdate();
 
   await interaction.reply('Cleared the queue.');
 }

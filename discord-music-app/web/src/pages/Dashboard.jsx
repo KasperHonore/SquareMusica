@@ -88,6 +88,10 @@ export function Dashboard() {
     playerControl('shuffle');
   };
 
+  const handleClearQueue = () => {
+    playerControl('clear');
+  };
+
   const handleJoinChannel = () => {
     voiceJoin();
   };
@@ -172,6 +176,7 @@ export function Dashboard() {
             onReorder={handleReorder}
             onRemove={handleRemove}
             onShuffle={handleShuffle}
+            onClear={handleClearQueue}
             resolutionStats={resolutionStats}
           />
         );
@@ -191,6 +196,7 @@ export function Dashboard() {
       onReorder={handleReorder}
       onRemove={handleRemove}
       onShuffle={handleShuffle}
+      onClear={handleClearQueue}
       resolutionStats={resolutionStats}
     />
   ) : null;

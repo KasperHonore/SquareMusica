@@ -93,7 +93,7 @@ export function AlbumItem({
         animationDelay: animationDelay
       }}
       role="listitem"
-      aria-label={`Album: ${album.name}`}
+      aria-label={`Playlist: ${album.name}`}
     >
       {/* Cover image thumbnail with play overlay */}
       <div className="w-10 h-10 rounded overflow-hidden bg-white/10 flex-shrink-0 relative group/cover">
@@ -118,8 +118,8 @@ export function AlbumItem({
           <button
             onClick={() => onPlay?.(album)}
             className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-pointer"
-            title="Play album"
-            aria-label={`Play album ${album.name}`}
+            title="Play playlist"
+            aria-label={`Play playlist ${album.name}`}
           >
             <Play size={16} className="text-white" aria-hidden="true" />
           </button>
@@ -160,8 +160,8 @@ export function AlbumItem({
           'opacity-0 w-0 overflow-hidden group-hover:opacity-100 group-hover:w-auto focus-within:opacity-100',
           isLoading && 'opacity-50 cursor-not-allowed'
         ].filter(Boolean).join(' ')}
-        title="Delete album"
-        aria-label={`Delete album ${album.name}`}
+        title="Delete playlist"
+        aria-label={`Delete playlist ${album.name}`}
       >
         <Remove size={14} aria-hidden="true" />
       </button>

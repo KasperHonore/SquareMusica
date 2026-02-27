@@ -269,7 +269,7 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
 
     const trimmedName = albumName.trim();
     if (!trimmedName) {
-      setError('Please enter an album name');
+      setError('Please enter a playlist name');
       return;
     }
 
@@ -315,7 +315,7 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
               <AlbumIcon size={22} className="text-[#8B5CF6]" />
             </div>
             <h2 id="add-album-title" className="text-xl font-heading font-semibold text-primary">
-              Create Album
+              Create Playlist
             </h2>
           </div>
           <button
@@ -338,7 +338,7 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
               htmlFor="spotify-url"
               className="block text-sm font-medium text-secondary mb-2"
             >
-              Spotify Album or Playlist URL
+              Spotify Playlist or Album URL
             </label>
             <div className="relative">
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1DB954]">
@@ -353,7 +353,7 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
                   setSpotifyUrl(e.target.value);
                   if (error) setError('');
                 }}
-                placeholder="https://open.spotify.com/album/..."
+                placeholder="https://open.spotify.com/playlist/..."
                 className={`
                   w-full pl-10 pr-10 py-3 rounded-lg
                   bg-white/5 border
@@ -400,7 +400,7 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
                     htmlFor="album-name"
                     className="block text-sm font-medium text-text-muted mb-2"
                   >
-                    Album Name
+                    Playlist Name
                   </label>
                   <input
                     id="album-name"
@@ -452,7 +452,7 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
                 ${(!metadataLoaded || isLoading) ? 'opacity-50 cursor-not-allowed' : ''}
               `}
             >
-              Create Album
+              Create Playlist
             </button>
           </div>
         </form>

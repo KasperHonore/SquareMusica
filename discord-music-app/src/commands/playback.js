@@ -51,7 +51,8 @@ export function getPlayer() {
       }
 
       if (!playedSuccessfully) {
-        // No more tracks or all failed - notify UI that nothing is playing
+        // No more tracks or all failed - clear queue and notify UI
+        queue?.clear();  // Clear the zombie queue state
         musicManager.emit('track:change', null);
         musicManager.emitState();
       }

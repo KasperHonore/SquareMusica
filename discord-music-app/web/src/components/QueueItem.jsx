@@ -50,28 +50,6 @@ function Spinner({ className = '' }) {
   );
 }
 
-/**
- * Grip texture drag handle - tactile visual feedback
- */
-function GripHandle({ className = '' }) {
-  return (
-    <svg
-      width="12"
-      height="16"
-      viewBox="0 0 12 16"
-      fill="currentColor"
-      className={className}
-    >
-      {/* 2x3 grid of dots for grip texture */}
-      <circle cx="3" cy="3" r="1.5" />
-      <circle cx="9" cy="3" r="1.5" />
-      <circle cx="3" cy="8" r="1.5" />
-      <circle cx="9" cy="8" r="1.5" />
-      <circle cx="3" cy="13" r="1.5" />
-      <circle cx="9" cy="13" r="1.5" />
-    </svg>
-  );
-}
 
 /**
  * Get status indicator for a track
@@ -188,6 +166,8 @@ export function QueueItem({
     isOverlay && 'shadow-2xl ring-2 ring-accent scale-105 bg-surface-raised',
     // Failed track styling
     isFailed && 'opacity-60',
+    // Draggable cursor
+    !isOverlay && 'cursor-grab active:cursor-grabbing',
   ].filter(Boolean).join(' ');
 
   return (
@@ -197,6 +177,8 @@ export function QueueItem({
       className={containerClasses}
       role="listitem"
       aria-label={`${isUpNext ? 'Up next: ' : ''}${track.title}${track.duration ? `, duration ${formatTime(track.duration, '')}` : ''}`}
+      {...(!isOverlay ? attributes : {})}
+      {...(!isOverlay ? listeners : {})}
     >
       {/* Drop zone indicator line */}
       {isDropTarget && (
@@ -254,33 +236,18 @@ export function QueueItem({
         )}
       </div>
 
-      {/* Action buttons */}
-      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
-        {/* Drag handle with grip texture */}
-        {!isOverlay && (
-          <div
-            {...attributes}
-            {...listeners}
-            className="cursor-grab active:cursor-grabbing text-text-muted hover:text-text-secondary p-1.5 rounded hover:bg-white/5 transition-colors focus-ring min-w-[32px] min-h-[32px] flex items-center justify-center"
-            aria-label={`Drag to reorder ${track.title}`}
-            role="button"
-            tabIndex={0}
-          >
-            <GripHandle className="w-3 h-4" aria-hidden="true" />
-          </div>
-        )}
-        {/* Remove button */}
-        {!isOverlay && (
-          <button
-            onClick={() => onRemove(index, trackId)}
-            className="text-text-muted hover:text-red-400 transition-colors p-1.5 rounded hover:bg-red-400/10 focus-ring min-w-[32px] min-h-[32px] flex items-center justify-center"
-            title="Remove from queue"
-            aria-label={`Remove ${track.title} from queue`}
-          >
-            <Remove size={14} aria-hidden="true" />
-          </button>
-        )}
-      </div>
+      {/* Remove button */}
+      {!isOverlay && (
+        <button
+          onClick={() => onRemove(index, trackId)}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="text-text-muted hover:text-red-400 transition-colors p-1.5 rounded hover:bg-red-400/10 focus-ring min-w-[32px] min-h-[32px] flex items-center justify-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150"
+          title="Remove from queue"
+          aria-label={`Remove ${track.title} from queue`}
+        >
+          <Remove size={14} aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 }

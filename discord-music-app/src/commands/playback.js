@@ -21,27 +21,39 @@ export function getPlayer() {
     // Auto-play next track
     player.on('trackEnd', async () => {
       const next = queue?.next();
+      let playedSuccessfully = false;
+
       if (next) {
         const connection = getConnection(musicManager.guildId);
         if (connection) {
           const success = await player.play(next, connection);
-          // If track failed to resolve, try next tracks
-          if (!success) {
+          if (success) {
+            playedSuccessfully = true;
+          } else {
+            // If track failed to resolve, try next tracks
             let nextTrack = queue?.next();
             while (nextTrack) {
               const nextSuccess = await player.play(nextTrack, connection);
-              if (nextSuccess) break;
+              if (nextSuccess) {
+                playedSuccessfully = true;
+                break;
+              }
               nextTrack = queue?.next();
             }
           }
-          // Trigger lookahead resolution after advancing
-          resolutionManager.processLookahead(queue?.currentIndex || 0).catch(err => {
-            console.error('Lookahead resolution error:', err);
-          });
+          if (playedSuccessfully) {
+            // Trigger lookahead resolution after advancing
+            resolutionManager.processLookahead(queue?.currentIndex || 0).catch(err => {
+              console.error('Lookahead resolution error:', err);
+            });
+          }
         }
-      } else {
-        // No more tracks - notify UI that nothing is playing
+      }
+
+      if (!playedSuccessfully) {
+        // No more tracks or all failed - notify UI that nothing is playing
         musicManager.emit('track:change', null);
+        musicManager.emitState();
       }
       musicManager.emitQueueUpdate();
     });
@@ -174,17 +186,28 @@ export async function handlePlay(interaction) {
     // Start playing if not already
     if (!p.isPlaying() && !p.isPaused()) {
       const track = q.getCurrent();
+      let playedSuccessfully = false;
       if (track) {
         const success = await p.play(track, connection);
-        // If first track failed to resolve, try next tracks
-        if (!success) {
+        if (success) {
+          playedSuccessfully = true;
+        } else {
+          // If first track failed to resolve, try next tracks
           let nextTrack = q.next();
           while (nextTrack) {
             const nextSuccess = await p.play(nextTrack, connection);
-            if (nextSuccess) break;
+            if (nextSuccess) {
+              playedSuccessfully = true;
+              break;
+            }
             nextTrack = q.next();
           }
         }
+      }
+      // If all tracks failed to play, notify UI
+      if (!playedSuccessfully && q.length > 0) {
+        musicManager.emit('track:change', null);
+        musicManager.emitState();
       }
     }
 
@@ -278,6 +301,8 @@ export async function handleSkip(interaction) {
     });
   } else {
     p.stop();
+    musicManager.emit('track:change', null);
+    musicManager.emitState();
     await interaction.reply(`Skipped **${skipped}**. Queue is empty.`);
   }
 

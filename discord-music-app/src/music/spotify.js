@@ -237,7 +237,8 @@ export async function getPublicPlaylistTracks(playlistId) {
 }
 
 /**
- * Get all tracks from a public album with pagination
+ * Get all tracks from a public album
+ * Note: Returns up to 50 tracks. Most albums have fewer than 50 tracks.
  * @param {string} albumId - Spotify album ID
  * @returns {Promise<Array>} Array of normalized tracks
  */
@@ -247,45 +248,17 @@ export async function getPublicAlbumTracks(albumId) {
     return [];
   }
 
-  const tracks = [];
-
   try {
-    // Get album with initial tracks (API returns up to 50 tracks)
+    // Get album with tracks (API returns up to 50 tracks embedded)
     const response = await withRetry(() => client.albums.get(albumId));
 
-    for (const track of response.tracks.items) {
-      tracks.push({
-        spotifyId: track.id,
-        title: track.name,
-        artists: track.artists?.map(a => a.name) || [],
-        durationMs: track.duration_ms,
-        spotifyUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`
-      });
-    }
-
-    // Handle pagination if >50 tracks using the next URL
-    let nextUrl = response.tracks.next;
-    while (nextUrl) {
-      const nextResponse = await withRetry(() =>
-        fetch(nextUrl, {
-          headers: {
-            'Authorization': `Bearer ${client.getAccessToken?.() || ''}`
-          }
-        }).then(res => res.json())
-      );
-
-      for (const track of nextResponse.items || []) {
-        tracks.push({
-          spotifyId: track.id,
-          title: track.name,
-          artists: track.artists?.map(a => a.name) || [],
-          durationMs: track.duration_ms,
-          spotifyUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`
-        });
-      }
-
-      nextUrl = nextResponse.next;
-    }
+    const tracks = response.tracks.items.map(track => ({
+      spotifyId: track.id,
+      title: track.name,
+      artists: track.artists?.map(a => a.name) || [],
+      durationMs: track.duration_ms,
+      spotifyUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`
+    }));
 
     return tracks;
   } catch (error) {

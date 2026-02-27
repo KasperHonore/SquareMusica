@@ -2,7 +2,6 @@ import { musicManager } from '../state/musicManager.js';
 import { search, getInfo, isValidUrl, isPlaylist, getPlaylist } from '../music/youtube.js';
 import { getConnection, isConnected, joinChannel, leaveChannel, setChannelCache } from '../bot/voiceManager.js';
 import { parseSpotifyUrl, getPublicTrack, getPublicPlaylistTracks, getPublicAlbumTracks } from '../music/spotify.js';
-import { resolveSpotifyTrack } from '../music/resolver.js';
 import { resolutionManager, ResolutionManager } from '../music/resolutionManager.js';
 import { client } from '../bot/client.js';
 
@@ -53,19 +52,15 @@ export function handleQueueAdd(socket) {
           ResolutionManager.createUnresolvedTrack(st, userInfo)
         );
       } else if (spotifyParsed.type === 'track') {
-        // Handle Spotify track - resolve immediately
+        // Handle Spotify track - use lazy resolution like playlists/albums
         const spotifyTrack = await getPublicTrack(spotifyParsed.id);
         if (!spotifyTrack) {
           socket.emit('error', { message: 'Spotify track not found' });
           return;
         }
 
-        const youtubeTrack = await resolveSpotifyTrack(spotifyTrack);
-        if (!youtubeTrack) {
-          socket.emit('error', { message: `Could not find "${spotifyTrack.title}" on YouTube` });
-          return;
-        }
-        tracks = [youtubeTrack];
+        // Create unresolved track for lazy resolution
+        tracks = [ResolutionManager.createUnresolvedTrack(spotifyTrack, userInfo)];
       } else if (spotifyParsed.type === 'album') {
         // Handle Spotify album - add tracks with lazy resolution
         const albumTracks = await getPublicAlbumTracks(spotifyParsed.id);

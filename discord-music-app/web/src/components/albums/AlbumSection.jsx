@@ -58,7 +58,7 @@ export function AlbumSection({
               className="text-xs font-semibold uppercase tracking-wider"
               style={{ color: 'var(--color-text-muted)' }}
             >
-              Your Albums
+              Your Playlists
             </span>
             {albums.length > 0 && (
               <span className="px-1.5 py-0.5 text-xs font-medium rounded-md bg-purple-500/20 text-purple-400">
@@ -69,8 +69,8 @@ export function AlbumSection({
           <button
             onClick={() => setIsModalOpen(true)}
             className="p-1.5 rounded-md text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 transition-all duration-200 focus-ring"
-            title="Create new album"
-            aria-label="Create new album"
+            title="Create new playlist"
+            aria-label="Create new playlist"
           >
             <Plus size={16} />
           </button>
@@ -83,7 +83,7 @@ export function AlbumSection({
           <div
             className="flex-1 overflow-y-auto px-2 pb-2"
             role="list"
-            aria-label="Saved albums"
+            aria-label="Saved playlists"
           >
             {albums.map((album, index) => (
               <AlbumItem
@@ -139,13 +139,13 @@ function EmptyState({ onClick }) {
           className="text-sm font-medium mb-1"
           style={{ color: 'var(--color-text-secondary)' }}
         >
-          No saved albums
+          No saved playlists
         </p>
         <p
           className="text-xs leading-relaxed"
           style={{ color: 'var(--color-text-muted)' }}
         >
-          Create albums to quickly load your favorite playlists
+          Create playlists to quickly load your favorites
         </p>
       </div>
     </button>

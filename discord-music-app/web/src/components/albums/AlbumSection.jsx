@@ -58,10 +58,10 @@ export function AlbumSection({
     onAddToQueue?.(spotifyUrl);
   };
 
-  // Handle adding all tracks (loads entire playlist)
+  // Handle adding all tracks to queue (appends, doesn't replace)
   const handleAddAll = () => {
-    if (inspectedPlaylist) {
-      handleLoadAlbum(inspectedPlaylist);
+    if (inspectedPlaylist?.spotifyUrl) {
+      onAddToQueue?.(inspectedPlaylist.spotifyUrl);
       setInspectedPlaylist(null);
     }
   };

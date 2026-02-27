@@ -254,11 +254,12 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
   };
 
   // Handle add all
+  // Note: Parent (AlbumSection) handles closing the modal via setInspectedPlaylist(null)
   const handleAddAll = () => {
     if (onAddAll) {
       onAddAll();
     }
-    handleClose();
+    // Don't call handleClose() here - parent already closes the modal
   };
 
   // Handle add single track

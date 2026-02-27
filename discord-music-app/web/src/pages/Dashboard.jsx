@@ -87,7 +87,7 @@ export function Dashboard() {
   };
 
   // Album handlers
-  const handleLoadAlbum = useCallback((album) => {
+  const handleLoadAlbum = useCallback(async (album) => {
     if (!album.spotifyUrl) {
       // Legacy support: if album has tracks array instead of spotifyUrl
       if (album.tracks && album.tracks.length > 0) {
@@ -106,6 +106,9 @@ export function Dashboard() {
     // 2. Clears the queue (queue.clear())
     // 3. Resets currentIndex to 0
     playerControl('stop');
+
+    // Small delay to ensure server processes stop before adding new tracks
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     // Then add the Spotify URL (uses existing lazy resolution)
     addToQueue(album.spotifyUrl);

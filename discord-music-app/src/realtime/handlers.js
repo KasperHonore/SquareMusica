@@ -1,7 +1,7 @@
 import { musicManager } from '../state/musicManager.js';
 import { search, getInfo, isValidUrl, isPlaylist, getPlaylist } from '../music/youtube.js';
 import { getConnection, isConnected, joinChannel, leaveChannel, setChannelCache } from '../bot/voiceManager.js';
-import { parseSpotifyUrl, getPublicTrack, getPublicPlaylistTracks } from '../music/spotify.js';
+import { parseSpotifyUrl, getPublicTrack, getPublicPlaylistTracks, getPublicAlbumTracks } from '../music/spotify.js';
 import { resolveSpotifyTrack } from '../music/resolver.js';
 import { resolutionManager, ResolutionManager } from '../music/resolutionManager.js';
 import { client } from '../bot/client.js';
@@ -66,6 +66,18 @@ export function handleQueueAdd(socket) {
           return;
         }
         tracks = [youtubeTrack];
+      } else if (spotifyParsed.type === 'album') {
+        // Handle Spotify album - add tracks with lazy resolution
+        const albumTracks = await getPublicAlbumTracks(spotifyParsed.id);
+        if (albumTracks.length === 0) {
+          socket.emit('error', { message: 'Spotify album not found or empty' });
+          return;
+        }
+
+        // Convert to unresolved queue tracks (lazy resolution)
+        tracks = albumTracks.map(st =>
+          ResolutionManager.createUnresolvedTrack(st, userInfo)
+        );
       } else if (isPlaylist(query)) {
         // Handle YouTube playlist
         tracks = await getPlaylist(query);

@@ -248,16 +248,33 @@ export async function getPublicAlbumTracks(albumId) {
   }
 
   const tracks = [];
-  let offset = 0;
-  const limit = 50;
 
   try {
-    while (true) {
-      const response = await withRetry(() =>
-        client.albums.get(albumId)
+    // Get album with initial tracks (API returns up to 50 tracks)
+    const response = await withRetry(() => client.albums.get(albumId));
+
+    for (const track of response.tracks.items) {
+      tracks.push({
+        spotifyId: track.id,
+        title: track.name,
+        artists: track.artists?.map(a => a.name) || [],
+        durationMs: track.duration_ms,
+        spotifyUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`
+      });
+    }
+
+    // Handle pagination if >50 tracks using the next URL
+    let nextUrl = response.tracks.next;
+    while (nextUrl) {
+      const nextResponse = await withRetry(() =>
+        fetch(nextUrl, {
+          headers: {
+            'Authorization': `Bearer ${client.getAccessToken?.() || ''}`
+          }
+        }).then(res => res.json())
       );
 
-      for (const track of response.tracks.items) {
+      for (const track of nextResponse.items || []) {
         tracks.push({
           spotifyId: track.id,
           title: track.name,
@@ -267,12 +284,7 @@ export async function getPublicAlbumTracks(albumId) {
         });
       }
 
-      // Check if there are more pages
-      if (!response.tracks.next) {
-        break;
-      }
-
-      offset += limit;
+      nextUrl = nextResponse.next;
     }
 
     return tracks;

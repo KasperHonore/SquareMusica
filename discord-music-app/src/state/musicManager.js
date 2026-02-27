@@ -146,6 +146,8 @@ class MusicManager extends EventEmitter {
 
     if (!playedSuccessfully && !next) {
       this.player.stop();
+      this.emit('track:change', null);
+      this.emitState();
     }
 
     this.emitQueueUpdate();

@@ -120,17 +120,28 @@ export function handleQueueAdd(socket) {
         const connection = getConnection(musicManager.guildId);
         if (connection) {
           const current = queue.getCurrent();
+          let playedSuccessfully = false;
           if (current) {
             const success = await player.play(current, connection);
-            // If first track failed to resolve, try next tracks
-            if (!success) {
+            if (success) {
+              playedSuccessfully = true;
+            } else {
+              // If first track failed to resolve, try next tracks
               let nextTrack = queue.next();
               while (nextTrack) {
                 const nextSuccess = await player.play(nextTrack, connection);
-                if (nextSuccess) break;
+                if (nextSuccess) {
+                  playedSuccessfully = true;
+                  break;
+                }
                 nextTrack = queue.next();
               }
             }
+          }
+          // If all tracks failed to play, notify UI
+          if (!playedSuccessfully && queue.length > 0) {
+            musicManager.emit('track:change', null);
+            musicManager.emitState();
           }
         }
       }
@@ -218,9 +229,14 @@ export function handlePlayerControl(socket) {
             if (prev) {
               const connection = getConnection(musicManager.guildId);
               if (connection) {
-                await player.play(prev, connection);
+                const success = await player.play(prev, connection);
+                if (!success) {
+                  musicManager.emit('track:change', null);
+                  musicManager.emitState();
+                }
               }
             }
+            musicManager.emitQueueUpdate();
           }
           break;
         default:

@@ -1,5 +1,6 @@
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import { db } from '../database/db.js';
 import { musicManager } from '../state/musicManager.js';
 import { botEvents } from '../bot/client.js';
@@ -15,6 +16,14 @@ import {
 
 let io;
 let progressInterval;
+
+/**
+ * Broadcast playlists update to all connected clients
+ */
+function broadcastPlaylistsUpdate() {
+  const playlists = db.getPlaylists();
+  io.emit(ServerEvents.PLAYLISTS_UPDATE, playlists);
+}
 
 /**
  * Setup Socket.io server with authentication and event handlers
@@ -60,8 +69,12 @@ export function setupSocketServer(httpServer) {
   io.on('connection', (socket) => {
     console.log(`User connected: ${socket.user.username}`);
 
-    // Send initial state
-    socket.emit(ServerEvents.INITIAL_STATE, musicManager.getFullState());
+    // Send initial state (including playlists)
+    const initialState = {
+      ...musicManager.getFullState(),
+      playlists: db.getPlaylists()
+    };
+    socket.emit(ServerEvents.INITIAL_STATE, initialState);
 
     // Register client event handlers
     socket.on(ClientEvents.QUEUE_ADD, handleQueueAdd(socket));
@@ -70,6 +83,25 @@ export function setupSocketServer(httpServer) {
     socket.on(ClientEvents.PLAYER_CONTROL, handlePlayerControl(socket));
     socket.on(ClientEvents.VOICE_JOIN, handleVoiceJoin(socket));
     socket.on(ClientEvents.VOICE_LEAVE, handleVoiceLeave(socket));
+
+    // Playlist event handlers
+    socket.on(ClientEvents.PLAYLIST_CREATE, ({ name, spotifyUrl, coverImage }) => {
+      const id = 'playlist_' + Date.now().toString(36) + randomUUID().slice(0, 8);
+      const createdBy = socket.user.username;
+      const playlist = db.createPlaylist(id, name, spotifyUrl, coverImage, createdBy);
+      if (playlist) {
+        console.log(`[Playlist] Created "${name}" by ${createdBy}`);
+        broadcastPlaylistsUpdate();
+      }
+    });
+
+    socket.on(ClientEvents.PLAYLIST_DELETE, ({ id }) => {
+      const deleted = db.deletePlaylist(id);
+      if (deleted) {
+        console.log(`[Playlist] Deleted ${id} by ${socket.user.username}`);
+        broadcastPlaylistsUpdate();
+      }
+    });
 
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${socket.user.username}`);

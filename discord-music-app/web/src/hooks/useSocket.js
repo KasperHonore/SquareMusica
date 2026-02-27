@@ -21,6 +21,7 @@ export function useSocket() {
   const [voiceContext, setVoiceContext] = useState(null);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [botInfo, setBotInfo] = useState(null);
+  const [playlists, setPlaylists] = useState([]);
 
   useEffect(() => {
     if (!token) return;
@@ -79,6 +80,13 @@ export function useSocket() {
       if (state.botInfo !== undefined) {
         setBotInfo(state.botInfo);
       }
+      if (Array.isArray(state.playlists)) {
+        setPlaylists(state.playlists);
+      }
+    });
+
+    newSocket.on('playlists:update', (updatedPlaylists) => {
+      setPlaylists(Array.isArray(updatedPlaylists) ? updatedPlaylists : []);
     });
 
     newSocket.on('voice:context', (context) => {
@@ -129,6 +137,14 @@ export function useSocket() {
     socket?.emit('voice:leave');
   }, [socket]);
 
+  const createPlaylist = useCallback((name, spotifyUrl, coverImage) => {
+    socket?.emit('playlist:create', { name, spotifyUrl, coverImage });
+  }, [socket]);
+
+  const deletePlaylist = useCallback((id) => {
+    socket?.emit('playlist:delete', { id });
+  }, [socket]);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -143,6 +159,7 @@ export function useSocket() {
     voiceContext,
     historyVersion,
     botInfo,
+    playlists,
     error,
     addToQueue,
     removeFromQueue,
@@ -150,6 +167,8 @@ export function useSocket() {
     playerControl,
     voiceJoin,
     voiceLeave,
+    createPlaylist,
+    deletePlaylist,
     clearError
   };
 }

@@ -11,7 +11,8 @@ export const ServerEvents = {
   INITIAL_STATE: 'initial:state',
   RESOLUTION_PROGRESS: 'resolution:progress',
   VOICE_CONTEXT: 'voice:context',
-  HISTORY_CLEARED: 'history:cleared'
+  HISTORY_CLEARED: 'history:cleared',
+  PLAYLISTS_UPDATE: 'playlists:update'
 };
 
 // Events sent from clients to server
@@ -21,5 +22,7 @@ export const ClientEvents = {
   QUEUE_REORDER: 'queue:reorder',
   PLAYER_CONTROL: 'player:control',
   VOICE_JOIN: 'voice:join',
-  VOICE_LEAVE: 'voice:leave'
+  VOICE_LEAVE: 'voice:leave',
+  PLAYLIST_CREATE: 'playlist:create',
+  PLAYLIST_DELETE: 'playlist:delete'
 };

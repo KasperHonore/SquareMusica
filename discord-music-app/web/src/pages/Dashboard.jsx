@@ -8,14 +8,6 @@ import { NowPlaying } from '../components/NowPlaying';
 import { Queue } from '../components/Queue';
 import { History } from './History';
 
-// Storage key for albums persistence
-const ALBUMS_STORAGE_KEY = 'music-bot-albums';
-
-// Generate a simple UUID for album IDs
-function generateId() {
-  return 'album_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
-}
-
 export function Dashboard() {
   const { user, logout } = useAuth();
   const {
@@ -27,6 +19,7 @@ export function Dashboard() {
     resolutionStats,
     voiceContext,
     botInfo,
+    playlists,
     error,
     addToQueue,
     removeFromQueue,
@@ -34,6 +27,8 @@ export function Dashboard() {
     playerControl,
     voiceJoin,
     voiceLeave,
+    createPlaylist,
+    deletePlaylist,
     clearError
   } = useSocket();
 
@@ -41,24 +36,15 @@ export function Dashboard() {
 
   const [activeView, setActiveView] = useState('nowplaying');
 
-  // Albums state with localStorage persistence
-  const [albums, setAlbums] = useState(() => {
-    try {
-      const saved = localStorage.getItem(ALBUMS_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  // Persist albums to localStorage when changed
-  useEffect(() => {
-    try {
-      localStorage.setItem(ALBUMS_STORAGE_KEY, JSON.stringify(albums));
-    } catch (e) {
-      console.error('Failed to save albums to localStorage:', e);
-    }
-  }, [albums]);
+  // Transform playlists from server format to component format (albums)
+  const albums = playlists.map(p => ({
+    id: p.id,
+    name: p.name,
+    spotifyUrl: p.spotify_url,
+    coverImage: p.cover_image,
+    createdBy: p.created_by,
+    createdAt: p.created_at
+  }));
 
   // Auto-dismiss error after 5 seconds
   useEffect(() => {
@@ -126,19 +112,12 @@ export function Dashboard() {
   }, [addToQueue, playerControl]);
 
   const handleDeleteAlbum = useCallback((albumId) => {
-    setAlbums(prev => prev.filter(album => album.id !== albumId));
-  }, []);
+    deletePlaylist(albumId);
+  }, [deletePlaylist]);
 
   const handleCreateAlbum = useCallback((name, spotifyUrl, coverImage) => {
-    const newAlbum = {
-      id: generateId(),
-      name,
-      spotifyUrl,
-      coverImage,
-      createdAt: new Date().toISOString(),
-    };
-    setAlbums(prev => [...prev, newAlbum]);
-  }, []);
+    createPlaylist(name, spotifyUrl, coverImage);
+  }, [createPlaylist]);
 
   // Render the main content based on active view
   const renderMainContent = () => {

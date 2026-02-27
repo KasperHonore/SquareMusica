@@ -236,18 +236,28 @@ export function handlePlayerControl(socket) {
 /**
  * Handle voice join requests from web clients
  * Joins the bot to the user's current voice channel in Discord
+ * Searches across all guilds the bot is in to find the user's voice channel
  * @param {Socket} socket - Socket.io socket instance
  * @returns {Function} Event handler
  */
 export function handleVoiceJoin(socket) {
   return async () => {
     try {
-      const guildId = musicManager.guildId || process.env.GUILD_ID;
       const discordId = socket.user.discord_id;
 
-      const guild = await client.guilds.fetch(guildId);
-      const member = await guild.members.fetch(discordId);
-      const voiceChannel = member.voice?.channel;
+      // Search all guilds the bot is in to find user's voice channel
+      let voiceChannel = null;
+      for (const [guildId, guild] of client.guilds.cache) {
+        try {
+          const member = await guild.members.fetch(discordId);
+          if (member.voice?.channel) {
+            voiceChannel = member.voice.channel;
+            break;
+          }
+        } catch {
+          // User not in this guild, continue searching
+        }
+      }
 
       if (!voiceChannel) {
         socket.emit('error', { message: 'You need to be in a voice channel in Discord!' });
@@ -255,8 +265,8 @@ export function handleVoiceJoin(socket) {
       }
 
       await joinChannel(voiceChannel);
-      musicManager.setGuildId(guildId);
-      setChannelCache(guildId, voiceChannel);
+      musicManager.setGuildId(voiceChannel.guild.id);
+      setChannelCache(voiceChannel.guild.id, voiceChannel);
       musicManager.emitVoiceContext();
       musicManager.emitState();
     } catch (err) {

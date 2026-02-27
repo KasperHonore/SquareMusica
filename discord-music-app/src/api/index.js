@@ -8,6 +8,7 @@ import authRoutes from './routes/auth.js';
 import queueRoutes from './routes/queue.js';
 import playbackRoutes from './routes/playback.js';
 import spotifyRoutes from './routes/spotify.js';
+import playlistRoutes from './routes/playlists.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -30,6 +31,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/queue', queueRoutes);
 app.use('/api/player', playbackRoutes);
 app.use('/api/spotify', spotifyRoutes);
+app.use('/api/playlists', playlistRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

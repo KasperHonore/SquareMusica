@@ -145,6 +145,41 @@ class DatabaseManager {
     }
   }
 
+  // Playlist methods
+  getPlaylists() {
+    const stmt = this.db.prepare('SELECT * FROM playlists ORDER BY created_at DESC');
+    return stmt.all();
+  }
+
+  createPlaylist(id, name, spotifyUrl, coverImage, createdBy) {
+    try {
+      const stmt = this.db.prepare(
+        'INSERT INTO playlists (id, name, spotify_url, cover_image, created_by) VALUES (?, ?, ?, ?, ?)'
+      );
+      stmt.run(id, name, spotifyUrl, coverImage || null, createdBy || null);
+      return this.getPlaylistById(id);
+    } catch (error) {
+      console.error('[Database] createPlaylist failed:', error.message);
+      return null;
+    }
+  }
+
+  getPlaylistById(id) {
+    const stmt = this.db.prepare('SELECT * FROM playlists WHERE id = ?');
+    return stmt.get(id);
+  }
+
+  deletePlaylist(id) {
+    try {
+      const stmt = this.db.prepare('DELETE FROM playlists WHERE id = ?');
+      const result = stmt.run(id);
+      return result.changes > 0;
+    } catch (error) {
+      console.error('[Database] deletePlaylist failed:', error.message);
+      return false;
+    }
+  }
+
   close() {
     this.db.close();
   }

@@ -51,12 +51,29 @@ export function getPlayer() {
       }
 
       if (!playedSuccessfully) {
-        // No more tracks or all failed - clear queue and notify UI
-        queue?.clear();  // Clear the zombie queue state
+        // No more tracks or all failed - perform full cleanup
+        console.log('[TrackEnd] No more playable tracks - clearing queue state');
+
+        // 1. Stop resolution manager to prevent background processing
+        resolutionManager.stop();
+        resolutionManager.processingTracks.clear();
+
+        // 2. Clear the queue - use the queue instance directly
+        //    Both queue (module-level) and musicManager.queue should be the same instance
+        const queueToClear = queue || musicManager.queue;
+        if (queueToClear) {
+          queueToClear.tracks = [];
+          queueToClear.currentIndex = 0;
+          console.log('[TrackEnd] Queue cleared:', queueToClear.tracks.length, 'tracks, index:', queueToClear.currentIndex);
+        }
+
+        // 3. Emit cleared state to all clients
+        musicManager.emit('queue:update', { tracks: [], currentIndex: 0 });
         musicManager.emit('track:change', null);
         musicManager.emitState();
+      } else {
+        musicManager.emitQueueUpdate();
       }
-      musicManager.emitQueueUpdate();
     });
 
     // Handle failed tracks (skip to next)

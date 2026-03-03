@@ -52,6 +52,9 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # Set up non-root user
 USER node
 
+# Mark bind-mounted workspace as safe for git
+RUN git config --global --add safe.directory /workspace
+
 # Install global packages
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV PATH=$PATH:/usr/local/share/npm-global/bin

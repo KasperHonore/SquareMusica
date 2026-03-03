@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { musicManager } from '../../state/musicManager.js';
-import { db } from '../../database/db.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
 import { isConnected } from '../../bot/voiceManager.js';
 
@@ -56,15 +55,6 @@ router.post('/:action', authMiddleware, (req, res) => {
   }
 
   res.json({ success, state: musicManager.getPlayerState() });
-});
-
-/**
- * GET /api/player/history - Get play history
- */
-router.get('/history', optionalAuth, (req, res) => {
-  const { limit = 50, offset = 0 } = req.query;
-  const history = db.getHistory(parseInt(limit), parseInt(offset));
-  res.json({ history });
 });
 
 export default router;

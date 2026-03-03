@@ -9,9 +9,7 @@
       "ZSH_IN_DOCKER_VERSION": "1.2.0"
     }
   },
-  "runArgs": [
-    "--env-file=${localWorkspaceFolder}/.devcontainer/.env"
-  ],
+  "runArgs": ["--add-host=host.docker.internal:host-gateway"],
   "customizations": {
     "vscode": {
       "extensions": [
@@ -48,8 +46,9 @@
     "NODE_OPTIONS": "--max-old-space-size=4096",
     "CLAUDE_CONFIG_DIR": "/home/node/.claude",
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true",
-    // Foundry config - loaded from .env.local via runArgs --env-file
-    "CLAUDE_CODE_USE_FOUNDRY": "1"
+    "REMOTE_CONTAINERS": "true",
+    "PEON_RELAY_HOST": "host.docker.internal",
+    "PEON_RELAY_PORT": "19998"
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace"

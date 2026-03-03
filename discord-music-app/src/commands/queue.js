@@ -2,6 +2,7 @@ import { EmbedBuilder } from 'discord.js';
 import { musicManager } from '../state/musicManager.js';
 import { getPlayer, getQueue } from './playback.js';
 import { requireVoiceConnection } from './utils/checks.js';
+import { formatTime } from '../utils/formatTime.js';
 
 export async function handleQueue(interaction) {
   if (!await requireVoiceConnection(interaction)) return;
@@ -30,7 +31,7 @@ export async function handleQueue(interaction) {
     const track = tracks[i];
     const isCurrent = i === currentIndex;
     const prefix = isCurrent ? '▶️ ' : `${i + 1}. `;
-    const duration = formatDuration(track.duration);
+    const duration = formatTime(track.duration);
     description += `${prefix}**${track.title}** [${duration}]\n`;
   }
 
@@ -65,7 +66,7 @@ export async function handleNowPlaying(interaction) {
     .setDescription(`**${track.title}**`)
     .setColor(0x00ff00)
     .addFields(
-      { name: 'Duration', value: `${formatDuration(position)} / ${formatDuration(track.duration)}`, inline: true },
+      { name: 'Duration', value: `${formatTime(position)} / ${formatTime(track.duration)}`, inline: true },
       { name: 'Requested by', value: track.requestedBy || 'Unknown', inline: true },
       { name: 'Progress', value: progress }
     );
@@ -128,12 +129,6 @@ export async function handleClear(interaction) {
   await interaction.reply('Cleared the queue.');
 }
 
-function formatDuration(seconds) {
-  if (!seconds || isNaN(seconds)) return '0:00';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
 
 function createProgressBar(current, total) {
   const length = 20;

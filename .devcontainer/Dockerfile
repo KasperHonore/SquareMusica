@@ -82,3 +82,9 @@ RUN curl -fsSL https://bun.sh/install | bash && \
   echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> ~/.zshrc
 ENV BUN_INSTALL="/home/node/.bun"
 ENV PATH="${BUN_INSTALL}/bin:${PATH}"
+
+# Install PeonPing (force container context + default relay target for host audio)
+ENV REMOTE_CONTAINERS=true
+ENV PEON_RELAY_HOST=host.docker.internal
+ENV PEON_RELAY_PORT=19998
+RUN curl -fsSL https://raw.githubusercontent.com/tonyyont/peon-ping/main/install.sh | bash

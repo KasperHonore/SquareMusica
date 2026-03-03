@@ -1,10 +1,10 @@
 import { Server } from 'socket.io';
-import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import { db } from '../database/db.js';
 import { musicManager } from '../state/musicManager.js';
 import { botEvents } from '../bot/client.js';
 import { ServerEvents, ClientEvents } from './events.js';
+import { verifyToken } from '../api/middleware/auth.js';
 import {
   handleQueueAdd,
   handleQueueRemove,
@@ -41,29 +41,14 @@ export function setupSocketServer(httpServer) {
   // Authentication middleware
   io.use((socket, next) => {
     const token = socket.handshake.auth.token;
+    const { user, error } = verifyToken(token);
 
-    if (!token) {
-      return next(new Error('Authentication required'));
+    if (error) {
+      return next(new Error(error));
     }
 
-    try {
-      jwt.verify(token, process.env.JWT_SECRET);
-      const session = db.getSessionByToken(token);
-
-      if (!session) {
-        return next(new Error('Session expired'));
-      }
-
-      const user = db.getUserById(session.user_id);
-      if (!user) {
-        return next(new Error('User not found'));
-      }
-
-      socket.user = user;
-      next();
-    } catch (err) {
-      next(new Error('Invalid token'));
-    }
+    socket.user = user;
+    next();
   });
 
   io.on('connection', (socket) => {

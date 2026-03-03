@@ -128,11 +128,6 @@ function normalizeTrack(track) {
 }
 
 /**
- * Get public playlist metadata
- * @param {string} playlistId - Spotify playlist ID
- * @returns {Promise<{ name: string, owner: string, images: Array }|null>}
- */
-/**
  * Get public album metadata
  * @param {string} albumId - Spotify album ID
  * @returns {Promise<{ name: string, images: Array, artists: string[], totalTracks: number }|null>}

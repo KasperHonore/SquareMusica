@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { db } from '../database/db.js';
 import { resolutionManager } from '../music/resolutionManager.js';
+import { tryPlayWithFallback } from '../music/trackResolver.js';
 import { getChannelInfo } from '../bot/voiceManager.js';
 import { getBotInfo } from '../bot/client.js';
 
@@ -128,30 +129,15 @@ class MusicManager extends EventEmitter {
   async skip() {
     if (!this.player || !this.queue) return false;
 
-    let next = this.queue.next();
-    let playedSuccessfully = false;
+    this.queue.next();
+    const connection = this.getConnection?.(this.guildId);
+    const { played } = await tryPlayWithFallback(this.player, this.queue, connection);
 
-    // Try to find a playable track (skip failed resolution tracks)
-    while (next) {
-      const connection = this.getConnection?.(this.guildId);
-      if (connection) {
-        const success = await this.player.play(next, connection);
-        if (success) {
-          playedSuccessfully = true;
-          // Trigger lookahead resolution
-          resolutionManager.processLookahead(this.queue.currentIndex).catch(err => {
-            console.error('Lookahead resolution error:', err);
-          });
-          break;
-        }
-        // Track failed to resolve, try next
-        next = this.queue.next();
-      } else {
-        break;
-      }
-    }
-
-    if (!playedSuccessfully && !next) {
+    if (played) {
+      resolutionManager.processLookahead(this.queue.currentIndex).catch(err => {
+        console.error('Lookahead resolution error:', err);
+      });
+    } else {
       this.player.stop();
       this.emit('track:change', null);
       this.emitState();

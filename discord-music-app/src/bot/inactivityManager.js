@@ -20,7 +20,3 @@ export function cancelInactivityTimer(guildId) {
     console.log(`[Inactivity] Timer cancelled - user rejoined in guild ${guildId}`);
   }
 }
-
-export function hasActiveTimer(guildId) {
-  return timers.has(guildId);
-}

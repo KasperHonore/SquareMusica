@@ -2,37 +2,48 @@ import jwt from 'jsonwebtoken';
 import { db } from '../../database/db.js';
 
 /**
- * Authentication middleware - requires valid token
+ * Verify a JWT token and return the associated user
+ * @param {string} token - JWT token to verify
+ * @returns {{ user?: Object, error?: string }}
  */
-export function authMiddleware(req, res, next) {
-  const token = req.cookies?.token || req.headers.authorization?.split(' ')[1];
-
+export function verifyToken(token) {
   if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
+    return { error: 'Authentication required' };
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    jwt.verify(token, process.env.JWT_SECRET);
     const session = db.getSessionByToken(token);
 
     if (!session) {
-      console.log('Auth failed: No session found for token');
-      return res.status(401).json({ error: 'Session expired' });
+      return { error: 'Session expired' };
     }
 
     const user = db.getUserById(session.user_id);
     if (!user) {
-      console.log('Auth failed: User not found for session', session.user_id);
-      return res.status(401).json({ error: 'User not found' });
+      return { error: 'User not found' };
     }
 
-    req.user = user;
-    req.token = token;
-    next();
+    return { user };
   } catch (err) {
-    console.log('Auth failed: JWT verification error:', err.message);
-    return res.status(401).json({ error: 'Invalid token' });
+    return { error: 'Invalid token' };
   }
+}
+
+/**
+ * Authentication middleware - requires valid token
+ */
+export function authMiddleware(req, res, next) {
+  const token = req.cookies?.token || req.headers.authorization?.split(' ')[1];
+  const { user, error } = verifyToken(token);
+
+  if (error) {
+    return res.status(401).json({ error });
+  }
+
+  req.user = user;
+  req.token = token;
+  next();
 }
 
 /**
@@ -41,20 +52,12 @@ export function authMiddleware(req, res, next) {
 export function optionalAuth(req, res, next) {
   const token = req.cookies?.token || req.headers.authorization?.split(' ')[1];
 
-  if (!token) {
-    return next();
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const session = db.getSessionByToken(token);
-
-    if (session) {
-      req.user = db.getUserById(session.user_id);
+  if (token) {
+    const { user } = verifyToken(token);
+    if (user) {
+      req.user = user;
       req.token = token;
     }
-  } catch (err) {
-    // Ignore invalid tokens for optional auth
   }
 
   next();

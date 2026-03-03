@@ -3,10 +3,8 @@ import { requireVoiceConnection } from './utils/checks.js';
 import { musicManager } from '../state/musicManager.js';
 import { MusicPlayer } from '../music/player.js';
 import { Queue } from '../music/queue.js';
-import { search, getInfo, isValidUrl, isPlaylist, getPlaylist } from '../music/youtube.js';
-import { parseSpotifyUrl, getPublicTrack, getPublicPlaylistTracks } from '../music/spotify.js';
-import { resolveSpotifyTrack, resolveSpotifyTracks } from '../music/resolver.js';
-import { resolutionManager, ResolutionManager } from '../music/resolutionManager.js';
+import { resolveQuery, enrichWithUserInfo, triggerLookaheadIfNeeded, tryPlayWithFallback } from '../music/trackResolver.js';
+import { resolutionManager } from '../music/resolutionManager.js';
 
 // Singleton instances
 let player = null;
@@ -21,50 +19,31 @@ export function getPlayer() {
     // Auto-play next track
     player.on('trackEnd', async () => {
       const next = queue?.next();
-      let playedSuccessfully = false;
 
       if (next) {
         const connection = getConnection(musicManager.guildId);
-        if (connection) {
-          const success = await player.play(next, connection);
-          if (success) {
-            playedSuccessfully = true;
-          } else {
-            // If track failed to resolve, try next tracks
-            let nextTrack = queue?.next();
-            while (nextTrack) {
-              const nextSuccess = await player.play(nextTrack, connection);
-              if (nextSuccess) {
-                playedSuccessfully = true;
-                break;
-              }
-              nextTrack = queue?.next();
-            }
-          }
-          if (playedSuccessfully) {
-            // Trigger lookahead resolution after advancing
-            resolutionManager.processLookahead(queue?.currentIndex || 0).catch(err => {
-              console.error('Lookahead resolution error:', err);
-            });
-          }
+        const { played } = await tryPlayWithFallback(player, queue, connection);
+
+        if (played) {
+          resolutionManager.processLookahead(queue?.currentIndex || 0).catch(err => {
+            console.error('Lookahead resolution error:', err);
+          });
+          musicManager.emitQueueUpdate();
+        } else {
+          console.log('[TrackEnd] No more playable tracks');
+          resolutionManager.stop();
+          resolutionManager.processingTracks.clear();
+          musicManager.emit('queue:update', { tracks: [], currentIndex: 0 });
+          musicManager.emit('track:change', null);
+          musicManager.emitState();
         }
-      }
-
-      if (!playedSuccessfully) {
-        // No more tracks or all failed
-        // Note: Queue is already cleared by next() when it returns null
+      } else {
         console.log('[TrackEnd] No more playable tracks');
-
-        // Stop resolution manager to prevent background processing
         resolutionManager.stop();
         resolutionManager.processingTracks.clear();
-
-        // Emit cleared state to all clients (queue already cleared by next())
         musicManager.emit('queue:update', { tracks: [], currentIndex: 0 });
         musicManager.emit('track:change', null);
         musicManager.emitState();
-      } else {
-        musicManager.emitQueueUpdate();
       }
     });
 
@@ -103,87 +82,35 @@ export async function handlePlay(interaction) {
     const p = getPlayer();
     const q = getQueue();
 
-    let tracks = [];
-    let skippedTracks = [];
-
-    // User info for requestedBy
     const userInfo = {
       username: interaction.user.username,
       id: interaction.user.id,
       avatar: interaction.user.avatar
     };
 
-    // Check for Spotify URL first
-    const spotifyParsed = parseSpotifyUrl(query);
+    // Resolve query to tracks
+    const { tracks: rawTracks, error } = await resolveQuery(query, userInfo);
 
-    if (spotifyParsed.type === 'playlist') {
-      // Handle Spotify playlist - add tracks immediately without resolution
-      const spotifyTracks = await getPublicPlaylistTracks(spotifyParsed.id);
-      if (spotifyTracks.length === 0) {
-        return interaction.editReply('Could not load Spotify playlist or playlist is empty.');
-      }
-
-      // Convert to unresolved queue tracks (lazy resolution)
-      tracks = spotifyTracks.map(st =>
-        ResolutionManager.createUnresolvedTrack(st, userInfo)
-      );
-
-      // Tracks will be resolved lazily by the resolution manager
-      // No skippedTracks at add time - failures happen during resolution
-    } else if (spotifyParsed.type === 'track') {
-      // Handle Spotify track
-      const spotifyTrack = await getPublicTrack(spotifyParsed.id);
-      if (!spotifyTrack) {
-        return interaction.editReply('Could not find that Spotify track.');
-      }
-
-      const youtubeTrack = await resolveSpotifyTrack(spotifyTrack);
-      if (!youtubeTrack) {
-        return interaction.editReply(`Could not find "${spotifyTrack.title}" on YouTube.`);
-      }
-      tracks = [youtubeTrack];
-    } else if (isPlaylist(query)) {
-      tracks = await getPlaylist(query);
-      if (tracks.length === 0) {
-        return interaction.editReply('Could not load playlist.');
-      }
-    } else if (isValidUrl(query)) {
-      const track = await getInfo(query);
-      if (!track) {
-        return interaction.editReply('Could not find that video.');
-      }
-      tracks = [track];
-    } else {
-      const results = await search(query, 1);
-      if (results.length === 0) {
-        return interaction.editReply('No results found.');
-      }
-      tracks = [results[0]];
+    if (error) {
+      const messages = {
+        SPOTIFY_PLAYLIST_EMPTY: 'Could not load Spotify playlist or playlist is empty.',
+        SPOTIFY_TRACK_NOT_FOUND: 'Could not find that Spotify track.',
+        SPOTIFY_ALBUM_EMPTY: 'Could not load Spotify album or album is empty.',
+        PLAYLIST_EMPTY: 'Could not load playlist.',
+        VIDEO_NOT_FOUND: 'Could not find that video.',
+        NO_RESULTS: 'No results found.'
+      };
+      return interaction.editReply(messages[error] || 'Failed to process query.');
     }
 
-    // Add requestedBy with full user info
-    tracks = tracks.map(t => ({
-      ...t,
-      requestedBy: userInfo.username,
-      requestedById: userInfo.id,
-      requestedByAvatar: userInfo.avatar
-    }));
+    // Add user info to non-Spotify tracks (Spotify tracks already have it from createUnresolvedTrack)
+    let tracks = enrichWithUserInfo(rawTracks, userInfo);
 
-    // Add to queue
-    tracks.forEach(t => q.add(t));
-    musicManager.emitQueueUpdate();
+    // Add to queue using musicManager facade
+    tracks.forEach(t => musicManager.addToQueue(t));
 
-    // Trigger lookahead resolution for Spotify playlists (non-blocking)
-    const hasUnresolvedTracks = tracks.some(t => t.status === 'unresolved');
-    if (hasUnresolvedTracks) {
-      // Start resolution manager if not already running
-      resolutionManager.setQueue(q);
-      resolutionManager.start();
-      // Process lookahead immediately (non-blocking)
-      resolutionManager.processLookahead(q.currentIndex).catch(err => {
-        console.error('Lookahead resolution error:', err);
-      });
-    }
+    // Trigger lookahead resolution if needed
+    const hasUnresolved = triggerLookaheadIfNeeded(tracks, resolutionManager, q, q.currentIndex);
 
     // Get or create voice connection
     let connection = getConnection(interaction.guildId);
@@ -195,27 +122,8 @@ export async function handlePlay(interaction) {
 
     // Start playing if not already
     if (!p.isPlaying() && !p.isPaused()) {
-      const track = q.getCurrent();
-      let playedSuccessfully = false;
-      if (track) {
-        const success = await p.play(track, connection);
-        if (success) {
-          playedSuccessfully = true;
-        } else {
-          // If first track failed to resolve, try next tracks
-          let nextTrack = q.next();
-          while (nextTrack) {
-            const nextSuccess = await p.play(nextTrack, connection);
-            if (nextSuccess) {
-              playedSuccessfully = true;
-              break;
-            }
-            nextTrack = q.next();
-          }
-        }
-      }
-      // If all tracks failed to play, notify UI
-      if (!playedSuccessfully && q.length > 0) {
+      const { played } = await tryPlayWithFallback(p, q, connection);
+      if (!played && q.length > 0) {
         musicManager.emit('track:change', null);
         musicManager.emitState();
       }
@@ -230,10 +138,8 @@ export async function handlePlay(interaction) {
       }
     } else {
       let message = `Added ${tracks.length} tracks to queue`;
-      if (hasUnresolvedTracks) {
+      if (hasUnresolved) {
         message += ' (resolving YouTube URLs in background...)';
-      } else if (skippedTracks.length > 0) {
-        message += ` (${skippedTracks.length} tracks could not be found on YouTube)`;
       }
       await interaction.editReply(message);
     }
@@ -290,22 +196,12 @@ export async function handleSkip(interaction) {
   }
 
   const skipped = p.currentTrack.title;
-  let next = q.next();
-  let playingTrack = null;
+  q.next(); // Advance the queue
 
-  // Try to find a playable track (skip failed resolution tracks)
-  while (next && connection) {
-    const success = await p.play(next, connection);
-    if (success) {
-      playingTrack = next;
-      break;
-    }
-    next = q.next();
-  }
+  const { played, track: playingTrack } = await tryPlayWithFallback(p, q, connection);
 
-  if (playingTrack) {
+  if (played) {
     await interaction.reply(`Skipped **${skipped}**. Now playing: **${playingTrack.title}**`);
-    // Trigger lookahead resolution after skipping
     resolutionManager.processLookahead(q.currentIndex).catch(err => {
       console.error('Lookahead resolution error:', err);
     });

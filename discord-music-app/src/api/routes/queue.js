@@ -1,11 +1,10 @@
 import { Router } from 'express';
 import { musicManager } from '../../state/musicManager.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
-import { search, getInfo, isValidUrl, isPlaylist, getPlaylist } from '../../music/youtube.js';
+import { search } from '../../music/youtube.js';
 import { isConnected } from '../../bot/voiceManager.js';
-import { parseSpotifyUrl, getPublicTrack, getPublicPlaylistTracks } from '../../music/spotify.js';
-import { resolveSpotifyTrack, resolveSpotifyTracks } from '../../music/resolver.js';
-import { resolutionManager, ResolutionManager } from '../../music/resolutionManager.js';
+import { resolveQuery, enrichWithUserInfo, triggerLookaheadIfNeeded } from '../../music/trackResolver.js';
+import { resolutionManager } from '../../music/resolutionManager.js';
 import { db } from '../../database/db.js';
 
 const router = Router();
@@ -41,93 +40,43 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
   }
 
   try {
-    let tracks = [];
-    let skippedTracks = [];
-
-    // Check for Spotify URL first
-    const spotifyParsed = parseSpotifyUrl(query);
-
-    // User info for requestedBy
     const userInfo = {
       username: req.user.username,
       id: req.user.discord_id,
       avatar: req.user.avatar
     };
 
-    if (spotifyParsed.type === 'playlist') {
-      // Handle Spotify playlist - add tracks immediately without resolution (lazy)
-      const spotifyTracks = await getPublicPlaylistTracks(spotifyParsed.id);
-      if (spotifyTracks.length === 0) {
-        return res.status(404).json({ error: 'Spotify playlist not found or empty' });
-      }
+    // Resolve query to tracks
+    const { tracks: rawTracks, error } = await resolveQuery(query, userInfo);
 
-      // Convert to unresolved queue tracks (lazy resolution)
-      tracks = spotifyTracks.map(st =>
-        ResolutionManager.createUnresolvedTrack(st, userInfo)
-      );
-
-      // Tracks will be resolved lazily - no skipped tracks at add time
-    } else if (spotifyParsed.type === 'track') {
-      // Handle Spotify track
-      const spotifyTrack = await getPublicTrack(spotifyParsed.id);
-      if (!spotifyTrack) {
-        return res.status(404).json({ error: 'Spotify track not found' });
-      }
-
-      const youtubeTrack = await resolveSpotifyTrack(spotifyTrack);
-      if (!youtubeTrack) {
-        return res.status(404).json({ error: `Could not find "${spotifyTrack.title}" on YouTube` });
-      }
-      tracks = [youtubeTrack];
-    } else if (isPlaylist(query)) {
-      // Handle YouTube playlist
-      tracks = await getPlaylist(query);
-      if (tracks.length === 0) {
-        return res.status(404).json({ error: 'Playlist not found or empty' });
-      }
-    } else if (isValidUrl(query)) {
-      // Handle direct YouTube URL
-      const track = await getInfo(query);
-      if (!track) {
-        return res.status(404).json({ error: 'Video not found' });
-      }
-      tracks = [track];
-    } else {
-      // Search YouTube
-      const results = await search(query, 1);
-      if (results.length === 0) {
-        return res.status(404).json({ error: 'No results found' });
-      }
-      tracks = [results[0]];
+    if (error) {
+      const errorMap = {
+        SPOTIFY_PLAYLIST_EMPTY: 'Spotify playlist not found or empty',
+        SPOTIFY_TRACK_NOT_FOUND: 'Spotify track not found',
+        SPOTIFY_ALBUM_EMPTY: 'Spotify album not found or empty',
+        PLAYLIST_EMPTY: 'Playlist not found or empty',
+        VIDEO_NOT_FOUND: 'Video not found',
+        NO_RESULTS: 'No results found'
+      };
+      return res.status(404).json({ error: errorMap[error] || 'Failed to process query' });
     }
 
-    // Add requestedBy with full user info to all tracks
-    tracks = tracks.map(track => ({
-      ...track,
-      requestedBy: userInfo.username,
-      requestedById: userInfo.id,
-      requestedByAvatar: userInfo.avatar
-    }));
+    // Add user info to tracks
+    let tracks = enrichWithUserInfo(rawTracks, userInfo);
 
     // Add to queue
     tracks.forEach(track => musicManager.addToQueue(track));
 
-    // Trigger lookahead resolution for Spotify playlists (non-blocking)
-    const hasUnresolvedTracks = tracks.some(t => t.status === 'unresolved');
-    if (hasUnresolvedTracks && musicManager.queue) {
-      resolutionManager.setQueue(musicManager.queue);
-      resolutionManager.start();
-      resolutionManager.processLookahead(musicManager.getCurrentIndex()).catch(err => {
-        console.error('Lookahead resolution error:', err);
-      });
-    }
+    // Trigger lookahead resolution if needed
+    const hasUnresolved = triggerLookaheadIfNeeded(
+      tracks, resolutionManager, musicManager.queue, musicManager.getCurrentIndex()
+    );
 
     res.json({
       success: true,
       added: tracks.length,
       tracks,
-      skipped: skippedTracks,
-      lazyResolution: hasUnresolvedTracks
+      lazyResolution: hasUnresolved
     });
   } catch (error) {
     console.error('Add to queue error:', error);

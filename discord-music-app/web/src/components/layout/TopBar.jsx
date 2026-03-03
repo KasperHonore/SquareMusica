@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Speaker } from '../icons/index.jsx';
 import { useAuth } from '../../context/AuthContext';
+import { formatTime } from '../../utils/formatTime.js';
 
 /**
  * TopBar component with integrated search
@@ -23,13 +24,6 @@ function useDebounce(value, delay) {
   return debouncedValue;
 }
 
-// Format duration from seconds to mm:ss
-function formatDuration(seconds) {
-  if (!seconds) return '--:--';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
 
 // Search icon SVG
 function SearchIcon({ className = '' }) {
@@ -315,7 +309,7 @@ function IntegratedSearchBar({ onAdd, disabled }) {
                   )}
                   {track.duration && (
                     <span className="absolute bottom-0.5 right-0.5 px-1 text-[9px] font-mono rounded" style={{ backgroundColor: 'rgba(0,0,0,0.8)', color: 'white' }}>
-                      {formatDuration(track.duration)}
+                      {formatTime(track.duration)}
                     </span>
                   )}
                 </div>

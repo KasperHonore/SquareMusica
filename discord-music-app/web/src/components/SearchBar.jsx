@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { formatTime } from '../utils/formatTime.js';
 
 // Debounce helper
 function useDebounce(value, delay) {
@@ -13,13 +14,6 @@ function useDebounce(value, delay) {
   return debouncedValue;
 }
 
-// Format duration from seconds to mm:ss
-function formatDuration(seconds) {
-  if (!seconds) return '--:--';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
 
 // Search icon SVG
 function SearchIcon({ className = '' }) {
@@ -130,7 +124,7 @@ function SuggestionItem({ track, onSelect, isHighlighted, id }) {
               color: 'var(--color-text-primary)',
             }}
           >
-            {formatDuration(track.duration)}
+            {formatTime(track.duration)}
           </span>
         )}
       </div>

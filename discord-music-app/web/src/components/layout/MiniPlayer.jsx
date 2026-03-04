@@ -1,24 +1,17 @@
-import { formatTime } from '../../utils/formatTime';
+import { PlaybackControls } from '../right/PlaybackControls';
 import {
-  Play,
-  Pause,
-  SkipNext,
-  SkipPrevious,
   MusicNote,
   Leave,
   Speaker
 } from '../icons';
 
 /**
- * MiniPlayer - Minimal transport strip (72px bottom bar)
+ * MiniPlayer - Transport strip (72px bottom bar)
  *
- * Wave design bottom bar:
- * ┌──────────────────────────────────────────────────────────────┐
- * │ [Art] Title / Artist    ⏮  ▶  ⏭    [progress]   Voice btn  │
- * └──────────────────────────────────────────────────────────────┘
- *
- * Controls mirror the right panel (same playerControl calls).
- * No seek on progress bar here (visual sync only).
+ * Always visible. Shows playback controls + voice join/leave.
+ * ┌──────────────────────────────────────────────────────────────────┐
+ * │ [Art] Title / Artist   🔁 ⏮ ▶ ⏭ ⏹  [progress]   Voice btn   │
+ * └──────────────────────────────────────────────────────────────────┘
  */
 export function MiniPlayer({
   currentTrack,
@@ -28,10 +21,7 @@ export function MiniPlayer({
   onJoinChannel,
   onLeaveChannel,
 }) {
-  if (!currentTrack) return null;
-
-  const isPlaying = playerState?.playing;
-  const duration = currentTrack.duration || 0;
+  const duration = currentTrack?.duration || 0;
   const position = playerState?.position || 0;
   const progress = duration > 0 ? (position / duration) * 100 : 0;
 
@@ -47,7 +37,7 @@ export function MiniPlayer({
         borderTop: '1px solid var(--color-border)',
       }}
       role="region"
-      aria-label={`Now playing: ${currentTrack.title}`}
+      aria-label={currentTrack ? `Now playing: ${currentTrack.title}` : 'Player controls'}
     >
       <div
         className="h-full flex items-center"
@@ -55,8 +45,7 @@ export function MiniPlayer({
       >
         {/* Left: Mini thumbnail + track info */}
         <div className="flex items-center gap-2.5 flex-shrink-0" style={{ width: '200px' }}>
-          {/* Thumbnail */}
-          {currentTrack.thumbnail ? (
+          {currentTrack?.thumbnail ? (
             <img
               src={currentTrack.thumbnail}
               alt=""
@@ -93,7 +82,7 @@ export function MiniPlayer({
                 color: 'var(--color-text-primary)',
               }}
             >
-              {currentTrack.title}
+              {currentTrack?.title || '\u2014'}
             </div>
             <div
               className="truncate"
@@ -102,40 +91,14 @@ export function MiniPlayer({
                 color: 'var(--color-text-muted)',
               }}
             >
-              {currentTrack.artist || '\u2014'}
+              {currentTrack?.artist || 'Not playing'}
             </div>
           </div>
         </div>
 
-        {/* Center: Controls + progress */}
-        <div className="flex-1 flex flex-col items-center" style={{ gap: '7px' }}>
-          {/* Transport buttons */}
-          <div className="flex items-center" style={{ gap: '2px' }}>
-            <button
-              onClick={() => onControl('previous')}
-              className="wave-bb-ctrl"
-              title="Previous"
-              aria-label="Previous track"
-            >
-              <SkipPrevious size={17} />
-            </button>
-            <button
-              onClick={() => onControl(isPlaying ? 'pause' : 'play')}
-              className="wave-bb-play"
-              title={isPlaying ? 'Pause' : 'Play'}
-              aria-label={isPlaying ? 'Pause' : 'Play'}
-            >
-              {isPlaying ? <Pause size={15} /> : <Play size={15} />}
-            </button>
-            <button
-              onClick={() => onControl('skip')}
-              className="wave-bb-ctrl"
-              title="Skip"
-              aria-label="Skip to next track"
-            >
-              <SkipNext size={17} />
-            </button>
-          </div>
+        {/* Center: PlaybackControls + progress */}
+        <div className="flex-1 flex flex-col items-center" style={{ gap: '5px' }}>
+          <PlaybackControls playerState={playerState} onControl={onControl} />
 
           {/* Progress bar (visual only, no seek) */}
           <div
@@ -169,7 +132,6 @@ export function MiniPlayer({
               title={`Leave ${channelName || 'voice'}`}
               aria-label={`Leave voice channel ${channelName || ''}`}
             >
-              {/* Green pulse dot */}
               <span
                 className="animate-pulse"
                 style={{
@@ -217,23 +179,6 @@ export function MiniPlayer({
         .wave-bb-ctrl:hover {
           color: var(--color-text-primary);
           background: var(--color-bg-elevated);
-        }
-        .wave-bb-play {
-          background: var(--color-accent);
-          color: var(--color-text-inverse);
-          width: 34px;
-          height: 34px;
-          border-radius: 50%;
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0;
-          transition: filter 0.12s;
-        }
-        .wave-bb-play:hover {
-          filter: brightness(1.1);
         }
       `}</style>
     </div>

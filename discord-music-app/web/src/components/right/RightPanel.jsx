@@ -1,13 +1,11 @@
 import { NowPlayingCompact } from './NowPlayingCompact';
-import { PlaybackControls } from './PlaybackControls';
 import { Queue } from '../Queue';
 
 /**
- * RightPanel - Container for Now Playing, Controls, and Queue
+ * RightPanel - Container for Now Playing and Queue
  *
  * Always visible in the right column. Never changes based on center panel nav.
- * Layout follows the Wave design: now playing section at top, controls below,
- * queue fills remaining space.
+ * Playback controls live in the bottom bar (MiniPlayer).
  */
 export function RightPanel({
   currentTrack,
@@ -28,12 +26,6 @@ export function RightPanel({
       {/* Now Playing section */}
       <NowPlayingCompact
         currentTrack={currentTrack}
-        playerState={playerState}
-        onControl={onControl}
-      />
-
-      {/* Playback controls */}
-      <PlaybackControls
         playerState={playerState}
         onControl={onControl}
       />

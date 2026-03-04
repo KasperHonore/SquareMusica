@@ -75,8 +75,8 @@ export function Sidebar({
   const resolvedView = activeView === 'nowplaying' ? 'search' : activeView === 'queue' ? 'playlists' : activeView;
 
   // Build Discord avatar URL
-  const avatarUrl = user?.avatar
-    ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
+  const avatarUrl = user?.avatar && user?.discord_id
+    ? `https://cdn.discordapp.com/avatars/${user.discord_id}/${user.avatar}.png?size=64`
     : null;
 
   const displayName = user?.global_name || user?.username || 'User';
@@ -93,18 +93,49 @@ export function Sidebar({
         fontFamily: 'var(--font-body)',
       }}
     >
-      {/* Logo wordmark */}
+      {/* Bot identity */}
       <div
         style={{
-          fontFamily: 'var(--font-heading)',
-          fontSize: '22px',
-          letterSpacing: '-0.3px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
           padding: '0 8px',
-          color: 'var(--color-text-primary)',
           flexShrink: 0,
         }}
       >
-        wave<span style={{ color: 'var(--color-accent)' }}>.</span>
+        {botInfo?.avatarUrl ? (
+          <img
+            src={botInfo.avatarUrl}
+            alt={botInfo.name}
+            style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              backgroundColor: 'var(--color-bg-surface3)',
+              flexShrink: 0,
+            }}
+          />
+        )}
+        <span
+          style={{
+            fontFamily: 'var(--font-heading)',
+            fontSize: '20px',
+            letterSpacing: '-0.3px',
+            color: 'var(--color-text-primary)',
+          }}
+        >
+          {botInfo?.name || 'wave'}
+          <span style={{ color: 'var(--color-accent)' }}>.</span>
+        </span>
       </div>
 
       {/* Navigation */}

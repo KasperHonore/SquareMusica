@@ -1,9 +1,9 @@
-import { Play, Pause, SkipNext, SkipPrevious, Loop, Stop } from '../icons';
+import { Play, Pause, SkipNext, SkipPrevious, Loop } from '../icons';
 
 /**
- * PlaybackControls - 5-button row for the right panel
+ * PlaybackControls - 4-button row for the bottom bar
  *
- * Loop | Previous | Play/Pause | Skip | Stop
+ * Loop | Previous | Play/Pause | Skip
  * Matches Wave design: gold play button, muted icon buttons, hover surface2 bg.
  */
 export function PlaybackControls({ playerState, onControl }) {
@@ -82,8 +82,8 @@ export function PlaybackControls({ playerState, onControl }) {
       `}</style>
 
       <div
-        className="flex items-center justify-between flex-shrink-0"
-        style={{ padding: '2px 20px 0' }}
+        className="flex items-center justify-center flex-shrink-0"
+        style={{ gap: '2px' }}
       >
         {/* Loop */}
         <button
@@ -132,16 +132,6 @@ export function PlaybackControls({ playerState, onControl }) {
           <SkipNext size={18} />
         </button>
 
-        {/* Stop */}
-        <button
-          className={ctrlHoverClass}
-          style={ctrlStyle}
-          onClick={() => onControl('stop')}
-          title="Stop"
-          aria-label="Stop playback"
-        >
-          <Stop size={15} />
-        </button>
       </div>
     </>
   );

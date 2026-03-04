@@ -214,10 +214,12 @@ export function handleVoiceJoin(socket) {
         return;
       }
 
-      console.log(`[HandleVoiceJoin] Found user in channel ${voiceChannel.name}, joining...`);
-      await joinChannel(voiceChannel);
+      console.log(`[HandleVoiceJoin] Found user in channel ${voiceChannel.name} in guild ${voiceChannel.guild.name} (${voiceChannel.guild.id}), joining...`);
+      const conn = await joinChannel(voiceChannel);
+      console.log(`[HandleVoiceJoin] joinChannel returned, connection status: ${conn?.state?.status}`);
       musicManager.setGuildId(voiceChannel.guild.id);
       setChannelCache(voiceChannel.guild.id, voiceChannel);
+      console.log(`[HandleVoiceJoin] About to emit voice context and state...`);
       musicManager.emitVoiceContext();
       musicManager.emitState();
       console.log(`[HandleVoiceJoin] Join complete, voice context and state emitted`);

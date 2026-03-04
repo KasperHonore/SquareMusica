@@ -20,6 +20,7 @@ export async function handleJoin(interaction) {
     musicManager.setGuildId(interaction.guildId);
     setChannelCache(interaction.guildId, voiceChannel);
     musicManager.emitVoiceContext();
+    musicManager.emitState();
     await interaction.editReply(`Joined **${voiceChannel.name}**`);
   } catch (error) {
     console.error('Join error:', error);
@@ -41,5 +42,6 @@ export async function handleLeave(interaction) {
   setChannelCache(interaction.guildId, null);
   musicManager.stop();
   musicManager.emitVoiceContext();
+  musicManager.emitState();
   await interaction.reply('Left the voice channel.');
 }

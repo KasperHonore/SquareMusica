@@ -56,11 +56,21 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
         setChannelCache(guildId, null);
         musicManager.stop();
         musicManager.emitVoiceContext();
+        musicManager.emitState();
       });
     } else {
       cancelInactivityTimer(guildId);
     }
   });
+});
+
+botEvents.on('voiceDisconnected', (guildId) => {
+  console.log(`[Bot] Voice disconnected for guild ${guildId}, cleaning up`);
+  setChannelCache(guildId, null);
+  cancelInactivityTimer(guildId);
+  musicManager.stop();
+  musicManager.emitVoiceContext();
+  musicManager.emitState();
 });
 
 export function getBotInfo() {

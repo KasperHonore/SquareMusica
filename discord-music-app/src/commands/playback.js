@@ -1,4 +1,4 @@
-import { getConnection } from '../bot/voiceManager.js';
+import { getConnection, setChannelCache } from '../bot/voiceManager.js';
 import { requireVoiceConnection } from './utils/checks.js';
 import { musicManager } from '../state/musicManager.js';
 import { MusicPlayer } from '../music/player.js';
@@ -118,6 +118,9 @@ export async function handlePlay(interaction) {
       const { joinChannel } = await import('../bot/voiceManager.js');
       connection = await joinChannel(voiceChannel);
       musicManager.setGuildId(interaction.guildId);
+      setChannelCache(interaction.guildId, voiceChannel);
+      musicManager.emitVoiceContext();
+      musicManager.emitState();
     }
 
     // Start playing if not already

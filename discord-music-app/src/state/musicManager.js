@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { db } from '../database/db.js';
 import { resolutionManager } from '../music/resolutionManager.js';
 import { tryPlayWithFallback } from '../music/trackResolver.js';
-import { getChannelInfo } from '../bot/voiceManager.js';
+import { getChannelInfo, isConnected } from '../bot/voiceManager.js';
 import { getBotInfo } from '../bot/client.js';
 
 class MusicManager extends EventEmitter {
@@ -186,7 +186,7 @@ class MusicManager extends EventEmitter {
       paused: this.player?.isPaused() || false,
       loop: this.queue?.loopMode || 'off',
       position: this.player?.getPosition() || 0,
-      connected: !!this.getConnection?.(guildId)
+      connected: isConnected(guildId)
     };
   }
 

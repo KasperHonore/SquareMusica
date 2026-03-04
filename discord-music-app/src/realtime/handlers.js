@@ -187,9 +187,14 @@ export function handlePlayerControl(socket) {
 export function handleVoiceJoin(socket) {
   return async () => {
     try {
-      const discordId = socket.user.discord_id;
+      if (!client.isReady()) {
+        socket.emit('error', { message: 'Bot is still starting up. Please wait a moment and try again.' });
+        return;
+      }
 
-      // Search all guilds the bot is in to find user's voice channel
+      const discordId = socket.user.discord_id;
+      console.log(`[HandleVoiceJoin] User ${socket.user.username} (${discordId}) requesting voice join`);
+
       let voiceChannel = null;
       for (const [guildId, guild] of client.guilds.cache) {
         try {
@@ -204,17 +209,20 @@ export function handleVoiceJoin(socket) {
       }
 
       if (!voiceChannel) {
+        console.log(`[HandleVoiceJoin] User ${socket.user.username} not in any voice channel`);
         socket.emit('error', { message: 'You need to be in a voice channel in Discord!' });
         return;
       }
 
+      console.log(`[HandleVoiceJoin] Found user in channel ${voiceChannel.name}, joining...`);
       await joinChannel(voiceChannel);
       musicManager.setGuildId(voiceChannel.guild.id);
       setChannelCache(voiceChannel.guild.id, voiceChannel);
       musicManager.emitVoiceContext();
       musicManager.emitState();
+      console.log(`[HandleVoiceJoin] Join complete, voice context and state emitted`);
     } catch (err) {
-      console.error('Voice join error:', err);
+      console.error('[HandleVoiceJoin] Voice join error:', err.message);
       socket.emit('error', { message: err.message || 'Failed to join voice channel' });
     }
   };

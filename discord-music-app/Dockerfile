@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 
 # Install build dependencies for native modules (better-sqlite3, opus, sodium)
 RUN apt-get update && apt-get install -y \
@@ -28,7 +28,7 @@ RUN npm ci && npm run build
 WORKDIR /app
 
 # Production stage
-FROM node:20-slim
+FROM node:22-slim
 
 # Install runtime dependencies
 # - python3: required for yt-dlp

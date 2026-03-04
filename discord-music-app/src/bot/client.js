@@ -36,9 +36,17 @@ client.on('error', (error) => {
 
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
   const guildId = oldState.guild.id || newState.guild.id;
+  const member = newState.member || oldState.member;
+  const isBot = member?.user?.bot || false;
+  const isSelf = member?.user?.id === client.user?.id;
+  console.log(`[Bot] VoiceStateUpdate: user=${member?.user?.username} isBot=${isBot} isSelf=${isSelf} oldChannel=${oldState.channelId} newChannel=${newState.channelId}`);
+
   const botChannel = getChannelCache(guildId);
 
-  if (!botChannel) return; // Bot not in a channel
+  if (!botChannel) {
+    console.log(`[Bot] VoiceStateUpdate: no botChannel cached, ignoring`);
+    return;
+  }
 
   // Check if this event involves the bot's channel
   const leftBotChannel = oldState.channelId === botChannel.id;
@@ -49,9 +57,12 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
   // Refetch channel to get current members
   botChannel.fetch().then(channel => {
     const humanMembers = channel.members.filter(m => !m.user.bot).size;
+    console.log(`[Bot] VoiceStateUpdate: humanMembers=${humanMembers} in channel ${channel.name}`);
 
     if (humanMembers === 0) {
+      console.log(`[Bot] VoiceStateUpdate: no humans left, starting inactivity timer`);
       startInactivityTimer(guildId, () => {
+        console.log(`[Bot] Inactivity timer fired, leaving channel`);
         leaveChannel(guildId);
         setChannelCache(guildId, null);
         musicManager.stop();
@@ -65,7 +76,7 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
 });
 
 botEvents.on('voiceDisconnected', (guildId) => {
-  console.log(`[Bot] Voice disconnected for guild ${guildId}, cleaning up`);
+  console.log(`[Bot] *** voiceDisconnected event *** guild=${guildId}`, new Error().stack.split('\n').slice(1, 5).join(' <- '));
   setChannelCache(guildId, null);
   cancelInactivityTimer(guildId);
   musicManager.stop();

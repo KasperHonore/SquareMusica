@@ -148,6 +148,7 @@ class MusicManager extends EventEmitter {
   }
 
   stop() {
+    console.log(`[MusicManager] stop() called`, new Error().stack.split('\n').slice(1, 4).join(' <- '));
     if (!this.player) return false;
     this.player.stop();
     if (this.queue) {
@@ -181,17 +182,21 @@ class MusicManager extends EventEmitter {
 
   getPlayerState() {
     const guildId = this.guildId || process.env.GUILD_ID;
+    const connected = isConnected(guildId);
+    console.log(`[MusicManager] getPlayerState() guildId=${guildId}, connected=${connected}`);
     return {
       playing: this.player?.isPlaying() || false,
       paused: this.player?.isPaused() || false,
       loop: this.queue?.loopMode || 'off',
       position: this.player?.getPosition() || 0,
-      connected: isConnected(guildId)
+      connected
     };
   }
 
   emitState() {
-    this.emit('player:state', this.getPlayerState());
+    const state = this.getPlayerState();
+    console.log(`[MusicManager] emitState() connected=${state.connected}`, new Error().stack.split('\n').slice(1, 4).join(' <- '));
+    this.emit('player:state', state);
   }
 
   // Called when track changes
@@ -211,7 +216,9 @@ class MusicManager extends EventEmitter {
 
   // Emit voice context update
   emitVoiceContext() {
-    this.emit('voice:context', this.getVoiceContext());
+    const ctx = this.getVoiceContext();
+    console.log(`[MusicManager] emitVoiceContext()`, ctx ? `channel=${ctx.channelName}` : 'null', new Error().stack.split('\n').slice(1, 4).join(' <- '));
+    this.emit('voice:context', ctx);
   }
 
   // Get full state for initial sync

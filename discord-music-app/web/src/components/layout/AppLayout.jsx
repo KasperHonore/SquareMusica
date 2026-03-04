@@ -1,25 +1,27 @@
 import { useState } from 'react';
-import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
-import { Queue as QueueIcon, MusicNote } from '../icons';
+import { MusicNote } from '../icons';
 
 /**
- * Main application layout with 3-column Spotify-style grid
+ * Main application layout - Wave design CSS Grid
  *
- * Following UI-REWORK.md single-control-surface architecture:
- * - TopBar: Search + Server/User info
- * - Sidebar: Navigation + Voice channel controls only
- * - Center: Immersive Now Playing (no controls)
- * - Bottom Dock: ALL playback controls (handled by MiniPlayer)
+ * Grid structure:
+ * ┌──────────┬─────────────────┬──────────┐
+ * │ Sidebar  │   Center Panel  │  Right   │
+ * │ (220px)  │     (1fr)       │  Panel   │
+ * │          │                 │  (300px) │
+ * ├──────────┴─────────────────┴──────────┤
+ * │            Bottom Bar (72px)          │
+ * └───────────────────────────────────────┘
  *
- * Responsive behavior:
- * - Desktop (≥1024px): Full 3-column layout
- * - Tablet (768-1023px): Collapsed sidebar (icons only), queue slide-out
- * - Mobile (<768px): No sidebar, queue slide-out, stacked layout
+ * Responsive:
+ * - Desktop (≥1024px): Full 3-column grid
+ * - Tablet (768-1023px): Collapsed sidebar, right panel slide-out
+ * - Mobile (<768px): No sidebar, right panel slide-out
  */
 export function AppLayout({
   children,
-  queueComponent,
+  rightPanel,
   voiceContext,
   playerState,
   currentTrack,
@@ -31,7 +33,6 @@ export function AppLayout({
   onLogout,
   onAdd,
   connected,
-  showMiniPlayerPadding = false,
   botInfo,
   // Album props
   albums = [],
@@ -40,84 +41,65 @@ export function AppLayout({
   onCreateAlbum,
   onAddToQueue,
 }) {
-  const [queueOpen, setQueueOpen] = useState(false);
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div
-      className="h-screen flex flex-col overflow-hidden"
+      className="h-screen overflow-hidden"
       style={{ backgroundColor: 'var(--color-bg)' }}
     >
-      {/* TopBar with integrated search */}
-      <div className="flex-shrink-0">
-        <TopBar
-          voiceContext={voiceContext}
-          connected={connected}
-          user={user}
-          onLogout={onLogout}
-          onAdd={onAdd}
-          searchDisabled={!connected}
-        />
-      </div>
-
-      {/* Main content area */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Mobile sidebar overlay */}
-        {sidebarOpen && (
-          <div
-            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {/* Sidebar - hidden on mobile, collapsed on tablet, full on desktop */}
-        <div
-          className={`
-            fixed lg:relative z-50 lg:z-auto
-            transform transition-transform duration-300 ease-in-out
-            ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-            h-full
-          `}
+      {/* CSS Grid layout */}
+      <div className="h-full grid grid-rows-[1fr_72px] lg:grid-cols-[220px_1fr_300px] grid-cols-1">
+        {/* Sidebar - hidden on mobile, visible on desktop */}
+        <aside className="hidden lg:flex lg:flex-col row-start-1 row-end-2 border-r overflow-hidden"
+          style={{
+            backgroundColor: 'var(--color-bg-raised)',
+            borderColor: 'var(--color-border)',
+          }}
         >
           <Sidebar
             activeView={activeView}
-            onViewChange={(view) => {
-              onViewChange?.(view);
-              setSidebarOpen(false);
-            }}
+            onViewChange={onViewChange}
             voiceContext={voiceContext}
             onJoinChannel={onJoinChannel}
             onLeaveChannel={onLeaveChannel}
+            onLogout={onLogout}
             botInfo={botInfo}
+            user={user}
             albums={albums}
             onLoadAlbum={onLoadAlbum}
             onDeleteAlbum={onDeleteAlbum}
             onCreateAlbum={onCreateAlbum}
             onAddToQueue={onAddToQueue}
           />
-        </div>
+        </aside>
 
-        {/* Main content */}
-        <main
-          className="flex-1 overflow-hidden px-4 md:px-6 pt-4 md:pt-6 flex flex-col"
-        >
-          {/* Mobile header with menu and queue buttons */}
-          <div className="flex items-center justify-between mb-4 lg:hidden">
+        {/* Center panel */}
+        <main className="row-start-1 row-end-2 overflow-hidden flex flex-col min-w-0">
+          {/* Mobile header with menu and right panel buttons */}
+          <div className="flex items-center justify-between px-4 py-3 lg:hidden">
             <button
               onClick={() => setSidebarOpen(true)}
               className="p-2 rounded-lg hover:bg-white/10 transition-colors"
               aria-label="Open menu"
             >
-              <MusicNote size={24} className="text-accent" />
+              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path d="M3 12h18M3 6h18M3 18h18" />
+              </svg>
             </button>
 
-            {queueComponent && (
+            <span className="font-heading text-lg" style={{ color: 'var(--color-text-primary)' }}>
+              wave<span style={{ color: 'var(--color-accent)' }}>.</span>
+            </span>
+
+            {rightPanel && (
               <button
-                onClick={() => setQueueOpen(true)}
+                onClick={() => setRightPanelOpen(true)}
                 className="p-2 rounded-lg hover:bg-white/10 transition-colors"
-                aria-label="Open queue"
+                aria-label="Open now playing"
               >
-                <QueueIcon size={24} className="text-gray-400" />
+                <MusicNote size={20} style={{ color: 'var(--color-accent)' }} />
               </button>
             )}
           </div>
@@ -125,65 +107,104 @@ export function AppLayout({
           {children}
         </main>
 
-        {/* Queue panel - slide out on tablet/mobile */}
-        {queueComponent && (
-          <>
-            {/* Desktop queue panel - fills height, has internal padding */}
-            <aside
-              className="hidden lg:flex lg:flex-col w-80 border-l flex-shrink-0"
-              style={{
-                backgroundColor: 'var(--color-bg-raised)',
-                borderColor: 'var(--color-border)',
-              }}
-            >
-              <div className="flex-1 p-4 pb-0 overflow-hidden flex flex-col min-h-0">
-                {queueComponent}
-              </div>
-            </aside>
-
-            {/* Mobile/Tablet queue overlay */}
-            {queueOpen && (
-              <div
-                className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-                onClick={() => setQueueOpen(false)}
-              />
-            )}
-
-            {/* Mobile/Tablet queue slide-out */}
-            <aside
-              className={`
-                fixed right-0 top-0 h-full w-80 max-w-[85vw] z-50 lg:hidden
-                transform transition-transform duration-300 ease-in-out flex flex-col
-                ${queueOpen ? 'translate-x-0' : 'translate-x-full'}
-              `}
-              style={{
-                backgroundColor: 'var(--color-bg-raised)',
-              }}
-            >
-              <div className="flex-shrink-0 p-4 border-b flex items-center justify-between"
-                style={{
-                  backgroundColor: 'var(--color-bg-raised)',
-                  borderColor: 'var(--color-border)'
-                }}
-              >
-                <span className="font-semibold" style={{ fontFamily: 'var(--font-heading)' }}>Queue</span>
-                <button
-                  onClick={() => setQueueOpen(false)}
-                  className="p-2 rounded-lg hover:bg-white/10 transition-colors"
-                  aria-label="Close queue"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div className="flex-1 p-4 pb-0 overflow-hidden flex flex-col min-h-0">
-                {queueComponent}
-              </div>
-            </aside>
-          </>
+        {/* Right panel - always visible on desktop */}
+        {rightPanel && (
+          <aside
+            className="hidden lg:flex lg:flex-col row-start-1 row-end-2 border-l overflow-hidden"
+            style={{
+              backgroundColor: 'var(--color-bg-raised)',
+              borderColor: 'var(--color-border)',
+            }}
+          >
+            {rightPanel}
+          </aside>
         )}
+
+        {/* Bottom bar slot - spans all columns */}
+        <div
+          className="row-start-2 row-end-3 lg:col-span-3 border-t"
+          style={{
+            backgroundColor: 'var(--color-bg-raised)',
+            borderColor: 'var(--color-border)',
+          }}
+          id="bottom-bar-slot"
+        />
       </div>
+
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Mobile sidebar slide-out */}
+      <div
+        className={`
+          fixed left-0 top-0 h-full w-[220px] z-50 lg:hidden
+          transform transition-transform duration-300 ease-in-out
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}
+        style={{ backgroundColor: 'var(--color-bg-raised)' }}
+      >
+        <Sidebar
+          activeView={activeView}
+          onViewChange={(view) => {
+            onViewChange?.(view);
+            setSidebarOpen(false);
+          }}
+          voiceContext={voiceContext}
+          onJoinChannel={onJoinChannel}
+          onLeaveChannel={onLeaveChannel}
+          onLogout={onLogout}
+          botInfo={botInfo}
+          user={user}
+          albums={albums}
+          onLoadAlbum={onLoadAlbum}
+          onDeleteAlbum={onDeleteAlbum}
+          onCreateAlbum={onCreateAlbum}
+          onAddToQueue={onAddToQueue}
+        />
+      </div>
+
+      {/* Mobile right panel overlay */}
+      {rightPanelOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setRightPanelOpen(false)}
+        />
+      )}
+
+      {/* Mobile right panel slide-out */}
+      {rightPanel && (
+        <div
+          className={`
+            fixed right-0 top-0 h-full w-[300px] max-w-[85vw] z-50 lg:hidden
+            transform transition-transform duration-300 ease-in-out flex flex-col
+            ${rightPanelOpen ? 'translate-x-0' : 'translate-x-full'}
+          `}
+          style={{ backgroundColor: 'var(--color-bg-raised)' }}
+        >
+          <div className="flex-shrink-0 p-4 border-b flex items-center justify-between"
+            style={{ borderColor: 'var(--color-border)' }}
+          >
+            <span className="font-heading text-lg">Now Playing</span>
+            <button
+              onClick={() => setRightPanelOpen(false)}
+              className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+              aria-label="Close panel"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+            {rightPanel}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

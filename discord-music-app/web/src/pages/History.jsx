@@ -2,51 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../hooks/useSocket';
 import { HistoryItem } from '../components/HistoryItem';
-import { MusicNote } from '../components/icons';
-
-/**
- * Empty state component matching Queue's empty state pattern
- */
-function EmptyHistory() {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center py-8 animate-fade-in">
-      {/* Animated music notes container */}
-      <div className="relative w-24 h-24 mb-6">
-        {/* Background circle */}
-        <div className="absolute inset-0 rounded-full bg-accent-subtle animate-pulse-glow" />
-
-        {/* Floating notes animation */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="relative">
-            <MusicNote size={36} className="text-accent" />
-            {/* Orbiting mini notes */}
-            <div className="absolute -top-2 -left-3 animate-wave">
-              <MusicNote size={14} className="text-accent/60" />
-            </div>
-            <div className="absolute -bottom-1 -right-3 animate-wave-delay-2">
-              <MusicNote size={16} className="text-accent/40" />
-            </div>
-          </div>
-        </div>
-
-        {/* Sound wave rings */}
-        <div
-          className="absolute inset-0 rounded-full border border-accent/20"
-          style={{ animation: 'ring-pulse 2s ease-out infinite' }}
-        />
-        <div
-          className="absolute inset-0 rounded-full border border-accent/10"
-          style={{ animation: 'ring-pulse 2s ease-out infinite 0.5s' }}
-        />
-      </div>
-
-      <p className="text-heading text-sm text-text-secondary mb-2">No listening history yet</p>
-      <p className="text-body text-xs text-text-muted text-center max-w-[200px]">
-        Play some tracks and they'll appear here
-      </p>
-    </div>
-  );
-}
 
 export function History() {
   const { token } = useAuth();
@@ -100,7 +55,6 @@ export function History() {
   // Refetch when history is cleared (bot left server)
   useEffect(() => {
     if (historyVersion > 0) {
-      console.log('[History] historyVersion changed to', historyVersion, '- refetching');
       fetchHistory(0, false);
     }
   }, [historyVersion, fetchHistory]);
@@ -134,33 +88,37 @@ export function History() {
 
   return (
     <div
-      className="h-full flex-1 min-h-0 flex flex-col"
-      role="region"
-      aria-labelledby="history-heading"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        flex: 1,
+        minHeight: 0,
+      }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3 px-1">
-        <div className="flex items-center gap-2">
-          <h3 className="text-heading text-lg" id="history-heading">Recently Played</h3>
-          {history.length > 0 && (
-            <span
-              className="text-mono text-xs px-2 py-0.5 rounded-full bg-accent-subtle text-accent"
-              aria-label={`${history.length} tracks in history`}
-            >
-              {history.length}
-            </span>
-          )}
-        </div>
-      </div>
-
       {/* Error state */}
       {error && (
-        <div className="flex-1 flex flex-col items-center justify-center py-8">
-          <p className="text-red-400 mb-4">{error}</p>
+        <div
+          style={{
+            padding: '40px 20px',
+            textAlign: 'center',
+            color: 'var(--color-text-muted)',
+            fontSize: '13px',
+          }}
+        >
+          <p style={{ color: 'var(--color-danger)', marginBottom: '16px' }}>{error}</p>
           <button
             onClick={() => fetchHistory(0, false)}
-            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors focus-ring min-h-[44px]"
-            aria-label="Retry loading history"
+            style={{
+              background: 'var(--color-accent)',
+              color: '#0d0d0f',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '8px 14px',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              fontFamily: 'var(--font-body)',
+            }}
           >
             Retry
           </button>
@@ -168,15 +126,30 @@ export function History() {
       )}
 
       {/* Empty state */}
-      {!error && history.length === 0 && !loading && <EmptyHistory />}
+      {!error && history.length === 0 && !loading && (
+        <div
+          style={{
+            padding: '40px 20px',
+            textAlign: 'center',
+            color: 'var(--color-text-muted)',
+            fontSize: '13px',
+            lineHeight: 1.7,
+          }}
+        >
+          No listening history yet. Play some tracks and they will appear here.
+        </div>
+      )}
 
       {/* History list */}
       {history.length > 0 && (
         <div
-          className="flex-1 min-h-0 space-y-1.5 overflow-y-auto pr-1"
-          style={{ scrollbarGutter: 'stable' }}
-          role="list"
-          aria-label="History items"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'var(--color-bg-elevated) transparent',
+          }}
         >
           {history.map((track, index) => (
             <HistoryItem
@@ -187,13 +160,30 @@ export function History() {
             />
           ))}
 
-          {/* Load More button inside the list */}
+          {/* Load More */}
           {!loading && hasMore && (
-            <div className="pt-4 pb-2 text-center">
+            <div style={{ padding: '16px 0 8px', textAlign: 'center' }}>
               <button
                 onClick={loadMore}
-                className="px-6 py-2 rounded-full text-text-secondary hover:text-text-primary transition-colors hover:bg-white/5 focus-ring min-h-[44px]"
-                aria-label="Load more history items"
+                style={{
+                  background: 'none',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '8px',
+                  padding: '8px 20px',
+                  fontSize: '12px',
+                  color: 'var(--color-text-secondary)',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-body)',
+                  transition: 'all 0.12s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--color-border-strong)';
+                  e.currentTarget.style.color = 'var(--color-text-primary)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--color-border)';
+                  e.currentTarget.style.color = 'var(--color-text-secondary)';
+                }}
               >
                 Load more
               </button>
@@ -204,11 +194,26 @@ export function History() {
 
       {/* Loading state */}
       {loading && (
-        <div className="flex-1 flex items-center justify-center" role="status" aria-live="polite">
-          <div className="text-center">
-            <div className="inline-block w-6 h-6 border-2 border-text-muted border-t-transparent rounded-full animate-spin mb-2" aria-hidden="true" />
-            <p className="text-text-muted text-sm">Loading history...</p>
-          </div>
+        <div
+          style={{
+            padding: '40px 20px',
+            textAlign: 'center',
+          }}
+        >
+          <div
+            style={{
+              width: '14px',
+              height: '14px',
+              border: '2px solid var(--color-border)',
+              borderTopColor: 'var(--color-accent)',
+              borderRadius: '50%',
+              animation: 'wave-hist-spin 0.7s linear infinite',
+              display: 'inline-block',
+              marginBottom: '8px',
+            }}
+          />
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '13px' }}>Loading history...</p>
+          <style>{`@keyframes wave-hist-spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       )}
     </div>

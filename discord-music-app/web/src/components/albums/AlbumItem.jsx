@@ -1,43 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { Play, Remove } from '../icons';
 
-/**
- * Album icon for fallback thumbnail
- */
-function AlbumIcon({ size = 24, className = '' }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <circle cx="12" cy="12" r="10" />
-      <circle cx="12" cy="12" r="3" />
-      <line x1="12" y1="2" x2="12" y2="5" />
-      <line x1="12" y1="19" x2="12" y2="22" />
-    </svg>
-  );
-}
+const CHIP_COLORS = ['#e8c87a', '#9b7fe8', '#7ec87a', '#e87a7a', '#7ac4e8', '#e8a87a'];
 
 /**
- * AlbumItem - A row component for displaying a saved album
+ * AlbumItem — Wave `pl-sidebar-item` style
  *
- * @param {Object} props
- * @param {Object} props.album - Album data object
- * @param {string} props.album.id - Unique album ID
- * @param {string} props.album.name - Album name
- * @param {string} props.album.coverImage - Cover image URL from Spotify
- * @param {string} props.album.spotifyUrl - Spotify album/playlist URL
- * @param {number} props.index - Position in list (for stagger animation)
- * @param {boolean} props.isLoading - Whether album is being loaded into queue
- * @param {function} props.onPlay - Called when play button clicked
- * @param {function} props.onDelete - Called when delete button clicked
+ * - 30x30 color-coded thumbnail (rounded 6px, surface3 background)
+ * - Playlist name: 12px, font-weight 500, truncated
+ * - Track count: 11px, muted color
+ * - Hover: surface2 background
+ * - Staggered list animations (delay by index * 50ms)
+ * - Marquee text for long names
  */
 export function AlbumItem({
   album,
@@ -45,26 +19,23 @@ export function AlbumItem({
   isLoading = false,
   onPlay,
   onDelete,
-  onInspect
+  onInspect,
 }) {
   const [shouldScroll, setShouldScroll] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const textRef = useRef(null);
   const containerRef = useRef(null);
 
-  // Calculate staggered animation delay
   const animationDelay = `${index * 50}ms`;
+  const chipColor = CHIP_COLORS[index % CHIP_COLORS.length];
 
-  // Alternating background tint for scanability
-  const isEven = index % 2 === 0;
-
-  // Check if text overflows container
+  // Check if text overflows for marquee
   useEffect(() => {
     const checkOverflow = () => {
       if (textRef.current && containerRef.current) {
         const textWidth = textRef.current.scrollWidth;
         const containerWidth = containerRef.current.clientWidth;
         setShouldScroll(textWidth > containerWidth);
-        // Set CSS variable for scroll distance
         if (textWidth > containerWidth) {
           textRef.current.style.setProperty('--scroll-distance', `-${textWidth - containerWidth + 16}px`);
         }
@@ -75,114 +46,169 @@ export function AlbumItem({
     return () => window.removeEventListener('resize', checkOverflow);
   }, [album.name]);
 
-  // Handle click to inspect (opens detail modal)
   const handleClick = (e) => {
-    // Don't trigger if clicking on the thumbnail area or delete button
     if (!e.target.closest('.album-thumbnail') && !e.target.closest('.delete-button')) {
       onInspect?.(album);
     }
   };
 
+  const trackCount = album.trackCount ?? (album.spotifyUrl?.includes('playlist') ? 'Playlist' : 'Album');
+  const trackLabel = typeof trackCount === 'number' ? `${trackCount} songs` : trackCount;
+
   return (
     <div
-      className={[
-        'album-item',
-        'flex items-center gap-3 p-2.5 rounded-lg',
-        'transition-all duration-200',
-        'group relative',
-        // Staggered fade-in animation
-        'animate-queue-item-in',
-        // Alternating backgrounds
-        isEven ? '' : 'bg-white/[0.02]',
-        // Hover effect
-        'hover:bg-white/[0.05]',
-      ].filter(Boolean).join(' ')}
-      style={{
-        '--animation-delay': animationDelay,
-        animationDelay: animationDelay,
-        cursor: 'pointer'
-      }}
+      className="animate-queue-item-in"
       onClick={handleClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       role="listitem"
       aria-label={`Playlist: ${album.name}`}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '9px',
+        padding: '7px 10px',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        transition: 'background 0.12s',
+        backgroundColor: isHovered ? 'var(--color-bg-elevated)' : 'transparent',
+        position: 'relative',
+        animationDelay,
+        '--animation-delay': animationDelay,
+      }}
     >
-      {/* Cover image thumbnail with play overlay */}
-      <div className="album-thumbnail w-10 h-10 rounded overflow-hidden bg-white/10 flex-shrink-0 relative group/cover">
+      {/* Color-coded thumbnail */}
+      <div
+        className="album-thumbnail"
+        style={{
+          width: '30px',
+          height: '30px',
+          borderRadius: '6px',
+          flexShrink: 0,
+          backgroundColor: `${chipColor}18`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '13px',
+          overflow: 'hidden',
+          position: 'relative',
+        }}
+      >
         {album.coverImage ? (
           <img
             src={album.coverImage}
             alt={album.name}
-            className="w-full h-full object-cover"
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             loading="lazy"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-white/5">
-            <AlbumIcon size={20} className="text-text-muted" />
+          <span style={{ color: chipColor }}>
+            {String.fromCodePoint(0x1F3B5)}
+          </span>
+        )}
+
+        {/* Loading overlay on thumbnail */}
+        {isLoading && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <div style={{
+              width: '12px',
+              height: '12px',
+              border: '2px solid rgba(255,255,255,0.3)',
+              borderTopColor: '#fff',
+              borderRadius: '50%',
+              animation: 'spin 0.7s linear infinite',
+            }} />
           </div>
         )}
-        {isLoading ? (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          </div>
-        ) : (
-          /* Play button overlay on hover */
+
+        {/* Play overlay on hover (thumbnail click area) */}
+        {isHovered && !isLoading && (
           <button
-            onClick={() => onPlay?.(album)}
-            className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-pointer"
+            onClick={(e) => { e.stopPropagation(); onPlay?.(album); }}
             title="Play playlist"
             aria-label={`Play playlist ${album.name}`}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.55)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 0,
+            }}
           >
-            <Play size={16} className="text-white" aria-hidden="true" />
+            <Play size={12} className="text-white" />
           </button>
         )}
       </div>
 
-      {/* Album info */}
-      <div className="flex-1 min-w-0">
-        <div
-          ref={containerRef}
-          className="marquee-container overflow-hidden"
-        >
-          <p
+      {/* Playlist info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div ref={containerRef} style={{ overflow: 'hidden' }}>
+          <span
             ref={textRef}
-            className={`
-              font-heading text-sm font-semibold text-primary
-              whitespace-nowrap inline-block
-              ${shouldScroll ? 'marquee-text should-scroll' : ''}
-            `}
+            className={shouldScroll ? 'marquee-text should-scroll' : ''}
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: 'var(--color-text-primary)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              display: 'block',
+            }}
           >
             {album.name}
-          </p>
+          </span>
         </div>
-        <p className="text-xs text-text-muted mt-0.5">
-          {album.spotifyUrl?.includes('playlist') ? 'Playlist' : 'Album'}
-        </p>
+        <span style={{
+          fontSize: '11px',
+          color: 'var(--color-text-muted)',
+        }}>
+          {trackLabel}
+        </span>
       </div>
 
-      {/* Delete button - visible on hover */}
-      <button
-        onClick={() => onDelete?.(album)}
-        disabled={isLoading}
-        className={[
-          'delete-button',
-          'text-text-muted hover:text-red-400 transition-all duration-150',
-          'p-1.5 rounded hover:bg-red-400/10',
-          'focus-ring min-w-[32px] min-h-[32px]',
-          'flex items-center justify-center',
-          'opacity-0 w-0 overflow-hidden group-hover:opacity-100 group-hover:w-auto focus-within:opacity-100',
-          isLoading && 'opacity-50 cursor-not-allowed'
-        ].filter(Boolean).join(' ')}
-        title="Delete playlist"
-        aria-label={`Delete playlist ${album.name}`}
-      >
-        <Remove size={14} aria-hidden="true" />
-      </button>
-
-      {/* Green accent bar on hover - subtle visual distinction for albums */}
-      <div
-        className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-0 bg-accent rounded-full opacity-0 group-hover:h-6 group-hover:opacity-100 transition-all duration-200"
-        aria-hidden="true"
-      />
+      {/* Delete button — visible on hover */}
+      {isHovered && (
+        <button
+          className="delete-button"
+          onClick={(e) => { e.stopPropagation(); onDelete?.(album); }}
+          disabled={isLoading}
+          title="Delete playlist"
+          aria-label={`Delete playlist ${album.name}`}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--color-text-muted)',
+            cursor: 'pointer',
+            padding: '3px',
+            borderRadius: '4px',
+            flexShrink: 0,
+            display: 'flex',
+            transition: 'all 0.12s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--color-danger)';
+            e.currentTarget.style.backgroundColor = 'rgba(232,122,122,0.1)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--color-text-muted)';
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+        >
+          <Remove size={12} />
+        </button>
+      )}
     </div>
   );
 }

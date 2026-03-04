@@ -286,173 +286,265 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
 
   if (!isOpen && !isClosing) return null;
 
+  const modalBgStyle = {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.7)',
+    zIndex: 80,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '16px',
+  };
+
+  const modalBoxStyle = {
+    background: 'var(--color-bg-raised)',
+    border: '1px solid var(--color-border-strong)',
+    borderRadius: '14px',
+    padding: '28px',
+    width: '420px',
+    maxWidth: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+  };
+
+  const modalTitleStyle = {
+    fontFamily: 'var(--font-heading)',
+    fontSize: '20px',
+    color: 'var(--color-text-primary)',
+    lineHeight: 1.2,
+    margin: 0,
+  };
+
+  const inputStyle = {
+    width: '100%',
+    background: 'var(--color-bg-elevated)',
+    border: '1px solid var(--color-border)',
+    borderRadius: '8px',
+    padding: '10px 14px',
+    fontFamily: 'var(--font-body)',
+    fontSize: '14px',
+    color: 'var(--color-text-primary)',
+    outline: 'none',
+    transition: 'border-color 0.2s',
+    boxSizing: 'border-box',
+  };
+
+  const inputWithIconStyle = {
+    ...inputStyle,
+    paddingLeft: '40px',
+    paddingRight: isLoading ? '40px' : '14px',
+  };
+
+  const btnBaseStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 14px',
+    borderRadius: '8px',
+    fontSize: '13px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'all 0.12s',
+    border: 'none',
+    fontFamily: 'var(--font-body)',
+  };
+
+  const btnGhostStyle = {
+    ...btnBaseStyle,
+    background: 'var(--color-bg-elevated)',
+    color: 'var(--color-text-secondary)',
+    border: '1px solid var(--color-border)',
+  };
+
+  const btnAccentStyle = {
+    ...btnBaseStyle,
+    background: 'var(--color-accent)',
+    color: '#0d0d0f',
+  };
+
   return createPortal(
     <div
-      className={`
-        fixed inset-0 z-50 flex items-center justify-center p-4
-        bg-black/70 backdrop-blur-sm
-        ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}
-      `}
+      style={modalBgStyle}
+      className={isClosing ? 'animate-fade-out' : 'animate-fade-in'}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-album-title"
     >
-      {/* Modal card */}
       <div
         ref={modalRef}
-        className={`
-          card-glass w-full max-w-xl
-          p-8 relative
-          ${isClosing ? 'animate-scale-out' : 'animate-scale-in'}
-        `}
+        style={modalBoxStyle}
+        className={isClosing ? 'animate-scale-out' : 'animate-scale-in'}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-[#8B5CF6]/20 flex items-center justify-center">
-              <AlbumIcon size={22} className="text-[#8B5CF6]" />
-            </div>
-            <h2 id="add-album-title" className="text-xl font-heading font-semibold text-primary">
-              Create Playlist
-            </h2>
-          </div>
+        {/* Header row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 id="add-album-title" style={modalTitleStyle}>
+            New Playlist
+          </h2>
           <button
             onClick={handleClose}
-            className="
-              p-2 rounded-lg text-text-muted hover:text-primary
-              hover:bg-white/5 transition-colors focus-ring
-            "
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--color-text-muted)',
+              cursor: 'pointer',
+              padding: '4px',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'color 0.12s',
+            }}
             aria-label="Close modal"
+            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--color-text-primary)'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-text-muted)'}
           >
-            <CloseIcon size={20} />
+            <CloseIcon size={18} />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {/* Spotify URL input */}
-          <div className="mb-6">
-            <label
-              htmlFor="spotify-url"
-              className="block text-sm font-medium text-secondary mb-2"
-            >
-              Spotify Playlist or Album URL
-            </label>
-            <div className="relative">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1DB954]">
-                <SpotifyIcon size={18} />
-              </div>
-              <input
-                ref={inputRef}
-                id="spotify-url"
-                type="text"
-                value={spotifyUrl}
-                onChange={(e) => {
-                  setSpotifyUrl(e.target.value);
-                  if (error) setError('');
-                }}
-                placeholder="https://open.spotify.com/playlist/..."
-                className={`
-                  w-full pl-10 pr-10 py-3 rounded-lg
-                  bg-white/5 border
-                  ${error ? 'border-red-500/50' : 'border-white/10 focus:border-[#8B5CF6]/50'}
-                  text-primary placeholder:text-text-muted
-                  focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/30
-                  transition-all duration-200
-                `}
-                autoComplete="off"
-              />
-              {isLoading && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted">
-                  <Spinner size={18} />
-                </div>
-              )}
+          <div style={{ position: 'relative' }}>
+            <div style={{
+              position: 'absolute',
+              left: '14px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: '#1DB954',
+              display: 'flex',
+              pointerEvents: 'none',
+            }}>
+              <SpotifyIcon size={16} />
             </div>
-            {error && (
-              <p className="mt-2 text-sm text-red-400 animate-fade-in">{error}</p>
+            <input
+              ref={inputRef}
+              type="text"
+              value={spotifyUrl}
+              onChange={(e) => {
+                setSpotifyUrl(e.target.value);
+                if (error) setError('');
+              }}
+              placeholder="Spotify playlist or album URL"
+              style={inputWithIconStyle}
+              onFocus={(e) => e.target.style.borderColor = 'rgba(232,200,122,0.35)'}
+              onBlur={(e) => e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border)'}
+              autoComplete="off"
+            />
+            {isLoading && (
+              <div style={{
+                position: 'absolute',
+                right: '14px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--color-text-muted)',
+                display: 'flex',
+              }}>
+                <Spinner size={16} />
+              </div>
             )}
           </div>
 
+          {/* Error message */}
+          {error && (
+            <p style={{
+              fontSize: '12px',
+              color: 'var(--color-danger)',
+              margin: 0,
+            }}>
+              {error}
+            </p>
+          )}
+
           {/* Metadata preview (shown after successful fetch) */}
           {metadataLoaded && (
-            <div className="mb-6 p-6 rounded-xl bg-white/5 border border-white/10 animate-fade-in">
-              <div className="flex gap-5">
-                {/* Cover image - larger preview */}
-                <div className="w-32 h-32 rounded-xl overflow-hidden bg-white/10 flex-shrink-0 shadow-lg">
-                  {coverImage ? (
-                    <img
-                      src={coverImage}
-                      alt={albumName}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <AlbumIcon size={48} className="text-text-muted" />
-                    </div>
-                  )}
-                </div>
-
-                {/* Name input and track count */}
-                <div className="flex-1 min-w-0 flex flex-col justify-center">
-                  <label
-                    htmlFor="album-name"
-                    className="block text-sm font-medium text-text-muted mb-2"
-                  >
-                    Playlist Name
-                  </label>
-                  <input
-                    id="album-name"
-                    type="text"
-                    value={albumName}
-                    onChange={(e) => setAlbumName(e.target.value)}
-                    className="
-                      w-full px-4 py-3 rounded-lg
-                      bg-white/5 border border-white/10
-                      text-primary text-base
-                      focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/30 focus:border-[#8B5CF6]/50
-                      transition-all duration-200
-                    "
-                    maxLength={100}
+            <div
+              style={{
+                display: 'flex',
+                gap: '14px',
+                padding: '14px',
+                borderRadius: '10px',
+                background: 'var(--color-bg-elevated)',
+                border: '1px solid var(--color-border)',
+              }}
+              className="animate-fade-in"
+            >
+              {/* Cover image */}
+              <div style={{
+                width: '80px',
+                height: '80px',
+                borderRadius: '7px',
+                overflow: 'hidden',
+                background: 'var(--color-bg-surface3)',
+                flexShrink: 0,
+              }}>
+                {coverImage ? (
+                  <img
+                    src={coverImage}
+                    alt={albumName}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
-                  <p className="text-sm text-text-muted mt-3">
-                    {trackCount} {trackCount === 1 ? 'track' : 'tracks'} &bull; {contentType === 'album' ? 'Album' : 'Playlist'}
-                  </p>
-                </div>
+                ) : (
+                  <div style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <AlbumIcon size={32} className="text-muted" />
+                  </div>
+                )}
+              </div>
+
+              {/* Name input and info */}
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={albumName}
+                  onChange={(e) => setAlbumName(e.target.value)}
+                  style={inputStyle}
+                  onFocus={(e) => e.target.style.borderColor = 'rgba(232,200,122,0.35)'}
+                  onBlur={(e) => e.target.style.borderColor = 'var(--color-border)'}
+                  maxLength={100}
+                  placeholder="Playlist name"
+                />
+                <p style={{
+                  fontSize: '11px',
+                  color: 'var(--color-text-muted)',
+                  margin: 0,
+                }}>
+                  {trackCount} {trackCount === 1 ? 'track' : 'tracks'} &bull; {contentType === 'album' ? 'Album' : 'Playlist'}
+                </p>
               </div>
             </div>
           )}
 
-          {/* Action buttons */}
-          <div className="flex items-center justify-end gap-3">
+          {/* Buttons row */}
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
             <button
               type="button"
               onClick={handleClose}
-              className="
-                px-5 py-2.5 rounded-full
-                text-sm font-medium text-secondary
-                hover:text-primary hover:bg-white/5
-                transition-all duration-200 focus-ring
-              "
+              style={btnGhostStyle}
+              className="btn-ghost"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!metadataLoaded || isLoading}
-              className={`
-                px-6 py-2.5 rounded-full
-                text-sm font-semibold text-white
-                bg-[#8B5CF6] hover:bg-[#7C3AED]
-                transition-all duration-200
-                hover:shadow-lg hover:shadow-[#8B5CF6]/25
-                active:scale-[0.98]
-                focus-ring
-                ${(!metadataLoaded || isLoading) ? 'opacity-50 cursor-not-allowed' : ''}
-              `}
+              style={{
+                ...btnAccentStyle,
+                opacity: (!metadataLoaded || isLoading) ? 0.5 : 1,
+                cursor: (!metadataLoaded || isLoading) ? 'not-allowed' : 'pointer',
+              }}
+              className="btn-accent"
             >
-              Create Playlist
+              Create
             </button>
           </div>
         </form>

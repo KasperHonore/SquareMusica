@@ -1,47 +1,69 @@
-import {
-  MusicNote,
-  Queue,
-  History,
-  Leave,
-} from '../icons/index.jsx';
 import { AlbumSection } from '../albums';
 
 /**
- * Sidebar component with navigation and albums section
- * Volume and Loop controls have been moved to the bottom dock (MiniPlayer)
+ * Sidebar — Wave design
  *
- * Wireframe:
  * ┌────────────────────┐
- * │ MusicNote Music Bot│
+ * │ wave.              │  ← Instrument Serif wordmark, gold dot
  * ├────────────────────┤
- * │ * Now Playing      │
- * │   Queue            │
- * │   History          │
- * ├─ ─ ─ ─ ─ ─ ─ ─ ─ ─┤  ← Gradient divider
- * │ Your Albums    [+] │
+ * │ 🔍 Search          │
+ * │ 🎵 Playlists       │  ← 3 nav items only
+ * │ 🕐 History         │
+ * ├────────────────────┤
+ * │ MY PLAYLISTS       │
  * │ ┌──────────────┐   │
- * │ │ Album 1      │   │
- * │ │ Album 2      │   │  ← Scrollable
+ * │ │ Compact list │   │  ← Scrollable pl-sidebar-items
  * │ └──────────────┘   │
  * ├────────────────────┤
- * │ [JOIN CHANNEL] or  │
- * │ [I'm in a channel] │
+ * │ 👤 User   [logout] │  ← Pinned to bottom
  * └────────────────────┘
  */
 
-const navItems = [
-  { id: 'nowplaying', label: 'Now Playing', icon: MusicNote },
-  { id: 'queue', label: 'Queue', icon: Queue },
-  { id: 'history', label: 'History', icon: History },
+const NAV_ITEMS = [
+  {
+    id: 'search',
+    label: 'Search',
+    icon: (
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.35-4.35" />
+      </svg>
+    ),
+  },
+  {
+    id: 'playlists',
+    label: 'Playlists',
+    icon: (
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="3" width="7" height="7" />
+        <rect x="14" y="3" width="7" height="7" />
+        <rect x="14" y="14" width="7" height="7" />
+        <rect x="3" y="14" width="7" height="7" />
+      </svg>
+    ),
+  },
+  {
+    id: 'history',
+    label: 'History',
+    icon: (
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
+      </svg>
+    ),
+  },
 ];
 
 export function Sidebar({
-  activeView = 'nowplaying',
+  activeView = 'search',
   onViewChange,
+  // Voice props passed through but NOT rendered here (moved to bottom bar)
   voiceContext,
   onJoinChannel,
   onLeaveChannel,
+  onLogout,
   botInfo,
+  user,
   // Album props
   albums = [],
   onLoadAlbum,
@@ -49,73 +71,90 @@ export function Sidebar({
   onCreateAlbum,
   onAddToQueue,
 }) {
-  const isConnected = !!voiceContext?.channelName;
+  // Map old view IDs to new ones for backwards compat
+  const resolvedView = activeView === 'nowplaying' ? 'search' : activeView === 'queue' ? 'playlists' : activeView;
+
+  // Build Discord avatar URL
+  const avatarUrl = user?.avatar
+    ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
+    : null;
+
+  const displayName = user?.global_name || user?.username || 'User';
+
   return (
-    <aside
-      className="w-60 flex flex-col flex-shrink-0 border-r h-full"
+    <div
       style={{
-        backgroundColor: 'var(--color-bg)',
-        borderColor: 'var(--color-border)',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        padding: '24px 16px',
+        gap: '24px',
+        overflow: 'hidden',
+        fontFamily: 'var(--font-body)',
       }}
     >
-      {/* Logo section */}
-      <div className="p-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
-        <div className="flex items-center gap-3">
-          {botInfo?.avatarUrl ? (
-            <img
-              src={botInfo.avatarUrl}
-              alt={botInfo.name}
-              className="w-10 h-10 rounded-xl"
-            />
-          ) : (
-            <div className="p-2.5 rounded-xl bg-accent/20">
-              <MusicNote size={26} className="text-accent" />
-            </div>
-          )}
-          <span className="text-lg font-bold tracking-tight" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-heading)' }}>
-            {botInfo?.name || 'Music Bot'}
-          </span>
-        </div>
+      {/* Logo wordmark */}
+      <div
+        style={{
+          fontFamily: 'var(--font-heading)',
+          fontSize: '22px',
+          letterSpacing: '-0.3px',
+          padding: '0 8px',
+          color: 'var(--color-text-primary)',
+          flexShrink: 0,
+        }}
+      >
+        wave<span style={{ color: 'var(--color-accent)' }}>.</span>
       </div>
 
       {/* Navigation */}
-      <nav className="p-3">
-        <ul className="space-y-1">
-          {navItems.map(({ id, label, icon: Icon }) => {
-            const isActive = activeView === id;
-            return (
-              <li key={id}>
-                <button
-                  onClick={() => onViewChange?.(id)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group"
-                  style={{
-                    backgroundColor: isActive ? 'var(--color-bg-elevated)' : 'transparent',
-                    color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)'
-                  }}
-                >
-                  <Icon
-                    size={20}
-                    className={`transition-colors duration-200 ${isActive ? 'text-accent' : 'group-hover:text-accent'}`}
-                    style={{ color: isActive ? undefined : 'var(--color-text-secondary)' }}
-                  />
-                  <span className={isActive ? '' : 'group-hover:text-primary'}>
-                    {label}
-                  </span>
-                  {isActive && (
-                    <div className="ml-auto w-1 h-4 rounded-full bg-accent" />
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
+        {NAV_ITEMS.map(({ id, label, icon }) => {
+          const isActive = resolvedView === id;
+          return (
+            <button
+              key={id}
+              onClick={() => onViewChange?.(id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '9px 10px',
+                borderRadius: '8px',
+                color: isActive ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                backgroundColor: isActive ? 'var(--color-accent-muted)' : 'transparent',
+                cursor: 'pointer',
+                transition: 'all 0.12s',
+                fontWeight: 400,
+                fontSize: '14px',
+                fontFamily: 'var(--font-body)',
+                border: 'none',
+                width: '100%',
+                textAlign: 'left',
+                userSelect: 'none',
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = 'var(--color-bg-elevated)';
+                  e.currentTarget.style.color = 'var(--color-text-primary)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = 'var(--color-text-secondary)';
+                }
+              }}
+            >
+              <span style={{ flexShrink: 0, display: 'flex' }}>{icon}</span>
+              {label}
+            </button>
+          );
+        })}
       </nav>
 
-      {/* Gradient divider */}
-      <div className="mx-3 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-
-      {/* Albums section */}
-      <div className="flex-1 min-h-0 py-2">
+      {/* Playlists section — fills remaining space */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <AlbumSection
           albums={albums}
           onLoadAlbum={onLoadAlbum}
@@ -125,25 +164,95 @@ export function Sidebar({
         />
       </div>
 
-      {/* Voice channel button */}
-      <div className="p-4 border-t mt-auto" style={{ borderColor: 'var(--color-border)' }}>
-        {isConnected ? (
-          <button
-            onClick={onLeaveChannel}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all duration-200 border border-red-500/30 hover:border-red-500/50"
-          >
-            <Leave size={16} />
-            I'm in a channel
-          </button>
-        ) : (
-          <button
-            onClick={onJoinChannel}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wider transition-all duration-200 bg-accent hover:bg-accent/90 text-white"
-          >
-            JOIN CHANNEL
-          </button>
-        )}
+      {/* User area — pinned to bottom */}
+      <div
+        style={{
+          marginTop: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          padding: '10px',
+          backgroundColor: 'var(--color-bg-elevated)',
+          borderRadius: '10px',
+          border: '1px solid var(--color-border)',
+          flexShrink: 0,
+        }}
+      >
+        {/* Avatar */}
+        <div
+          style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            flexShrink: 0,
+            overflow: 'hidden',
+            backgroundColor: 'var(--color-bg-surface3)',
+          }}
+        >
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={displayName}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--color-text-muted)',
+                fontSize: '14px',
+              }}
+            >
+              {displayName.charAt(0).toUpperCase()}
+            </div>
+          )}
+        </div>
+
+        {/* Display name */}
+        <div
+          style={{
+            fontSize: '12px',
+            fontWeight: 500,
+            flex: 1,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color: 'var(--color-text-primary)',
+          }}
+        >
+          {displayName}
+        </div>
+
+        {/* Logout button */}
+        <button
+          onClick={onLogout}
+          title="Sign out"
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--color-text-muted)',
+            cursor: 'pointer',
+            padding: '4px',
+            borderRadius: '6px',
+            transition: 'color 0.12s',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-danger)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+        >
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+        </button>
       </div>
-    </aside>
+    </div>
   );
 }

@@ -21,13 +21,13 @@ class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg)' }}>
           <div className="text-center">
-            <h1 className="text-white text-2xl mb-4">Something went wrong</h1>
-            <p className="text-gray-400 mb-4">{this.state.error?.message}</p>
+            <h1 className="font-heading text-2xl mb-4" style={{ color: 'var(--color-text-primary)' }}>Something went wrong</h1>
+            <p className="mb-4" style={{ color: 'var(--color-text-secondary)' }}>{this.state.error?.message}</p>
             <button
               onClick={() => window.location.reload()}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+              className="btn-accent px-4 py-2"
             >
               Reload Page
             </button>
@@ -44,8 +44,8 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center" role="status" aria-live="polite">
-        <div className="text-white text-xl">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite" style={{ backgroundColor: 'var(--color-bg)' }}>
+        <div className="text-xl" style={{ color: 'var(--color-text-primary)' }}>Loading...</div>
       </div>
     );
   }

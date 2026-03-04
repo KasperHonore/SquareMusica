@@ -1,23 +1,15 @@
 import { useState } from 'react';
-import { Album, Plus } from '../icons';
+import { Plus } from '../icons';
 import { AlbumItem } from './AlbumItem';
 import { AddAlbumModal } from './AddAlbumModal';
 import { PlaylistDetailModal } from './PlaylistDetailModal';
 
 /**
- * AlbumSection - Container for the "Your Albums" section in the sidebar
+ * AlbumSection — Wave sidebar "My Playlists" compact list
  *
- * Features:
- * - Header with album count badge
- * - Add album button (green plus icon)
- * - Scrollable album list with staggered animations
- * - Empty state with inviting visuals
- * - AddAlbumModal integration
- *
- * @param {Object[]} albums - Array of album objects
- * @param {function} onLoadAlbum - Called when album should be loaded into queue
- * @param {function} onDeleteAlbum - Called when album should be deleted
- * @param {function} onCreateAlbum - Called when new album is created (name, spotifyUrl, coverImage)
+ * - Section label: 10px uppercase, muted color, 1.2px letter-spacing
+ * - Scrollable list with thin 3px scrollbar
+ * - Keeps all album/playlist functionality (load, delete, create, addToQueue)
  */
 export function AlbumSection({
   albums = [],
@@ -35,7 +27,6 @@ export function AlbumSection({
     try {
       await onLoadAlbum?.(album);
     } finally {
-      // Brief delay for visual feedback
       setTimeout(() => setLoadingAlbumId(null), 300);
     }
   };
@@ -48,17 +39,14 @@ export function AlbumSection({
     onCreateAlbum?.(name, spotifyUrl, coverImage);
   };
 
-  // Handle opening detail modal
   const handleInspect = (album) => {
     setInspectedPlaylist(album);
   };
 
-  // Handle adding single track from detail modal
   const handleAddTrack = (spotifyUrl) => {
     onAddToQueue?.(spotifyUrl);
   };
 
-  // Handle adding all tracks to queue (appends, doesn't replace)
   const handleAddAll = () => {
     if (inspectedPlaylist?.spotifyUrl) {
       onAddToQueue?.(inspectedPlaylist.spotifyUrl);
@@ -70,41 +58,60 @@ export function AlbumSection({
 
   return (
     <>
-      {/* Section container */}
-      <div className="flex flex-col min-h-0 h-full">
-        {/* Section header */}
-        <div className="flex items-center justify-between px-3 py-2">
-          <div className="flex items-center gap-2">
-            <span
-              className="text-xs font-semibold uppercase tracking-wider"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              Your Playlists
-            </span>
-            {albums.length > 0 && (
-              <span className="px-1.5 py-0.5 text-xs font-medium rounded-md bg-accent-muted text-accent">
-                {albums.length}
-              </span>
-            )}
-          </div>
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+        {/* Section header row */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 10px',
+          marginBottom: '4px',
+          flexShrink: 0,
+        }}>
+          <span style={{
+            fontSize: '10px',
+            fontWeight: 600,
+            letterSpacing: '1.2px',
+            textTransform: 'uppercase',
+            color: 'var(--color-text-muted)',
+          }}>
+            My Playlists
+          </span>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="p-1.5 rounded-md text-accent hover:text-accent-hover hover:bg-accent-subtle transition-all duration-200 focus-ring"
             title="Create new playlist"
             aria-label="Create new playlist"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--color-text-muted)',
+              cursor: 'pointer',
+              padding: '2px',
+              borderRadius: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'color 0.12s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-accent)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
           >
-            <Plus size={16} />
+            <Plus size={14} />
           </button>
         </div>
 
-        {/* Album list or empty state */}
+        {/* Playlist list or empty state */}
         {isEmpty ? (
           <EmptyState onClick={() => setIsModalOpen(true)} />
         ) : (
           <div
-            className="flex-1 overflow-y-auto px-2 pb-2"
             role="list"
             aria-label="Saved playlists"
+            className="sidebar-scrollable"
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              minHeight: 0,
+            }}
           >
             {albums.map((album, index) => (
               <AlbumItem
@@ -121,14 +128,12 @@ export function AlbumSection({
         )}
       </div>
 
-      {/* Add Album Modal */}
       <AddAlbumModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onCreate={handleCreateAlbum}
       />
 
-      {/* Playlist Detail Modal */}
       <PlaylistDetailModal
         isOpen={!!inspectedPlaylist}
         onClose={() => setInspectedPlaylist(null)}
@@ -141,44 +146,45 @@ export function AlbumSection({
 }
 
 /**
- * Empty state component for albums section
+ * Empty state for playlists section
  */
 function EmptyState({ onClick }) {
   return (
     <button
       onClick={onClick}
-      className="group mx-2 mb-2 p-4 rounded-lg bg-white/[0.02] hover:bg-white/[0.05] border border-dashed border-white/10 hover:border-accent/30 transition-all duration-300 cursor-pointer focus-ring"
-      aria-label="Create your first album"
+      aria-label="Create your first playlist"
+      style={{
+        margin: '0 4px',
+        padding: '16px 10px',
+        borderRadius: '8px',
+        border: '1px dashed var(--color-border)',
+        background: 'transparent',
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '6px',
+        color: 'var(--color-text-muted)',
+        fontFamily: 'var(--font-body)',
+        width: 'calc(100% - 8px)',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'rgba(232,200,122,0.3)';
+        e.currentTarget.style.backgroundColor = 'var(--color-accent-muted)';
+        e.currentTarget.style.color = 'var(--color-accent)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = 'var(--color-border)';
+        e.currentTarget.style.backgroundColor = 'transparent';
+        e.currentTarget.style.color = 'var(--color-text-muted)';
+      }}
     >
-      <div className="flex flex-col items-center text-center">
-        {/* Album icon with glow */}
-        <div className="relative mb-3">
-          <div className="w-12 h-12 rounded-xl bg-accent-subtle flex items-center justify-center group-hover:bg-accent-muted transition-colors duration-300">
-            <Album
-              size={24}
-              className="text-accent group-hover:text-accent-hover transition-colors duration-300"
-            />
-          </div>
-          {/* Subtle glow ring on hover */}
-          <div
-            className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 animate-pulse-glow-album transition-opacity duration-500 pointer-events-none"
-            aria-hidden="true"
-          />
-        </div>
-
-        <p
-          className="text-sm font-medium mb-1"
-          style={{ color: 'var(--color-text-secondary)' }}
-        >
-          No saved playlists
-        </p>
-        <p
-          className="text-xs leading-relaxed"
-          style={{ color: 'var(--color-text-muted)' }}
-        >
-          Create playlists to quickly load your favorites
-        </p>
-      </div>
+      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </svg>
+      <span style={{ fontSize: '12px', fontWeight: 500 }}>New Playlist</span>
     </button>
   );
 }

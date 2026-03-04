@@ -23,27 +23,6 @@ function CloseIcon({ size = 20 }) {
 }
 
 /**
- * Plus icon for add button
- */
-function PlusIcon({ size = 16 }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  );
-}
-
-/**
  * Music note icon for track rows
  */
 function MusicNoteIcon({ size = 16, className = '' }) {
@@ -271,54 +250,140 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
 
   if (!isOpen && !isClosing) return null;
 
+  const modalBgStyle = {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.7)',
+    zIndex: 80,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '16px',
+  };
+
+  const modalBoxStyle = {
+    background: 'var(--color-bg-raised)',
+    border: '1px solid var(--color-border-strong)',
+    borderRadius: '14px',
+    padding: '28px',
+    width: '520px',
+    maxWidth: '100%',
+    maxHeight: '85vh',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+  };
+
+  const btnBaseStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 14px',
+    borderRadius: '8px',
+    fontSize: '13px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'all 0.12s',
+    border: 'none',
+    fontFamily: 'var(--font-body)',
+  };
+
+  const btnGhostStyle = {
+    ...btnBaseStyle,
+    background: 'var(--color-bg-elevated)',
+    color: 'var(--color-text-secondary)',
+    border: '1px solid var(--color-border)',
+  };
+
+  const btnAccentStyle = {
+    ...btnBaseStyle,
+    background: 'var(--color-accent)',
+    color: '#0d0d0f',
+  };
+
+  const resultAddStyle = {
+    background: 'var(--color-accent-muted)',
+    border: '1px solid rgba(232,200,122,0.2)',
+    color: 'var(--color-accent)',
+    borderRadius: '6px',
+    padding: '5px 10px',
+    fontSize: '11px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: 'var(--font-body)',
+    transition: 'background 0.12s',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+  };
+
   return createPortal(
     <div
-      className={`
-        fixed inset-0 z-50 flex items-center justify-center p-4
-        bg-black/70 backdrop-blur-sm
-        ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}
-      `}
+      style={modalBgStyle}
+      className={isClosing ? 'animate-fade-out' : 'animate-fade-in'}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
       aria-labelledby="playlist-detail-title"
     >
-      {/* Modal card */}
       <div
         ref={modalRef}
-        className={`
-          card-glass w-full max-w-2xl max-h-[85vh]
-          p-8 relative flex flex-col
-          ${isClosing ? 'animate-scale-out' : 'animate-scale-in'}
-        `}
+        style={modalBoxStyle}
+        className={isClosing ? 'animate-scale-out' : 'animate-scale-in'}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start gap-5 mb-6">
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', flexShrink: 0 }}>
           {/* Cover image */}
-          <div className="w-28 h-28 rounded-xl overflow-hidden bg-white/10 flex-shrink-0 shadow-lg">
+          <div style={{
+            width: '80px',
+            height: '80px',
+            borderRadius: '7px',
+            overflow: 'hidden',
+            background: 'var(--color-bg-surface3)',
+            flexShrink: 0,
+          }}>
             {playlist?.coverImage ? (
               <img
                 src={playlist.coverImage}
                 alt={playlist.name}
-                className="w-full h-full object-cover"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <AlbumIcon size={48} className="text-text-muted" />
+              <div style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--color-text-muted)',
+              }}>
+                <AlbumIcon size={32} />
               </div>
             )}
           </div>
 
           {/* Title and info */}
-          <div className="flex-1 min-w-0 py-1">
+          <div style={{ flex: 1, minWidth: 0, paddingTop: '4px' }}>
             <h2
               id="playlist-detail-title"
-              className="text-xl font-heading font-semibold text-primary truncate mb-2"
+              style={{
+                fontFamily: 'var(--font-heading)',
+                fontSize: '20px',
+                color: 'var(--color-text-primary)',
+                lineHeight: 1.2,
+                margin: 0,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
             >
               {playlist?.name || 'Playlist'}
             </h2>
-            <p className="text-sm text-text-muted">
+            <p style={{
+              fontSize: '12px',
+              color: 'var(--color-text-muted)',
+              margin: '6px 0 0',
+            }}>
               {isLoading ? 'Loading...' : `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`}
             </p>
           </div>
@@ -326,85 +391,155 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
           {/* Close button */}
           <button
             onClick={handleClose}
-            className="
-              p-2 rounded-lg text-text-muted hover:text-primary
-              hover:bg-white/5 transition-colors focus-ring flex-shrink-0
-            "
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--color-text-muted)',
+              cursor: 'pointer',
+              padding: '4px',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'color 0.12s',
+              flexShrink: 0,
+            }}
             aria-label="Close modal"
+            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--color-text-primary)'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-text-muted)'}
           >
-            <CloseIcon size={20} />
+            <CloseIcon size={18} />
           </button>
         </div>
 
         {/* Track list - scrollable */}
-        <div className="flex-1 overflow-y-auto min-h-0 mb-6 -mx-2 px-2">
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          minHeight: 0,
+          margin: '0 -8px',
+          padding: '0 8px',
+        }}>
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Spinner size={32} />
-              <span className="ml-3 text-text-muted">Loading tracks...</span>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '40px 0',
+              gap: '10px',
+              color: 'var(--color-text-muted)',
+            }}>
+              <Spinner size={20} />
+              <span style={{ fontSize: '13px' }}>Loading tracks...</span>
             </div>
           ) : error ? (
-            <div className="text-center py-12">
-              <p className="text-red-400 mb-4">{error}</p>
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <p style={{ color: 'var(--color-danger)', marginBottom: '12px', fontSize: '13px' }}>{error}</p>
               <button
                 onClick={fetchTracks}
-                className="
-                  px-4 py-2 rounded-lg
-                  text-sm font-medium text-secondary
-                  hover:text-primary hover:bg-white/5
-                  transition-all duration-200 focus-ring
-                "
+                style={{
+                  ...btnGhostStyle,
+                  display: 'inline-flex',
+                }}
               >
                 Retry
               </button>
             </div>
           ) : tracks.length === 0 ? (
-            <div className="text-center py-12">
-              <MusicNoteIcon size={48} className="mx-auto text-text-muted mb-4" />
-              <p className="text-text-muted">No tracks in this playlist</p>
+            <div style={{
+              textAlign: 'center',
+              padding: '40px 20px',
+              color: 'var(--color-text-muted)',
+              fontSize: '13px',
+            }}>
+              <MusicNoteIcon size={32} className="text-muted" />
+              <p style={{ marginTop: '12px' }}>No tracks in this playlist</p>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
               {tracks.map((track, index) => (
                 <div
                   key={track.spotifyId || index}
-                  className="
-                    flex items-center gap-3 p-3 rounded-lg
-                    hover:bg-white/5 transition-colors group
-                  "
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '9px 10px',
+                    borderRadius: '9px',
+                    cursor: 'pointer',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-elevated)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
-                  {/* Track number / music icon */}
-                  <div className="w-8 h-8 rounded-md bg-white/5 flex items-center justify-center flex-shrink-0">
-                    <MusicNoteIcon size={14} className="text-text-muted" />
+                  {/* Thumbnail */}
+                  <div style={{
+                    width: '48px',
+                    height: '36px',
+                    borderRadius: '5px',
+                    flexShrink: 0,
+                    overflow: 'hidden',
+                    background: 'var(--color-bg-surface3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    {track.albumArt ? (
+                      <img
+                        src={track.albumArt}
+                        alt=""
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        loading="lazy"
+                      />
+                    ) : (
+                      <MusicNoteIcon size={14} className="text-muted" />
+                    )}
                   </div>
 
                   {/* Track info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-primary truncate">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: 'var(--color-text-primary)',
+                      margin: 0,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
                       {track.title}
                     </p>
-                    <p className="text-xs text-text-muted truncate">
+                    <p style={{
+                      fontSize: '11px',
+                      color: 'var(--color-text-muted)',
+                      margin: '2px 0 0',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
                       {track.artists?.join(', ') || 'Unknown artist'}
                     </p>
                   </div>
 
                   {/* Duration */}
-                  <span className="text-xs text-text-muted flex-shrink-0 w-12 text-right">
+                  <span style={{
+                    fontSize: '11px',
+                    color: 'var(--color-text-muted)',
+                    flexShrink: 0,
+                  }}>
                     {formatDuration(track.durationMs || 0)}
                   </span>
 
                   {/* Add button */}
                   <button
                     onClick={() => handleAddTrack(track.spotifyUrl)}
-                    className="
-                      p-2 rounded-lg text-text-muted hover:text-[#8B5CF6]
-                      hover:bg-[#8B5CF6]/10 transition-colors focus-ring
-                      opacity-0 group-hover:opacity-100 flex-shrink-0
-                    "
+                    style={resultAddStyle}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(232,200,122,0.18)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'var(--color-accent-muted)'}
                     aria-label={`Add ${track.title} to queue`}
                     title="Add to queue"
                   >
-                    <PlusIcon size={16} />
+                    + Add
                   </button>
                 </div>
               ))}
@@ -413,16 +548,19 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          justifyContent: 'flex-end',
+          paddingTop: '14px',
+          borderTop: '1px solid var(--color-border)',
+          flexShrink: 0,
+        }}>
           <button
             type="button"
             onClick={handleClose}
-            className="
-              px-5 py-2.5 rounded-full
-              text-sm font-medium text-secondary
-              hover:text-primary hover:bg-white/5
-              transition-all duration-200 focus-ring
-            "
+            style={btnGhostStyle}
+            className="btn-ghost"
           >
             Close
           </button>
@@ -430,16 +568,12 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
             type="button"
             onClick={handleAddAll}
             disabled={isLoading || tracks.length === 0}
-            className={`
-              px-6 py-2.5 rounded-full
-              text-sm font-semibold text-white
-              bg-[#8B5CF6] hover:bg-[#7C3AED]
-              transition-all duration-200
-              hover:shadow-lg hover:shadow-[#8B5CF6]/25
-              active:scale-[0.98]
-              focus-ring
-              ${(isLoading || tracks.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}
-            `}
+            style={{
+              ...btnAccentStyle,
+              opacity: (isLoading || tracks.length === 0) ? 0.5 : 1,
+              cursor: (isLoading || tracks.length === 0) ? 'not-allowed' : 'pointer',
+            }}
+            className="btn-accent"
           >
             Add All to Queue
           </button>

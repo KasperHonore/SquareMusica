@@ -1,544 +1,241 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
 import { formatTime } from '../../utils/formatTime';
 import {
   Play,
   Pause,
   SkipNext,
   SkipPrevious,
-  Shuffle,
-  Loop,
-  MusicNote
+  MusicNote,
+  Leave,
+  Speaker
 } from '../icons';
 
 /**
- * MiniPlayer - The ONLY playback control surface
+ * MiniPlayer - Minimal transport strip (72px bottom bar)
  *
- * This is the single source of truth for all playback controls.
- * Following Spotify's design pattern: persistent bottom dock with
- * all controls in one place.
+ * Wave design bottom bar:
+ * ┌──────────────────────────────────────────────────────────────┐
+ * │ [Art] Title / Artist    ⏮  ▶  ⏭    [progress]   Voice btn  │
+ * └──────────────────────────────────────────────────────────────┘
  *
- * Layout:
- * ┌──────────────────────────────────────────────────────────────────┐
- * │ Progress Bar (full width, interactive)                          │
- * ├──────────────────────────────────────────────────────────────────┤
- * │ [Cover] Track – Artist     ⏮  ▶/⏸  ⏭     🔀 🔁                │
- * │          0:00 / 3:45                                            │
- * └──────────────────────────────────────────────────────────────────┘
+ * Controls mirror the right panel (same playerControl calls).
+ * No seek on progress bar here (visual sync only).
  */
-
-/**
- * Extract dominant color from album art using canvas
- */
-function useAlbumColor(thumbnailUrl) {
-  const [color, setColor] = useState({ h: 142, s: 73, l: 40 });
-
-  useEffect(() => {
-    if (!thumbnailUrl) {
-      setColor({ h: 142, s: 73, l: 40 });
-      return;
-    }
-
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 50;
-        canvas.height = 50;
-        ctx.drawImage(img, 0, 0, 50, 50);
-
-        const imageData = ctx.getImageData(0, 0, 50, 50).data;
-        let r = 0, g = 0, b = 0, count = 0;
-
-        for (let i = 0; i < imageData.length; i += 16) {
-          const pr = imageData[i];
-          const pg = imageData[i + 1];
-          const pb = imageData[i + 2];
-          const brightness = (pr + pg + pb) / 3;
-
-          if (brightness > 30 && brightness < 225) {
-            r += pr;
-            g += pg;
-            b += pb;
-            count++;
-          }
-        }
-
-        if (count > 0) {
-          r = Math.round(r / count);
-          g = Math.round(g / count);
-          b = Math.round(b / count);
-
-          const rNorm = r / 255;
-          const gNorm = g / 255;
-          const bNorm = b / 255;
-          const max = Math.max(rNorm, gNorm, bNorm);
-          const min = Math.min(rNorm, gNorm, bNorm);
-          let h, s, l = (max + min) / 2;
-
-          if (max === min) {
-            h = s = 0;
-          } else {
-            const d = max - min;
-            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-            switch (max) {
-              case rNorm: h = ((gNorm - bNorm) / d + (gNorm < bNorm ? 6 : 0)) / 6; break;
-              case gNorm: h = ((bNorm - rNorm) / d + 2) / 6; break;
-              case bNorm: h = ((rNorm - gNorm) / d + 4) / 6; break;
-              default: h = 0;
-            }
-          }
-
-          setColor({
-            h: Math.round(h * 360),
-            s: Math.min(100, Math.round(s * 100) + 20),
-            l: Math.round(l * 100)
-          });
-        }
-      } catch {
-        setColor({ h: 142, s: 73, l: 40 });
-      }
-    };
-
-    img.onerror = () => setColor({ h: 142, s: 73, l: 40 });
-    img.src = thumbnailUrl;
-  }, [thumbnailUrl]);
-
-  return color;
-}
-
-/**
- * Waveform visualization component
- */
-function WaveformVisualizer({ isPlaying, color }) {
-  return (
-    <div className="flex items-end gap-[3px] h-4">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div
-          key={i}
-          className={`w-[3px] rounded-full transition-all duration-300 ${isPlaying ? 'animate-wave' : ''}`}
-          style={{
-            backgroundColor: `hsl(${color.h}, ${color.s}%, ${Math.min(color.l + 15, 70)}%)`,
-            animationDelay: isPlaying ? `${i * 0.12}s` : '0s',
-            height: isPlaying ? undefined : '4px'
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/**
- * Interactive progress bar with seek functionality
- */
-function ProgressBar({ progress, duration, position, onSeek, albumColor, isPlaying }) {
-  const [isHovered, setIsHovered] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [hoverPosition, setHoverPosition] = useState(0);
-  const barRef = useRef(null);
-
-  const handleClick = useCallback((e) => {
-    if (!barRef.current || !duration) return;
-    const rect = barRef.current.getBoundingClientRect();
-    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    onSeek(percent * duration);
-  }, [duration, onSeek]);
-
-  const handleMouseMove = useCallback((e) => {
-    if (!barRef.current) return;
-    const rect = barRef.current.getBoundingClientRect();
-    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setHoverPosition(percent * 100);
-  }, []);
-
-  const active = isHovered || isDragging;
-
-  return (
-    <div
-      ref={barRef}
-      className="absolute top-0 left-0 right-0 h-1.5 cursor-pointer group transition-all duration-200"
-      style={{
-        height: active ? '6px' : '4px',
-        backgroundColor: 'rgba(255, 255, 255, 0.1)'
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onMouseMove={handleMouseMove}
-      onClick={handleClick}
-      role="slider"
-      aria-label="Seek"
-      aria-valuemin={0}
-      aria-valuemax={duration || 0}
-      aria-valuenow={position}
-      aria-valuetext={`${formatTime(position)} of ${formatTime(duration)}`}
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (!duration) return;
-        const step = duration * 0.05;
-        if (e.key === 'ArrowRight') {
-          e.preventDefault();
-          onSeek(Math.min(duration, position + step));
-        } else if (e.key === 'ArrowLeft') {
-          e.preventDefault();
-          onSeek(Math.max(0, position - step));
-        }
-      }}
-    >
-      {/* Hover time tooltip */}
-      {active && duration > 0 && (
-        <div
-          className="absolute bottom-full mb-2 px-2 py-1 rounded text-xs font-mono bg-surface-elevated text-primary pointer-events-none transform -translate-x-1/2 transition-opacity duration-150"
-          style={{
-            left: `${hoverPosition}%`,
-            opacity: active ? 1 : 0
-          }}
-        >
-          {formatTime((hoverPosition / 100) * duration)}
-        </div>
-      )}
-
-      {/* Progress fill */}
-      <div
-        className="h-full relative transition-all duration-100"
-        style={{
-          width: `${Math.min(progress, 100)}%`,
-          background: `linear-gradient(90deg,
-            hsl(${albumColor.h}, ${albumColor.s}%, ${Math.min(albumColor.l + 5, 50)}%) 0%,
-            hsl(${albumColor.h}, ${albumColor.s}%, ${Math.min(albumColor.l + 15, 60)}%) 100%)`,
-          boxShadow: active
-            ? `0 0 10px hsla(${albumColor.h}, ${albumColor.s}%, ${albumColor.l}%, 0.5)`
-            : 'none'
-        }}
-      >
-        {/* Thumb indicator */}
-        <div
-          className={`absolute right-0 top-1/2 -translate-y-1/2 rounded-full bg-white transition-all duration-200 ${
-            active ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
-          }`}
-          style={{
-            width: active ? '12px' : '8px',
-            height: active ? '12px' : '8px',
-            boxShadow: `0 0 8px hsla(${albumColor.h}, ${albumColor.s}%, ${albumColor.l}%, 0.6), 0 2px 4px rgba(0,0,0,0.3)`
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-/**
- * Main control button (Play/Pause)
- */
-function PlayPauseButton({ isPlaying, onClick, glowColor, size = 'normal' }) {
-  const [isPressed, setIsPressed] = useState(false);
-
-  const handleClick = () => {
-    setIsPressed(true);
-    onClick();
-    setTimeout(() => setIsPressed(false), 150);
-  };
-
-  const buttonSize = size === 'large' ? 'w-14 h-14' : 'w-11 h-11';
-  const iconSize = size === 'large' ? 24 : 20;
-
-  return (
-    <button
-      onClick={handleClick}
-      className={`${buttonSize} rounded-full flex items-center justify-center text-black transition-all duration-200 ${
-        isPressed ? 'scale-90' : 'hover:scale-105'
-      }`}
-      style={{
-        background: `linear-gradient(135deg,
-          hsl(${glowColor.h}, ${glowColor.s}%, ${Math.min(glowColor.l + 15, 60)}%) 0%,
-          hsl(${glowColor.h}, ${glowColor.s}%, ${Math.max(glowColor.l, 35)}%) 100%)`,
-        boxShadow: `0 4px 20px hsla(${glowColor.h}, ${glowColor.s}%, ${glowColor.l}%, 0.4)`
-      }}
-      title={isPlaying ? 'Pause' : 'Play'}
-      aria-label={isPlaying ? 'Pause playback' : 'Resume playback'}
-    >
-      {isPlaying ? <Pause size={iconSize} /> : <Play size={iconSize} className="ml-0.5" />}
-    </button>
-  );
-}
-
-/**
- * Skip button with animation
- */
-function SkipButton({ direction, onClick, disabled }) {
-  const [isAnimating, setIsAnimating] = useState(false);
-  const Icon = direction === 'next' ? SkipNext : SkipPrevious;
-
-  const handleClick = () => {
-    if (disabled) return;
-    setIsAnimating(true);
-    onClick();
-    setTimeout(() => setIsAnimating(false), 200);
-  };
-
-  return (
-    <button
-      onClick={handleClick}
-      disabled={disabled}
-      className="miniplayer-btn-icon"
-      style={{
-        transform: isAnimating
-          ? direction === 'next' ? 'translateX(2px)' : 'translateX(-2px)'
-          : 'translateX(0)'
-      }}
-      title={direction === 'next' ? 'Next track' : 'Previous track'}
-      aria-label={direction === 'next' ? 'Skip to next track' : 'Go to previous track'}
-    >
-      <Icon size={22} />
-    </button>
-  );
-}
-
-/**
- * Toggle button for shuffle/loop
- */
-function ToggleButton({ active, onClick, icon: Icon, title, ariaLabel, glowColor, mode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`miniplayer-btn-icon ${active ? 'active' : ''}`}
-      style={{
-        color: active
-          ? `hsl(${glowColor.h}, ${glowColor.s}%, ${Math.min(glowColor.l + 15, 60)}%)`
-          : 'var(--color-text-secondary)',
-        backgroundColor: active ? `hsla(${glowColor.h}, ${glowColor.s}%, ${glowColor.l}%, 0.15)` : 'transparent'
-      }}
-      title={title}
-      aria-label={ariaLabel}
-      aria-pressed={active}
-    >
-      <Icon size={18} mode={mode} />
-    </button>
-  );
-}
-
 export function MiniPlayer({
   currentTrack,
   playerState,
   onControl,
-  activeView = 'nowplaying'
+  voiceContext,
+  onJoinChannel,
+  onLeaveChannel,
 }) {
-  const [isMobile, setIsMobile] = useState(false);
-  const albumColor = useAlbumColor(currentTrack?.thumbnail);
-
-  // Compact mode when on Now Playing view (hero section shows track info)
-  const isCompact = activeView === 'nowplaying';
-
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 640);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
   if (!currentTrack) return null;
 
-  const progress = currentTrack.duration
-    ? (playerState.position / currentTrack.duration) * 100
-    : 0;
+  const isPlaying = playerState?.playing;
+  const duration = currentTrack.duration || 0;
+  const position = playerState?.position || 0;
+  const progress = duration > 0 ? (position / duration) * 100 : 0;
 
-  const handleSeek = (position) => {
-    onControl('seek', Math.floor(position));
-  };
-
-  const cycleLoopMode = () => {
-    const modes = ['off', 'track', 'queue'];
-    const currentIndex = modes.indexOf(playerState.loop || 'off');
-    const nextIndex = (currentIndex + 1) % modes.length;
-    onControl('loop', modes[nextIndex]);
-  };
+  const isVoiceConnected = voiceContext?.connected;
+  const channelName = voiceContext?.channelName;
 
   return (
-    <>
-      <style>{`
-        .miniplayer-dock {
-          background: linear-gradient(
-            180deg,
-            rgba(40, 40, 40, 0.92) 0%,
-            rgba(24, 24, 24, 0.98) 100%
-          );
-          backdrop-filter: blur(24px) saturate(180%);
-          -webkit-backdrop-filter: blur(24px) saturate(180%);
-        }
+    <div
+      className="fixed bottom-0 left-0 right-0 z-50"
+      style={{
+        height: '72px',
+        backgroundColor: 'var(--color-bg-raised)',
+        borderTop: '1px solid var(--color-border)',
+      }}
+      role="region"
+      aria-label={`Now playing: ${currentTrack.title}`}
+    >
+      <div
+        className="h-full flex items-center"
+        style={{ padding: '0 20px', gap: '12px' }}
+      >
+        {/* Left: Mini thumbnail + track info */}
+        <div className="flex items-center gap-2.5 flex-shrink-0" style={{ width: '200px' }}>
+          {/* Thumbnail */}
+          {currentTrack.thumbnail ? (
+            <img
+              src={currentTrack.thumbnail}
+              alt=""
+              style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '7px',
+                objectFit: 'cover',
+                flexShrink: 0,
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '7px',
+                flexShrink: 0,
+                backgroundColor: 'var(--color-bg-surface3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <MusicNote size={18} style={{ color: 'var(--color-text-muted)' }} />
+            </div>
+          )}
+          <div className="min-w-0">
+            <div
+              className="truncate"
+              style={{
+                fontSize: '13px',
+                fontWeight: 500,
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              {currentTrack.title}
+            </div>
+            <div
+              className="truncate"
+              style={{
+                fontSize: '11px',
+                color: 'var(--color-text-muted)',
+              }}
+            >
+              {currentTrack.artist || '\u2014'}
+            </div>
+          </div>
+        </div>
 
-        .miniplayer-btn-icon {
-          padding: 10px;
-          border-radius: 9999px;
+        {/* Center: Controls + progress */}
+        <div className="flex-1 flex flex-col items-center" style={{ gap: '7px' }}>
+          {/* Transport buttons */}
+          <div className="flex items-center" style={{ gap: '2px' }}>
+            <button
+              onClick={() => onControl('previous')}
+              className="wave-bb-ctrl"
+              title="Previous"
+              aria-label="Previous track"
+            >
+              <SkipPrevious size={17} />
+            </button>
+            <button
+              onClick={() => onControl(isPlaying ? 'pause' : 'play')}
+              className="wave-bb-play"
+              title={isPlaying ? 'Pause' : 'Play'}
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isPlaying ? <Pause size={15} /> : <Play size={15} />}
+            </button>
+            <button
+              onClick={() => onControl('skip')}
+              className="wave-bb-ctrl"
+              title="Skip"
+              aria-label="Skip to next track"
+            >
+              <SkipNext size={17} />
+            </button>
+          </div>
+
+          {/* Progress bar (visual only, no seek) */}
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '400px',
+              height: '2px',
+              backgroundColor: 'var(--color-bg-elevated)',
+              borderRadius: '2px',
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.min(progress, 100)}%`,
+                height: '100%',
+                backgroundColor: 'var(--color-text-secondary)',
+                borderRadius: '2px',
+                transition: 'width 1s linear',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Right: Voice connection */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {isVoiceConnected ? (
+            <button
+              onClick={onLeaveChannel}
+              className="flex items-center gap-2 wave-bb-ctrl"
+              style={{ padding: '6px 10px', borderRadius: '8px' }}
+              title={`Leave ${channelName || 'voice'}`}
+              aria-label={`Leave voice channel ${channelName || ''}`}
+            >
+              {/* Green pulse dot */}
+              <span
+                className="animate-pulse"
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--color-success)',
+                  flexShrink: 0,
+                }}
+              />
+              {channelName && (
+                <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+                  {channelName}
+                </span>
+              )}
+              <Leave size={14} />
+            </button>
+          ) : (
+            <button
+              onClick={onJoinChannel}
+              className="wave-bb-ctrl"
+              style={{ padding: '6px 10px', borderRadius: '8px' }}
+              title="Join voice channel"
+              aria-label="Join voice channel"
+            >
+              <Speaker size={16} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <style>{`
+        .wave-bb-ctrl {
+          background: none;
+          border: none;
           color: var(--color-text-secondary);
-          transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
-          min-width: 44px;
-          min-height: 44px;
+          cursor: pointer;
+          padding: 7px;
+          border-radius: 8px;
+          transition: all 0.12s;
           display: flex;
           align-items: center;
           justify-content: center;
         }
-
-        .miniplayer-btn-icon:hover {
-          background: rgba(255, 255, 255, 0.1);
+        .wave-bb-ctrl:hover {
           color: var(--color-text-primary);
-          transform: scale(1.05);
+          background: var(--color-bg-elevated);
         }
-
-        .miniplayer-btn-icon:active {
-          transform: scale(0.95);
-        }
-
-        .miniplayer-btn-icon.active {
-          position: relative;
-        }
-
-        .miniplayer-btn-icon.active::after {
-          content: '';
-          position: absolute;
-          bottom: 6px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 4px;
-          height: 4px;
+        .wave-bb-play {
+          background: var(--color-accent);
+          color: var(--color-text-inverse);
+          width: 34px;
+          height: 34px;
           border-radius: 50%;
-          background: currentColor;
+          border: none;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0;
+          transition: filter 0.12s;
         }
-
-        @keyframes wave {
-          0%, 100% { transform: scaleY(0.4); }
-          50% { transform: scaleY(1); }
-        }
-
-        .animate-wave {
-          animation: wave 0.8s ease-in-out infinite;
+        .wave-bb-play:hover {
+          filter: brightness(1.1);
         }
       `}</style>
-
-      <div
-        className={`miniplayer-dock fixed bottom-0 left-0 right-0 lg:left-60 ${activeView === 'queue' ? '' : 'lg:right-80'} z-50 border-t`}
-        style={{
-          borderColor: 'rgba(255, 255, 255, 0.1)',
-          boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.05)'
-        }}
-        role="region"
-        aria-label={`Now playing: ${currentTrack.title}`}
-      >
-        {/* Progress bar at top */}
-        <ProgressBar
-          progress={progress}
-          duration={currentTrack.duration}
-          position={playerState.position}
-          onSeek={handleSeek}
-          albumColor={albumColor}
-          isPlaying={playerState.playing}
-        />
-
-        {/* Main content - Three-column grid for true centering */}
-        <div className="h-[72px] grid grid-cols-[1fr_auto_1fr] items-center px-4 sm:px-6">
-          {/* Left section - Track info (or empty in compact mode) */}
-          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-            {isCompact ? null : (
-              /* Full mode: Album art + track details */
-              <>
-                {/* Album art with glow */}
-                <div className="relative flex-shrink-0">
-                  {currentTrack.thumbnail ? (
-                    <img
-                      src={currentTrack.thumbnail}
-                      alt=""
-                      className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg object-cover"
-                      style={{
-                        boxShadow: `0 4px 16px hsla(${albumColor.h}, ${albumColor.s}%, ${albumColor.l}%, 0.35)`
-                      }}
-                    />
-                  ) : (
-                    <div
-                      className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg flex items-center justify-center"
-                      style={{
-                        background: `linear-gradient(135deg,
-                          hsl(${albumColor.h}, ${albumColor.s}%, ${albumColor.l}%) 0%,
-                          hsl(${albumColor.h}, ${albumColor.s}%, ${Math.max(albumColor.l - 15, 15)}%) 100%)`
-                      }}
-                    >
-                      <MusicNote size={24} className="text-white/80" />
-                    </div>
-                  )}
-                </div>
-
-                {/* Track details */}
-                <div className="min-w-0 flex-1 max-w-[250px]">
-                  <div className="flex items-center gap-2">
-                    <p className="font-semibold truncate text-sm sm:text-base" style={{ fontFamily: 'var(--font-heading)' }}>
-                      {currentTrack.title}
-                    </p>
-                    {playerState.playing && !isMobile && (
-                      <WaveformVisualizer isPlaying={playerState.playing} color={albumColor} />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs sm:text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                    {currentTrack.artist && <span className="truncate">{currentTrack.artist}</span>}
-                    {currentTrack.artist && <span className="text-muted">•</span>}
-                    <span className="font-mono text-xs text-muted tabular-nums whitespace-nowrap">
-                      {formatTime(playerState.position)} / {formatTime(currentTrack.duration)}
-                    </span>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Playback controls - True center column */}
-          <div className="flex items-center justify-center gap-1 sm:gap-2">
-            {/* Shuffle - hidden on mobile */}
-            <div className="hidden sm:block">
-              <ToggleButton
-                active={playerState.shuffle}
-                onClick={() => onControl('shuffle')}
-                icon={Shuffle}
-                title={`Shuffle ${playerState.shuffle ? 'on' : 'off'}`}
-                ariaLabel={`Shuffle queue (${playerState.shuffle ? 'on' : 'off'})`}
-                glowColor={albumColor}
-              />
-            </div>
-
-            <SkipButton
-              direction="previous"
-              onClick={() => onControl('previous')}
-            />
-
-            <PlayPauseButton
-              isPlaying={playerState.playing}
-              onClick={() => onControl(playerState.playing ? 'pause' : 'play')}
-              glowColor={albumColor}
-              size={isMobile ? 'normal' : 'large'}
-            />
-
-            <SkipButton
-              direction="next"
-              onClick={() => onControl('skip')}
-            />
-
-            {/* Loop - hidden on mobile */}
-            <div className="hidden sm:block">
-              <ToggleButton
-                active={playerState.loop && playerState.loop !== 'off'}
-                onClick={cycleLoopMode}
-                icon={Loop}
-                mode={playerState.loop}
-                title={`Loop: ${playerState.loop || 'off'}`}
-                ariaLabel={`Loop mode: ${playerState.loop || 'off'}`}
-                glowColor={albumColor}
-              />
-            </div>
-          </div>
-
-          {/* Right section - Empty spacer for symmetry */}
-          <div className="flex items-center justify-end gap-2">
-            {/* Future: volume control, queue button, etc. could go here */}
-          </div>
-        </div>
-      </div>
-    </>
+    </div>
   );
 }

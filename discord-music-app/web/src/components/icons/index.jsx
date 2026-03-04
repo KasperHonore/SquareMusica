@@ -231,6 +231,14 @@ export function Plus({ size = defaultSize, className = '' }) {
   );
 }
 
+export function Stop({ size = defaultSize, className = '' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+    </svg>
+  );
+}
+
 export function Trash({ size = defaultSize, className = '' }) {
   return (
     <svg

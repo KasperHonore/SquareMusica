@@ -18,79 +18,40 @@ function getTrackId(track, index) {
 }
 
 /**
- * Empty state component with engaging animated visuals
+ * Empty state component
  */
-function EmptyQueue({ onShuffle, onClear }) {
+function EmptyQueue({ isRightPanel }) {
   return (
-    <div className="h-full flex-1 min-h-0 flex flex-col" role="region" aria-label="Music queue">
-      <div className="flex items-center justify-between mb-4 px-1">
-        <h3 className="text-heading text-lg" id="queue-heading">Up Next</h3>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={onClear}
-            disabled
-            className="p-2 text-text-secondary opacity-50 cursor-not-allowed min-w-[44px] min-h-[44px] flex items-center justify-center"
-            title="Clear queue (queue is empty)"
-            aria-label="Clear queue (disabled - queue is empty)"
-            aria-disabled="true"
-          >
-            <Trash size={20} />
-          </button>
-          <button
-            onClick={onShuffle}
-            disabled
-            className="p-2 text-text-secondary opacity-50 cursor-not-allowed min-w-[44px] min-h-[44px] flex items-center justify-center"
-            title="Shuffle queue (queue is empty)"
-            aria-label="Shuffle queue (disabled - queue is empty)"
-            aria-disabled="true"
-          >
-            <Shuffle size={20} />
-          </button>
+    <div className="flex-1 min-h-0 flex flex-col items-center justify-center" style={{ padding: isRightPanel ? '20px 10px' : '40px 20px' }}>
+      <div className="relative w-16 h-16 mb-4">
+        <div
+          className="absolute inset-0 rounded-full animate-pulse-glow"
+          style={{ backgroundColor: 'var(--color-accent-subtle)' }}
+        />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <MusicNote size={28} style={{ color: 'var(--color-accent)' }} />
         </div>
       </div>
-
-      {/* Engaging empty state */}
-      <div className="flex-1 flex flex-col items-center justify-center py-8 animate-fade-in">
-        {/* Animated music notes container */}
-        <div className="relative w-24 h-24 mb-6">
-          {/* Background circle */}
-          <div className="absolute inset-0 rounded-full bg-accent-subtle animate-pulse-glow" />
-
-          {/* Floating notes animation */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="relative">
-              <MusicNote size={36} className="text-accent" />
-              {/* Orbiting mini notes */}
-              <div className="absolute -top-2 -left-3 animate-wave">
-                <MusicNote size={14} className="text-accent/60" />
-              </div>
-              <div className="absolute -bottom-1 -right-3 animate-wave-delay-2">
-                <MusicNote size={16} className="text-accent/40" />
-              </div>
-            </div>
-          </div>
-
-          {/* Sound wave rings */}
-          <div
-            className="absolute inset-0 rounded-full border border-accent/20"
-            style={{ animation: 'ring-pulse 2s ease-out infinite' }}
-          />
-          <div
-            className="absolute inset-0 rounded-full border border-accent/10"
-            style={{ animation: 'ring-pulse 2s ease-out infinite 0.5s' }}
-          />
-        </div>
-
-        <p className="text-heading text-sm text-text-secondary mb-2">Queue is empty</p>
-        <p className="text-body text-xs text-text-muted text-center max-w-[200px]">
-          Search for songs or use <code className="text-mono text-accent/80 bg-accent-subtle px-1.5 py-0.5 rounded">/play</code> in Discord
-        </p>
-      </div>
+      <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>Queue is empty</p>
+      <p
+        className="text-center"
+        style={{ fontSize: '12px', color: 'var(--color-text-muted)', maxWidth: '200px' }}
+      >
+        Search for songs or use <code
+          style={{
+            color: 'rgba(232,200,122,0.8)',
+            background: 'var(--color-accent-subtle)',
+            padding: '1px 6px',
+            borderRadius: '4px',
+            fontSize: '11px',
+          }}
+        >/play</code> in Discord
+      </p>
     </div>
   );
 }
 
-export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolutionStats }) {
+export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolutionStats, isRightPanel = false }) {
   const [activeId, setActiveId] = useState(null);
   const [removingId, setRemovingId] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -119,7 +80,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 5, // Start drag after 5px movement
+        distance: 5,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -146,28 +107,20 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
     setActiveId(null);
   };
 
-  // Enhanced remove with animation
   const handleRemove = (index, trackId) => {
     setRemovingId(trackId);
-    // Allow animation to play before actually removing
     setTimeout(() => {
       onRemove(index);
       setRemovingId(null);
     }, 250);
   };
 
-  if (tracks.length === 0) {
-    return <EmptyQueue onShuffle={onShuffle} onClear={onClear} />;
-  }
-
-  // Check if there are unresolved tracks in the queue
   const hasUnresolved = resolutionStats && (
     resolutionStats.unresolved > 0 ||
     resolutionStats.resolving > 0 ||
     resolutionStats.pending > 0
   );
 
-  // Get the currently dragging track for overlay
   const activeTrack = activeId
     ? tracks.find((t, i) => getTrackId(t, i) === activeId)
     : null;
@@ -175,18 +128,46 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
     ? tracks.findIndex((t, i) => getTrackId(t, i) === activeId)
     : -1;
 
+  const isEmpty = tracks.length === 0;
+
   return (
-    <div className="h-full flex-1 min-h-0 flex flex-col" role="region" aria-labelledby="queue-heading">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3 px-1">
+    <div
+      className="h-full flex-1 min-h-0 flex flex-col"
+      role="region"
+      aria-labelledby="queue-heading"
+    >
+      {/* Queue header */}
+      <div
+        className="flex items-center justify-between flex-shrink-0"
+        style={{ padding: isRightPanel ? '11px 20px 9px' : '8px 4px 12px' }}
+      >
         <div className="flex items-center gap-2">
-          <h3 className="text-heading text-lg" id="queue-heading">Up Next</h3>
           <span
-            className="text-mono text-xs px-2 py-0.5 rounded-full bg-accent-subtle text-accent"
-            aria-label={`${tracks.length} tracks in queue`}
+            style={{
+              fontSize: isRightPanel ? '10px' : '11px',
+              fontWeight: 600,
+              letterSpacing: isRightPanel ? '1px' : '0.8px',
+              textTransform: 'uppercase',
+              color: 'var(--color-text-muted)',
+            }}
+            id="queue-heading"
           >
-            {tracks.length}
+            Up Next
           </span>
+          {!isEmpty && (
+            <span
+              className="text-mono"
+              style={{
+                fontSize: '10px',
+                padding: '1px 6px',
+                borderRadius: '9999px',
+                backgroundColor: 'var(--color-accent-subtle)',
+                color: 'var(--color-accent)',
+              }}
+            >
+              {tracks.length}
+            </span>
+          )}
           {hasUnresolved && (
             <span className="flex items-center gap-1" title="Resolving Spotify tracks" aria-label="Resolving Spotify tracks">
               <svg className="w-4 h-4 animate-pulse" fill="#1DB954" viewBox="0 0 24 24" aria-hidden="true">
@@ -195,109 +176,217 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center" style={{ gap: isRightPanel ? '10px' : '4px' }}>
           {/* Clear button with inline confirmation */}
           {showClearConfirm ? (
-            <div className="flex items-center gap-1 bg-surface-elevated rounded-full px-2 py-1 animate-fade-in">
-              <span className="text-xs text-text-secondary whitespace-nowrap">Clear queue?</span>
+            <div className="flex items-center gap-1 animate-fade-in" style={{
+              background: 'var(--color-bg-elevated)',
+              borderRadius: '9999px',
+              padding: '2px 8px',
+            }}>
+              <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Clear?</span>
               <button
                 onClick={handleClearConfirm}
-                className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-400/10 transition-colors rounded-full min-w-[32px] min-h-[32px] flex items-center justify-center"
+                className="flex items-center justify-center"
+                style={{
+                  padding: '4px',
+                  color: 'var(--color-success)',
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  transition: 'background 0.12s',
+                  minWidth: '24px',
+                  minHeight: '24px',
+                }}
                 title="Confirm clear"
                 aria-label="Confirm clear queue"
               >
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor">
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="currentColor">
                   <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
                 </svg>
               </button>
               <button
                 onClick={handleClearCancel}
-                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors rounded-full min-w-[32px] min-h-[32px] flex items-center justify-center"
+                className="flex items-center justify-center"
+                style={{
+                  padding: '4px',
+                  color: 'var(--color-danger)',
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  transition: 'background 0.12s',
+                  minWidth: '24px',
+                  minHeight: '24px',
+                }}
                 title="Cancel"
                 aria-label="Cancel clear queue"
               >
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor">
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="currentColor">
                   <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
                 </svg>
               </button>
             </div>
+          ) : isRightPanel ? (
+            <>
+              <button
+                onClick={onShuffle}
+                disabled={isEmpty}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '11px',
+                  color: isEmpty ? 'var(--color-text-muted)' : 'var(--color-text-muted)',
+                  cursor: isEmpty ? 'not-allowed' : 'pointer',
+                  fontFamily: 'var(--font-body)',
+                  transition: 'color 0.12s',
+                  padding: 0,
+                  opacity: isEmpty ? 0.5 : 1,
+                }}
+                className="wave-queue-action"
+                title="Shuffle queue"
+                aria-label="Shuffle queue"
+              >
+                Shuffle
+              </button>
+              <button
+                onClick={handleClearClick}
+                disabled={isEmpty}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '11px',
+                  color: isEmpty ? 'var(--color-text-muted)' : 'var(--color-text-muted)',
+                  cursor: isEmpty ? 'not-allowed' : 'pointer',
+                  fontFamily: 'var(--font-body)',
+                  transition: 'color 0.12s',
+                  padding: 0,
+                  opacity: isEmpty ? 0.5 : 1,
+                }}
+                className="wave-queue-action-danger"
+                title="Clear queue"
+                aria-label="Clear queue"
+              >
+                Clear
+              </button>
+            </>
           ) : (
-            <button
-              onClick={handleClearClick}
-              className="p-2 text-text-secondary hover:text-accent transition-colors rounded-full hover:bg-accent-subtle interactive focus-ring min-w-[44px] min-h-[44px] flex items-center justify-center"
-              title="Clear queue"
-              aria-label="Clear queue"
-            >
-              <Trash size={20} />
-            </button>
+            <>
+              <button
+                onClick={handleClearClick}
+                disabled={isEmpty}
+                className="flex items-center justify-center"
+                style={{
+                  padding: '8px',
+                  color: 'var(--color-text-secondary)',
+                  opacity: isEmpty ? 0.5 : 1,
+                  cursor: isEmpty ? 'not-allowed' : 'pointer',
+                  borderRadius: '9999px',
+                  border: 'none',
+                  background: 'none',
+                  transition: 'color 0.12s, background 0.12s',
+                  minWidth: '44px',
+                  minHeight: '44px',
+                }}
+                title="Clear queue"
+                aria-label="Clear queue"
+              >
+                <Trash size={20} />
+              </button>
+              <button
+                onClick={onShuffle}
+                disabled={isEmpty}
+                className="flex items-center justify-center"
+                style={{
+                  padding: '8px',
+                  color: 'var(--color-text-secondary)',
+                  opacity: isEmpty ? 0.5 : 1,
+                  cursor: isEmpty ? 'not-allowed' : 'pointer',
+                  borderRadius: '9999px',
+                  border: 'none',
+                  background: 'none',
+                  transition: 'color 0.12s, background 0.12s',
+                  minWidth: '44px',
+                  minHeight: '44px',
+                }}
+                title="Shuffle queue"
+                aria-label="Shuffle queue"
+              >
+                <Shuffle size={20} />
+              </button>
+            </>
           )}
-          <button
-            onClick={onShuffle}
-            className="p-2 text-text-secondary hover:text-accent transition-colors rounded-full hover:bg-accent-subtle interactive focus-ring min-w-[44px] min-h-[44px] flex items-center justify-center"
-            title="Shuffle queue"
-            aria-label="Shuffle queue"
-          >
-            <Shuffle size={20} />
-          </button>
         </div>
       </div>
 
-      {/* Queue list with DnD - fills remaining space */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
-      >
-        <SortableContext
-          items={tracks.map((t, i) => getTrackId(t, i))}
-          strategy={verticalListSortingStrategy}
-        >
-          <div
-            className="flex-1 min-h-0 space-y-1.5 overflow-y-auto pr-1 queue-list"
-            style={{
-              scrollbarGutter: 'stable',
-            }}
-            role="list"
-            aria-label="Queue items"
-          >
-            {tracks.map((track, index) => {
-              const trackId = getTrackId(track, index);
-              return (
-                <QueueItem
-                  key={trackId}
-                  track={track}
-                  index={index}
-                  trackId={trackId}
-                  onRemove={handleRemove}
-                  isUpNext={index === 0}
-                  isRemoving={removingId === trackId}
-                  isDraggingActive={activeId !== null}
-                  isBeingDragged={activeId === trackId}
-                />
-              );
-            })}
-          </div>
-        </SortableContext>
+      <style>{`
+        .wave-queue-action:hover:not(:disabled) { color: var(--color-accent) !important; }
+        .wave-queue-action-danger:hover:not(:disabled) { color: var(--color-danger) !important; }
+      `}</style>
 
-        {/* Drag overlay - shows a ghost of the dragged item */}
-        <DragOverlay dropAnimation={{
-          duration: 200,
-          easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
-        }}>
-          {activeTrack ? (
-            <QueueItem
-              track={activeTrack}
-              index={activeIndex}
-              trackId={activeId}
-              onRemove={() => {}}
-              isUpNext={activeIndex === 0}
-              isOverlay
-            />
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+      {/* Queue list */}
+      {isEmpty ? (
+        <EmptyQueue isRightPanel={isRightPanel} />
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <SortableContext
+            items={tracks.map((t, i) => getTrackId(t, i))}
+            strategy={verticalListSortingStrategy}
+          >
+            <div
+              className="flex-1 min-h-0 overflow-y-auto queue-list"
+              style={{
+                padding: isRightPanel ? '0 10px 12px' : '0 0 12px',
+                scrollbarGutter: 'stable',
+              }}
+              role="list"
+              aria-label="Queue items"
+            >
+              {tracks.map((track, index) => {
+                const trackId = getTrackId(track, index);
+                return (
+                  <QueueItem
+                    key={trackId}
+                    track={track}
+                    index={index}
+                    trackId={trackId}
+                    onRemove={handleRemove}
+                    isUpNext={index === 0}
+                    isRemoving={removingId === trackId}
+                    isDraggingActive={activeId !== null}
+                    isBeingDragged={activeId === trackId}
+                    isRightPanel={isRightPanel}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
+
+          <DragOverlay dropAnimation={{
+            duration: 200,
+            easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+          }}>
+            {activeTrack ? (
+              <QueueItem
+                track={activeTrack}
+                index={activeIndex}
+                trackId={activeId}
+                onRemove={() => {}}
+                isUpNext={activeIndex === 0}
+                isOverlay
+                isRightPanel={isRightPanel}
+              />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      )}
     </div>
   );
 }

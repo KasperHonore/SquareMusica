@@ -1,11 +1,7 @@
 import { formatTime } from '../utils/formatTime';
-import { UserAvatar } from './UserAvatar';
-import { Play } from './icons';
 
 /**
  * Format a timestamp into a relative or absolute time string
- * @param {string} timestamp - ISO timestamp
- * @returns {string} Formatted time string
  */
 function formatPlayedAt(timestamp) {
   const date = new Date(timestamp);
@@ -29,85 +25,143 @@ function formatPlayedAt(timestamp) {
 }
 
 /**
- * HistoryItem component matching Queue styling
+ * HistoryItem - Wave result-item row style
+ * thumbnail (48x36), title, channel, duration, "+ Add" button
  */
 export function HistoryItem({ track, index, onPlayAgain }) {
-  // Calculate staggered animation delay
-  const animationDelay = `${index * 50}ms`;
-
-  // Alternating background tint for scanability
-  const isEven = index % 2 === 0;
-
-  // Build class names based on state
-  const containerClasses = [
-    'flex items-start gap-3 p-2.5 rounded-lg',
-    'transition-all duration-200',
-    'group relative',
-    // Staggered fade-in animation on initial render
-    'animate-queue-item-in',
-    // Alternating backgrounds - subtle
-    isEven ? '' : 'bg-white/[0.02]',
-    // Hover effect
-    'hover:bg-white/[0.05]',
-  ].filter(Boolean).join(' ');
-
   return (
-    <article
-      className={containerClasses}
+    <div
       style={{
-        '--animation-delay': animationDelay,
-        animationDelay: animationDelay,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        padding: '9px 10px',
+        borderRadius: '9px',
+        cursor: 'pointer',
+        transition: 'background 0.1s',
+        background: index % 2 !== 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
+        animationDelay: `${index * 50}ms`,
       }}
-      aria-label={`${track.title}, played ${formatPlayedAt(track.played_at)}`}
-      role="listitem"
+      className="wave-result-item"
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'var(--color-bg-elevated)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background =
+          index % 2 !== 0 ? 'rgba(255,255,255,0.02)' : 'transparent';
+      }}
     >
       {/* Thumbnail */}
-      {track.thumbnail ? (
-        <img
-          src={track.thumbnail}
-          alt=""
-          className="w-11 h-11 rounded-md object-cover flex-shrink-0"
-        />
-      ) : (
-        <div className="w-11 h-11 rounded-md bg-surface-elevated flex items-center justify-center flex-shrink-0">
-          <span className="text-text-muted text-lg">&#9835;</span>
-        </div>
-      )}
-
-      {/* Track info */}
-      <div className="flex-1 min-w-0 pt-0.5">
-        <p className="truncate font-medium text-sm text-primary">
-          {track.title}
-        </p>
-        <div className="flex items-center gap-1.5 text-text-muted text-xs mt-0.5">
-          <span className="text-mono">{formatTime(track.duration, '--:--')}</span>
-          <span className="text-text-muted/50">&#8226;</span>
-          <span className="text-secondary">{formatPlayedAt(track.played_at)}</span>
-        </div>
-        {track.requested_by && (
-          <div className="flex items-center gap-1.5 text-xs mt-1 text-text-muted">
-            <UserAvatar
-              userId={track.requested_by_id}
-              avatarHash={track.requested_by_avatar}
-              username={track.requested_by}
-              size={14}
-            />
-            <span className="truncate">{track.requested_by}</span>
+      <div
+        style={{
+          width: '48px',
+          height: '36px',
+          borderRadius: '5px',
+          flexShrink: 0,
+          overflow: 'hidden',
+          background: 'var(--color-bg-surface3)',
+        }}
+      >
+        {track.thumbnail ? (
+          <img
+            src={track.thumbnail}
+            alt=""
+            loading="lazy"
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--color-text-muted)',
+              fontSize: '14px',
+            }}
+          >
+            &#9835;
           </div>
         )}
       </div>
 
-      {/* Play again button - hover revealed */}
-      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
-        <button
-          onClick={() => onPlayAgain(track)}
-          className="text-text-muted hover:text-accent transition-colors p-1.5 rounded hover:bg-accent/10 focus-ring min-w-[32px] min-h-[32px] flex items-center justify-center"
-          title="Play again"
-          aria-label={`Play ${track.title} again`}
+      {/* Info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: '13px',
+            fontWeight: 500,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            color: 'var(--color-text-primary)',
+          }}
         >
-          <Play size={14} aria-hidden="true" />
-        </button>
+          {track.title}
+        </div>
+        <div
+          style={{
+            fontSize: '11px',
+            color: 'var(--color-text-muted)',
+            marginTop: '2px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          {track.channel && <span>{track.channel}</span>}
+          {track.played_at && (
+            <>
+              <span style={{ opacity: 0.5 }}>&bull;</span>
+              <span>{formatPlayedAt(track.played_at)}</span>
+            </>
+          )}
+        </div>
       </div>
-    </article>
+
+      {/* Duration */}
+      <div
+        style={{
+          fontSize: '11px',
+          color: 'var(--color-text-muted)',
+          flexShrink: 0,
+        }}
+      >
+        {formatTime(track.duration)}
+      </div>
+
+      {/* Add button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onPlayAgain(track);
+        }}
+        style={{
+          background: 'rgba(232,200,122,0.1)',
+          border: '1px solid rgba(232,200,122,0.2)',
+          color: 'var(--color-accent)',
+          borderRadius: '6px',
+          padding: '5px 10px',
+          fontSize: '11px',
+          fontWeight: 600,
+          cursor: 'pointer',
+          fontFamily: 'var(--font-body)',
+          transition: 'background 0.12s',
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(232,200,122,0.18)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'rgba(232,200,122,0.1)';
+        }}
+        title="Add to queue"
+        aria-label={`Add ${track.title} to queue`}
+      >
+        + Add
+      </button>
+    </div>
   );
 }

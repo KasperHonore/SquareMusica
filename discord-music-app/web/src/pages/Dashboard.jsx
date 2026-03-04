@@ -4,9 +4,8 @@ import { useBrowserMeta } from '../hooks/useBrowserMeta';
 import { useAuth } from '../context/AuthContext';
 import { AppLayout } from '../components/layout/AppLayout';
 import { MiniPlayer } from '../components/layout/MiniPlayer';
-import { NowPlaying } from '../components/NowPlaying';
-import { Queue } from '../components/Queue';
-import { History } from './History';
+import { RightPanel } from '../components/right/RightPanel';
+import { CenterPanel } from '../components/center/CenterPanel';
 
 export function Dashboard() {
   const { user, logout } = useAuth();
@@ -34,7 +33,7 @@ export function Dashboard() {
 
   useBrowserMeta(botInfo, currentTrack);
 
-  const [activeView, setActiveView] = useState('nowplaying');
+  const [activeView, setActiveView] = useState('browse');
 
   // Transform playlists from server format to component format (albums)
   const albums = playlists.map(p => ({
@@ -89,7 +88,6 @@ export function Dashboard() {
   // Album handlers
   const handleLoadAlbum = useCallback(async (album) => {
     if (!album.spotifyUrl) {
-      // Legacy support: if album has tracks array instead of spotifyUrl
       if (album.tracks && album.tracks.length > 0) {
         album.tracks.forEach(track => {
           if (track.url) {
@@ -100,17 +98,8 @@ export function Dashboard() {
       return;
     }
 
-    // Clear the current queue by stopping playback
-    // playerControl('stop') calls musicManager.stop() which:
-    // 1. Stops playback
-    // 2. Clears the queue (queue.clear())
-    // 3. Resets currentIndex to 0
     playerControl('stop');
-
-    // Small delay to ensure server processes stop before adding new tracks
     await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Then add the Spotify URL (uses existing lazy resolution)
     addToQueue(album.spotifyUrl);
   }, [addToQueue, playerControl]);
 
@@ -122,76 +111,55 @@ export function Dashboard() {
     createPlaylist(name, spotifyUrl, coverImage);
   }, [createPlaylist]);
 
-  // Render the main content based on active view
-  const renderMainContent = () => {
-    switch (activeView) {
-      case 'nowplaying':
-        return (
-          <div className="h-full flex flex-col -mx-4 md:-mx-6 -mt-4 md:-mt-6">
-            {/* Voice channel warning - positioned absolutely over the hero */}
-            {!playerState.connected && (
-              <div
-                className="absolute top-4 left-1/2 -translate-x-1/2 z-20 max-w-lg px-4 py-3 rounded-lg"
-                style={{
-                  backgroundColor: 'rgba(234, 179, 8, 0.15)',
-                  border: '1px solid rgba(234, 179, 8, 0.3)',
-                  color: '#fcd34d',
-                  backdropFilter: 'blur(8px)',
-                }}
-              >
-                Bot is not connected to a voice channel. Use <code className="bg-black/20 px-1 rounded">/join</code> in Discord.
-              </div>
-            )}
-
-            {/* Now Playing hero - anchored to top, full width */}
-            <NowPlaying
-              track={currentTrack}
-              playerState={playerState}
-            />
-          </div>
-        );
-
-      case 'queue':
-        return (
-          <Queue
-            tracks={upcomingTracks}
-            onReorder={handleReorder}
-            onRemove={handleRemove}
-            onShuffle={handleShuffle}
-            onClear={handleClearQueue}
-            resolutionStats={resolutionStats}
-          />
-        );
-
-      case 'history':
-        return <History />;
-
-      default:
-        return null;
-    }
-  };
-
-  // Queue component for sidebar panel - no extra wrapper needed
-  const queuePanel = activeView !== 'queue' ? (
-    <Queue
-      tracks={upcomingTracks}
+  // Right panel: Now Playing + Controls + Queue
+  const rightPanel = (
+    <RightPanel
+      currentTrack={currentTrack}
+      playerState={playerState}
+      onControl={playerControl}
+      queue={upcomingTracks}
       onReorder={handleReorder}
       onRemove={handleRemove}
       onShuffle={handleShuffle}
       onClear={handleClearQueue}
       resolutionStats={resolutionStats}
     />
-  ) : null;
+  );
 
   return (
     <>
-      {/* Error Toast */}
+      {/* Error Toast - Wave styling */}
       {error && (
-        <div className="fixed top-4 right-4 z-[100] bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in">
+        <div
+          style={{
+            position: 'fixed',
+            top: '16px',
+            right: '16px',
+            zIndex: 100,
+            background: 'var(--color-bg-surface3)',
+            border: '1px solid var(--color-border-strong)',
+            borderRadius: '8px',
+            padding: '10px 16px',
+            fontSize: '13px',
+            color: 'var(--color-danger)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            animation: 'toastIn 0.2s ease',
+          }}
+        >
           <span>{error}</span>
           <button
             onClick={clearError}
-            className="text-white/80 hover:text-white text-xl leading-none"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--color-danger)',
+              cursor: 'pointer',
+              fontSize: '18px',
+              lineHeight: 1,
+              padding: '0 2px',
+            }}
           >
             &times;
           </button>
@@ -199,7 +167,7 @@ export function Dashboard() {
       )}
 
       <AppLayout
-        queueComponent={queuePanel}
+        rightPanel={rightPanel}
         voiceContext={voiceContext}
         playerState={playerState}
         currentTrack={currentTrack}
@@ -211,7 +179,6 @@ export function Dashboard() {
         onLogout={logout}
         onAdd={addToQueue}
         connected={connected}
-        showMiniPlayerPadding={!!currentTrack}
         botInfo={botInfo}
         albums={albums}
         onLoadAlbum={handleLoadAlbum}
@@ -219,16 +186,34 @@ export function Dashboard() {
         onCreateAlbum={handleCreateAlbum}
         onAddToQueue={addToQueue}
       >
-        {renderMainContent()}
+        <CenterPanel
+          activeView={activeView}
+          onViewChange={setActiveView}
+          onAdd={addToQueue}
+          user={user}
+          playerState={playerState}
+          albums={albums}
+          onCreateAlbum={handleCreateAlbum}
+          onLoadAlbum={handleLoadAlbum}
+        />
       </AppLayout>
 
-      {/* MiniPlayer - The ONLY playback control surface */}
+      {/* MiniPlayer - Bottom bar transport strip */}
       <MiniPlayer
         currentTrack={currentTrack}
         playerState={playerState}
         onControl={playerControl}
-        activeView={activeView}
+        voiceContext={voiceContext}
+        onJoinChannel={handleJoinChannel}
+        onLeaveChannel={handleLeaveChannel}
       />
+
+      <style>{`
+        @keyframes toastIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: none; }
+        }
+      `}</style>
     </>
   );
 }

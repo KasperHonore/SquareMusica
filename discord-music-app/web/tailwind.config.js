@@ -12,6 +12,7 @@ export default {
           DEFAULT: 'var(--color-bg)',
           raised: 'var(--color-bg-raised)',
           elevated: 'var(--color-bg-elevated)',
+          surface3: 'var(--color-bg-surface3)',
         },
         // Text colors - hierarchical contrast
         text: {
@@ -19,7 +20,7 @@ export default {
           secondary: 'var(--color-text-secondary)',
           muted: 'var(--color-text-muted)',
         },
-        // Accent colors - Spotify green
+        // Accent colors - Wave gold
         accent: {
           DEFAULT: 'var(--color-accent)',
           hover: 'var(--color-accent-hover)',
@@ -28,29 +29,30 @@ export default {
         border: {
           DEFAULT: 'var(--color-border)',
         },
+        // Danger
+        danger: 'var(--color-danger)',
       },
       borderRadius: {
         DEFAULT: '8px',
-        lg: '12px',
-        xl: '16px',
+        lg: '10px',
+        xl: '14px',
         '2xl': '20px',
       },
       boxShadow: {
         soft: '0 8px 24px rgba(0,0,0,0.5)',
-        glow: '0 0 20px rgba(29, 185, 84, 0.3)',
-        'glow-lg': '0 0 40px rgba(29, 185, 84, 0.4)',
-        elevated: '0 4px 12px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05)',
+        glow: '0 0 20px rgba(232, 200, 122, 0.15)',
+        'glow-lg': '0 0 40px rgba(232, 200, 122, 0.2)',
+        elevated: '0 4px 12px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.03)',
       },
       fontFamily: {
-        // Heading font - Plus Jakarta Sans: geometric, modern, distinctive
-        heading: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
-        // Body font - DM Sans: clean, readable, pairs well with geometric headings
+        // Heading font - Instrument Serif: elegant serif for Wave brand
+        heading: ['"Instrument Serif"', 'serif'],
+        // Body font - DM Sans: clean, readable
         sans: ['"DM Sans"', 'system-ui', 'sans-serif'],
-        // Monospace - JetBrains Mono: for timestamps, durations, technical info
-        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        // Mono - use DM Sans with tabular nums
+        mono: ['"DM Sans"', 'ui-monospace', 'monospace'],
       },
       fontSize: {
-        // Refined type scale with proper line heights
         'xs': ['0.75rem', { lineHeight: '1rem', letterSpacing: '0.01em' }],
         'sm': ['0.875rem', { lineHeight: '1.25rem', letterSpacing: '0.005em' }],
         'base': ['1rem', { lineHeight: '1.5rem', letterSpacing: '0' }],
@@ -68,7 +70,6 @@ export default {
         wide: '0.025em',
         wider: '0.05em',
         widest: '0.1em',
-        // Special tracking for uppercase labels
         'caps': '0.08em',
       },
       animation: {

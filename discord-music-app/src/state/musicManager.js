@@ -129,9 +129,8 @@ class MusicManager extends EventEmitter {
   async skip() {
     if (!this.player || !this.queue) return false;
 
-    this.queue.next();
     const connection = this.getConnection?.(this.guildId);
-    const { played } = await tryPlayWithFallback(this.player, this.queue, connection);
+    const { played } = await tryPlayWithFallback(this.player, this.queue, connection, true);
 
     if (played) {
       resolutionManager.processLookahead(this.queue.currentIndex).catch(err => {

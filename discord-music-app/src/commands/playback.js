@@ -18,25 +18,14 @@ export function getPlayer() {
 
     // Auto-play next track
     player.on('trackEnd', async () => {
-      const next = queue?.next();
+      const connection = getConnection(musicManager.guildId);
+      const { played } = await tryPlayWithFallback(player, queue, connection, true);
 
-      if (next) {
-        const connection = getConnection(musicManager.guildId);
-        const { played } = await tryPlayWithFallback(player, queue, connection);
-
-        if (played) {
-          resolutionManager.processLookahead(queue?.currentIndex || 0).catch(err => {
-            console.error('Lookahead resolution error:', err);
-          });
-          musicManager.emitQueueUpdate();
-        } else {
-          console.log('[TrackEnd] No more playable tracks');
-          resolutionManager.stop();
-          resolutionManager.processingTracks.clear();
-          musicManager.emit('queue:update', { tracks: [], currentIndex: 0 });
-          musicManager.emit('track:change', null);
-          musicManager.emitState();
-        }
+      if (played) {
+        resolutionManager.processLookahead(queue?.currentIndex || 0).catch(err => {
+          console.error('Lookahead resolution error:', err);
+        });
+        musicManager.emitQueueUpdate();
       } else {
         console.log('[TrackEnd] No more playable tracks');
         resolutionManager.stop();
@@ -51,6 +40,11 @@ export function getPlayer() {
     player.on('trackFailed', async (failedTrack) => {
       console.warn('Track failed, skipping:', failedTrack.title);
       musicManager.emitQueueUpdate();
+    });
+
+    // Catch player errors so they don't become uncaught exceptions
+    player.on('error', (error) => {
+      console.error('[Player] MusicPlayer error:', error.message);
     });
   }
   return player;
@@ -199,9 +193,8 @@ export async function handleSkip(interaction) {
   }
 
   const skipped = p.currentTrack.title;
-  q.next(); // Advance the queue
 
-  const { played, track: playingTrack } = await tryPlayWithFallback(p, q, connection);
+  const { played, track: playingTrack } = await tryPlayWithFallback(p, q, connection, true);
 
   if (played) {
     await interaction.reply(`Skipped **${skipped}**. Now playing: **${playingTrack.title}**`);

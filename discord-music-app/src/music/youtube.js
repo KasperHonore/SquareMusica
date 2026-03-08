@@ -2,6 +2,7 @@ import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { PassThrough } from 'stream';
 import { existsSync } from 'fs';
+import { StreamType } from '@discordjs/voice';
 
 const execFileAsync = promisify(execFile);
 
@@ -133,7 +134,7 @@ export async function getStream(url) {
 
   const args = [
     url,
-    '-f', 'bestaudio[ext=webm]/bestaudio/best',
+    '-f', 'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=webm]/bestaudio/best',
     '-o', '-',
     '--no-warnings',
     '--no-playlist',
@@ -148,6 +149,9 @@ export async function getStream(url) {
   const ytdlp = spawn(YT_DLP_PATH, args);
 
   const stream = new PassThrough();
+  stream.on('error', (err) => {
+    console.log('[Stream] PassThrough error (expected during cleanup):', err.message);
+  });
 
   ytdlp.stdout.pipe(stream);
 
@@ -173,9 +177,21 @@ export async function getStream(url) {
     }
   });
 
+  const cleanup = () => {
+    if (!ytdlp.killed) {
+      ytdlp.kill('SIGKILL');
+      console.log('[Stream] yt-dlp process killed via cleanup');
+    }
+    if (!stream.destroyed) {
+      stream.destroy();
+      console.log('[Stream] PassThrough destroyed via cleanup');
+    }
+  };
+
   return {
     stream,
-    type: 'arbitrary'
+    type: StreamType.WebmOpus,
+    cleanup
   };
 }
 

@@ -111,10 +111,10 @@ export function triggerLookaheadIfNeeded(tracks, resMgr, queue, currentIndex) {
  * @param {Object} connection - Voice connection
  * @returns {Promise<{ played: boolean, track: Object|null }>}
  */
-export async function tryPlayWithFallback(player, queue, connection) {
+export async function tryPlayWithFallback(player, queue, connection, skipCurrent = false) {
   if (!connection) return { played: false, track: null };
 
-  let track = queue.getCurrent();
+  let track = skipCurrent ? queue.next() : queue.getCurrent();
   while (track) {
     const success = await player.play(track, connection);
     if (success) {

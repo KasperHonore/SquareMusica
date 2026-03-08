@@ -1,8 +1,7 @@
+import { useState } from 'react';
 import { PlaybackControls } from '../right/PlaybackControls';
 import {
   MusicNote,
-  Leave,
-  Speaker
 } from '../icons';
 
 /**
@@ -25,8 +24,9 @@ export function MiniPlayer({
   const position = playerState?.position || 0;
   const progress = duration > 0 ? (position / duration) * 100 : 0;
 
-  const isVoiceConnected = voiceContext?.connected;
+  const isVoiceConnected = !!voiceContext;
   const channelName = voiceContext?.channelName;
+  const [actionHovered, setActionHovered] = useState(false);
 
   return (
     <div
@@ -122,65 +122,72 @@ export function MiniPlayer({
           </div>
         </div>
 
-        {/* Right: Voice connection */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {isVoiceConnected ? (
-            <button
-              onClick={onLeaveChannel}
-              className="flex items-center gap-2 wave-bb-ctrl"
-              style={{ padding: '6px 10px', borderRadius: '8px' }}
-              title={`Leave ${channelName || 'voice'}`}
-              aria-label={`Leave voice channel ${channelName || ''}`}
-            >
-              <span
-                className="animate-pulse"
-                style={{
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-success)',
-                  flexShrink: 0,
-                }}
-              />
-              {channelName && (
-                <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
-                  {channelName}
-                </span>
-              )}
-              <Leave size={14} />
-            </button>
-          ) : (
-            <button
-              onClick={onJoinChannel}
-              className="wave-bb-ctrl"
-              style={{ padding: '6px 10px', borderRadius: '8px' }}
-              title="Join voice channel"
-              aria-label="Join voice channel"
-            >
-              <Speaker size={16} />
-            </button>
-          )}
+        {/* Right: Voice connection split pill */}
+        <div
+          className="flex-shrink-0"
+          style={{
+            display: 'flex',
+            borderRadius: '10px',
+            border: '1px solid var(--color-border)',
+            overflow: 'hidden',
+            backgroundColor: isVoiceConnected ? 'rgba(126,200,122,0.08)' : 'var(--color-bg-elevated)',
+            transition: 'all 0.12s',
+          }}
+        >
+          {/* Left: status (not clickable) */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 10px',
+              fontSize: '11px',
+              color: isVoiceConnected ? 'var(--color-text-secondary)' : 'var(--color-text-muted)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span
+              className={isVoiceConnected ? 'animate-pulse' : undefined}
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: isVoiceConnected ? 'var(--color-success)' : 'var(--color-text-muted)',
+                flexShrink: 0,
+              }}
+            />
+            {isVoiceConnected ? `#${channelName || 'voice'}` : 'Not connected'}
+          </div>
+
+          {/* Divider */}
+          <div style={{ width: '1px', backgroundColor: 'var(--color-border)' }} />
+
+          {/* Right: action button */}
+          <button
+            onClick={isVoiceConnected ? onLeaveChannel : onJoinChannel}
+            onMouseEnter={() => setActionHovered(true)}
+            onMouseLeave={() => setActionHovered(false)}
+            style={{
+              background: actionHovered
+                ? isVoiceConnected ? 'rgba(232,122,122,0.15)' : 'var(--color-accent-muted)'
+                : 'transparent',
+              border: 'none',
+              padding: '6px 12px',
+              fontSize: '11px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              color: actionHovered
+                ? isVoiceConnected ? 'var(--color-danger)' : 'var(--color-accent)'
+                : 'var(--color-text-secondary)',
+              transition: 'all 0.12s',
+              whiteSpace: 'nowrap',
+            }}
+            aria-label={isVoiceConnected ? `Leave voice channel ${channelName || ''}` : 'Join voice channel'}
+          >
+            {isVoiceConnected ? 'Leave' : 'Join'}
+          </button>
         </div>
       </div>
-
-      <style>{`
-        .wave-bb-ctrl {
-          background: none;
-          border: none;
-          color: var(--color-text-secondary);
-          cursor: pointer;
-          padding: 7px;
-          border-radius: 8px;
-          transition: all 0.12s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .wave-bb-ctrl:hover {
-          color: var(--color-text-primary);
-          background: var(--color-bg-elevated);
-        }
-      `}</style>
     </div>
   );
 }

@@ -47,6 +47,7 @@ export function CenterPanel({
   albums,
   onCreateAlbum,
   onLoadAlbum,
+  historyVersion,
 }) {
   const { token } = useAuth();
   const [query, setQuery] = useState('');
@@ -219,7 +220,7 @@ export function CenterPanel({
 
     switch (activeView) {
       case 'history':
-        return <History />;
+        return <History addToQueue={onAdd} historyVersion={historyVersion} />;
       case 'playlists':
         return (
           <PlaylistsView
@@ -229,7 +230,7 @@ export function CenterPanel({
           />
         );
       default:
-        return <BrowseView onViewChange={onViewChange} albums={albums} />;
+        return <BrowseView onViewChange={onViewChange} albums={albums} onLoadAlbum={onLoadAlbum} />;
     }
   };
 

@@ -28,7 +28,8 @@ export function Dashboard() {
     voiceLeave,
     createPlaylist,
     deletePlaylist,
-    clearError
+    clearError,
+    historyVersion
   } = useSocket();
 
   useBrowserMeta(botInfo, currentTrack);
@@ -195,6 +196,7 @@ export function Dashboard() {
           albums={albums}
           onCreateAlbum={handleCreateAlbum}
           onLoadAlbum={handleLoadAlbum}
+          historyVersion={historyVersion}
         />
       </AppLayout>
 

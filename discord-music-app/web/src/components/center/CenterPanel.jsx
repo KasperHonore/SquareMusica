@@ -48,6 +48,10 @@ export function CenterPanel({
   onCreateAlbum,
   onLoadAlbum,
   historyVersion,
+  selectedPlaylist,
+  onSelectPlaylist,
+  onAddToQueue,
+  onClearSelectedPlaylist,
 }) {
   const { token } = useAuth();
   const [query, setQuery] = useState('');
@@ -180,7 +184,7 @@ export function CenterPanel({
       case 'history':
         return 'PLAY HISTORY';
       case 'playlists':
-        return 'PLAYLISTS';
+        return selectedPlaylist ? selectedPlaylist.name : 'PLAYLISTS';
       default:
         return 'BROWSE';
     }
@@ -227,6 +231,10 @@ export function CenterPanel({
             albums={albums}
             onCreateAlbum={onCreateAlbum}
             onLoadAlbum={onLoadAlbum}
+            selectedPlaylist={selectedPlaylist}
+            onSelectPlaylist={onSelectPlaylist}
+            onAddToQueue={onAddToQueue}
+            onBack={onClearSelectedPlaylist}
           />
         );
       default:

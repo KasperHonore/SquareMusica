@@ -151,6 +151,13 @@ export async function getStream(url) {
 
   ytdlp.stdout.pipe(stream);
 
+  // Debug: log stream lifecycle events
+  stream.on('end', () => console.log('[Stream] PassThrough ended'));
+  stream.on('close', () => console.log('[Stream] PassThrough closed'));
+  stream.on('finish', () => console.log('[Stream] PassThrough finished'));
+  ytdlp.stdout.on('end', () => console.log('[Stream] yt-dlp stdout ended'));
+  ytdlp.stdout.on('close', () => console.log('[Stream] yt-dlp stdout closed'));
+
   ytdlp.stderr.on('data', (data) => {
     console.error('yt-dlp stderr:', data.toString());
   });

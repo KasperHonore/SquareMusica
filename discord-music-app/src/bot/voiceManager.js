@@ -22,6 +22,14 @@ export async function joinChannel(channel) {
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
     console.log(`[VoiceManager] Connection Ready for guild ${guildId}`);
+
+    // Debug: intercept setSpeaking to log when speaking state changes
+    const origSetSpeaking = connection.setSpeaking.bind(connection);
+    connection.setSpeaking = (enabled) => {
+      console.log(`[Voice] setSpeaking(${enabled})`, new Error().stack.split('\n')[2]?.trim());
+      return origSetSpeaking(enabled);
+    };
+
     connections.set(guildId, connection);
     setupConnectionListeners(connection, guildId);
     return connection;

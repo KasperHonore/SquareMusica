@@ -40,6 +40,7 @@ export function AppLayout({
   onDeleteAlbum,
   onCreateAlbum,
   onAddToQueue,
+  onSelectPlaylist,
 }) {
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -72,6 +73,7 @@ export function AppLayout({
             onDeleteAlbum={onDeleteAlbum}
             onCreateAlbum={onCreateAlbum}
             onAddToQueue={onAddToQueue}
+            onSelectPlaylist={onSelectPlaylist}
           />
         </aside>
 
@@ -165,6 +167,10 @@ export function AppLayout({
           onDeleteAlbum={onDeleteAlbum}
           onCreateAlbum={onCreateAlbum}
           onAddToQueue={onAddToQueue}
+          onSelectPlaylist={(album) => {
+            onSelectPlaylist?.(album);
+            setSidebarOpen(false);
+          }}
         />
       </div>
 

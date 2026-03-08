@@ -70,6 +70,7 @@ export function Sidebar({
   onDeleteAlbum,
   onCreateAlbum,
   onAddToQueue,
+  onSelectPlaylist,
 }) {
   // Map old view IDs to new ones for backwards compat
   const resolvedView = activeView === 'nowplaying' ? 'search' : activeView === 'queue' ? 'playlists' : activeView;
@@ -192,6 +193,7 @@ export function Sidebar({
           onDeleteAlbum={onDeleteAlbum}
           onCreateAlbum={onCreateAlbum}
           onAddToQueue={onAddToQueue}
+          onSelectPlaylist={onSelectPlaylist}
         />
       </div>
 

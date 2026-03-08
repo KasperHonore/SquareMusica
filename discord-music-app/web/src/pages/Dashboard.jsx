@@ -35,6 +35,12 @@ export function Dashboard() {
   useBrowserMeta(botInfo, currentTrack);
 
   const [activeView, setActiveView] = useState('browse');
+  const [selectedPlaylist, setSelectedPlaylist] = useState(null);
+
+  const handleSelectPlaylist = useCallback((album) => {
+    setSelectedPlaylist(album);
+    setActiveView('playlists');
+  }, []);
 
   // Transform playlists from server format to component format (albums)
   const albums = playlists.map(p => ({
@@ -186,6 +192,7 @@ export function Dashboard() {
         onDeleteAlbum={handleDeleteAlbum}
         onCreateAlbum={handleCreateAlbum}
         onAddToQueue={addToQueue}
+        onSelectPlaylist={handleSelectPlaylist}
       >
         <CenterPanel
           activeView={activeView}
@@ -197,6 +204,10 @@ export function Dashboard() {
           onCreateAlbum={handleCreateAlbum}
           onLoadAlbum={handleLoadAlbum}
           historyVersion={historyVersion}
+          selectedPlaylist={selectedPlaylist}
+          onSelectPlaylist={handleSelectPlaylist}
+          onAddToQueue={addToQueue}
+          onClearSelectedPlaylist={() => setSelectedPlaylist(null)}
         />
       </AppLayout>
 

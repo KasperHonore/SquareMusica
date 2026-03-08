@@ -1,6 +1,14 @@
 import { useAuth } from '../context/AuthContext';
 import { useEffect, useState } from 'react';
 
+function MusicNoteIcon() {
+  return (
+    <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor" style={{ width: 48, height: 48 }}>
+      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+    </svg>
+  );
+}
+
 function DiscordIcon() {
   return (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -17,10 +25,18 @@ const errorMessages = {
 export function Login() {
   const { login, authError } = useAuth();
   const [mounted, setMounted] = useState(false);
+  const [botInfo, setBotInfo] = useState(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 100);
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/bot-info')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => { if (data) setBotInfo(data); })
+      .catch(() => {});
   }, []);
 
   return (
@@ -93,17 +109,34 @@ export function Login() {
               transform: mounted ? 'translateY(0)' : 'translateY(8px)',
             }}
           >
-            <span
-              style={{
-                fontFamily: 'var(--font-heading)',
-                fontSize: '36px',
-                color: 'var(--color-text-primary)',
-                letterSpacing: '-0.3px',
-              }}
-            >
-              wave
-              <span style={{ color: 'var(--color-accent)' }}>.</span>
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+              {botInfo?.avatarUrl ? (
+                <img
+                  src={botInfo.avatarUrl}
+                  alt={botInfo.name}
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                  }}
+                />
+              ) : (
+                <div style={{ color: 'var(--color-text-secondary)' }}>
+                  <MusicNoteIcon />
+                </div>
+              )}
+              <span
+                style={{
+                  fontFamily: 'var(--font-heading)',
+                  fontSize: '36px',
+                  color: 'var(--color-text-primary)',
+                  letterSpacing: '-0.3px',
+                }}
+              >
+                {botInfo?.name || 'Music'}
+              </span>
+            </div>
           </div>
 
           {/* Subtitle */}

@@ -1,39 +1,19 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState } from 'react';
 import { formatTime } from '../../utils/formatTime';
 import { MusicNote } from '../icons';
 
 /**
  * NowPlayingCompact - Right panel now-playing section
  *
- * Shows album art, track info, and a seekable progress bar.
+ * Shows album art, track info, and a display-only progress bar.
  * Matches Wave design: Instrument Serif title, gold progress, scrubber on hover.
  */
-export function NowPlayingCompact({ currentTrack, playerState, onControl }) {
+export function NowPlayingCompact({ currentTrack, playerState }) {
   const [isHovered, setIsHovered] = useState(false);
-  const barRef = useRef(null);
 
   const duration = currentTrack?.duration || 0;
   const position = playerState?.position || 0;
   const progress = duration > 0 ? (position / duration) * 100 : 0;
-
-  const handleSeek = useCallback((e) => {
-    if (!barRef.current || !duration) return;
-    const rect = barRef.current.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    onControl('seek', Math.floor(pct * duration));
-  }, [duration, onControl]);
-
-  const handleKeyDown = useCallback((e) => {
-    if (!duration) return;
-    const step = duration * 0.05;
-    if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      onControl('seek', Math.min(duration, Math.floor(position + step)));
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      onControl('seek', Math.max(0, Math.floor(position - step)));
-    }
-  }, [duration, position, onControl]);
 
   return (
     <div className="flex flex-col gap-3 flex-shrink-0" style={{ padding: '22px 20px 14px' }}>
@@ -101,24 +81,19 @@ export function NowPlayingCompact({ currentTrack, playerState, onControl }) {
       {/* Progress bar */}
       <div style={{ padding: '0' }}>
         <div
-          ref={barRef}
-          className="w-full relative cursor-pointer"
+          className="w-full relative"
           style={{
             height: '3px',
             backgroundColor: 'var(--color-bg-elevated)',
             borderRadius: '3px',
           }}
-          onClick={handleSeek}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          onKeyDown={handleKeyDown}
-          role="slider"
-          aria-label="Seek"
+          aria-label="Playback progress"
           aria-valuemin={0}
           aria-valuemax={duration}
           aria-valuenow={Math.floor(position)}
           aria-valuetext={`${formatTime(position)} of ${formatTime(duration)}`}
-          tabIndex={0}
         >
           <div
             className="h-full relative"

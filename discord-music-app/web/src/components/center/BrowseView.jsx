@@ -2,13 +2,13 @@
  * BrowseView - Default home screen with 2-column card grid
  * Matches new_ui/player.html `.default-grid`, `.default-card`
  */
-export function BrowseView({ onViewChange, albums = [] }) {
+export function BrowseView({ onViewChange, albums = [], onLoadAlbum }) {
   const cards = [
     {
       icon: '\u2764\uFE0F',
       label: 'Liked Songs',
       sub: 'Your favourites',
-      onClick: () => {},
+      onClick: () => onViewChange?.('playlists'),
     },
     {
       icon: '\uD83D\uDD50',
@@ -20,7 +20,7 @@ export function BrowseView({ onViewChange, albums = [] }) {
       icon: '\uD83C\uDFB5',
       label: al.name,
       sub: 'Playlist',
-      onClick: () => {},
+      onClick: () => onLoadAlbum?.(al),
     })),
   ];
 

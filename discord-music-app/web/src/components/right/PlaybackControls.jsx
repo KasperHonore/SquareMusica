@@ -12,7 +12,7 @@ export function PlaybackControls({ playerState, onControl }) {
   const isLoopActive = loopMode !== 'off';
 
   const cycleLoopMode = () => {
-    const modes = ['off', 'all', 'track'];
+    const modes = ['off', 'queue', 'track'];
     const currentIndex = modes.indexOf(loopMode);
     const nextIndex = (currentIndex + 1) % modes.length;
     onControl('loop', modes[nextIndex]);

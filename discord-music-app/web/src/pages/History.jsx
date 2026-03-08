@@ -1,11 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useSocket } from '../hooks/useSocket';
 import { HistoryItem } from '../components/HistoryItem';
 
-export function History() {
+export function History({ addToQueue, historyVersion }) {
   const { token } = useAuth();
-  const { historyVersion } = useSocket();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -65,25 +63,8 @@ export function History() {
     }
   };
 
-  const handlePlayAgain = async (track) => {
-    if (!token) return;
-
-    try {
-      const response = await fetch('/api/queue/add', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ url: track.url })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add track');
-      }
-    } catch (err) {
-      console.error('Failed to play again:', err);
-    }
+  const handlePlayAgain = (track) => {
+    addToQueue?.(track.url);
   };
 
   return (

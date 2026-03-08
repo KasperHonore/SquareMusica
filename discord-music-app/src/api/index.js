@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
+import { getBotInfo } from '../bot/client.js';
 import authRoutes from './routes/auth.js';
 import queueRoutes from './routes/queue.js';
 import playbackRoutes from './routes/playback.js';
@@ -32,6 +33,13 @@ app.use('/api/queue', queueRoutes);
 app.use('/api/player', playbackRoutes);
 app.use('/api/spotify', spotifyRoutes);
 app.use('/api/playlists', playlistRoutes);
+
+// Public bot info (no auth required)
+app.get('/api/bot-info', (req, res) => {
+  const info = getBotInfo();
+  if (!info) return res.status(503).json({ error: 'Bot not ready' });
+  res.json(info);
+});
 
 // Health check
 app.get('/api/health', (req, res) => {

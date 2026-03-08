@@ -2,8 +2,7 @@ import {
   createAudioPlayer,
   createAudioResource,
   AudioPlayerStatus,
-  NoSubscriberBehavior,
-  StreamType
+  NoSubscriberBehavior
 } from '@discordjs/voice';
 import { EventEmitter } from 'events';
 import { getStream } from './youtube.js';
@@ -20,6 +19,8 @@ class MusicPlayer extends EventEmitter {
     this.currentTrack = null;
     this.startTime = null;
     this.pausedAt = null;
+    this._currentCleanup = null;
+    this._switching = false;
 
     this._setupListeners();
   }
@@ -33,6 +34,8 @@ class MusicPlayer extends EventEmitter {
     });
 
     this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
+      this._cleanupCurrentStream();
+      if (this._switching) return;
       if (this.currentTrack) {
         this.emit('trackEnd', this.currentTrack);
         this.currentTrack = null;
@@ -50,8 +53,21 @@ class MusicPlayer extends EventEmitter {
 
     this.audioPlayer.on('error', (error) => {
       console.error('Audio player error:', error);
+      this._cleanupCurrentStream();
+      if (this._switching) return;
       this.emit('error', error);
     });
+  }
+
+  _cleanupCurrentStream() {
+    if (this._currentCleanup) {
+      try {
+        this._currentCleanup();
+      } catch (err) {
+        console.error('[Player] Error during stream cleanup:', err);
+      }
+      this._currentCleanup = null;
+    }
   }
 
   /**
@@ -63,6 +79,11 @@ class MusicPlayer extends EventEmitter {
   async play(track, connection) {
     try {
       console.log('Player.play() called with track:', track?.title);
+
+      // Stop player and clean up previous stream before switching tracks
+      this._switching = true;
+      this.audioPlayer.stop();
+      this._cleanupCurrentStream();
 
       // Check if track needs resolution
       if (!track.url || ResolutionManager.needsResolution(track)) {
@@ -80,9 +101,11 @@ class MusicPlayer extends EventEmitter {
       }
 
       console.log('Playing track URL:', track.url);
-      const stream = await getStream(track.url);
-      const resource = createAudioResource(stream.stream, {
-        inputType: StreamType.Arbitrary
+      const streamResult = await getStream(track.url);
+      this._currentCleanup = streamResult.cleanup || null;
+
+      const resource = createAudioResource(streamResult.stream, {
+        inputType: streamResult.type
       });
 
       this.currentTrack = track;
@@ -91,11 +114,14 @@ class MusicPlayer extends EventEmitter {
 
       connection.subscribe(this.audioPlayer);
       this.audioPlayer.play(resource);
+      this._switching = false;
 
       this.emit('trackStart', track);
       return true;
     } catch (error) {
       console.error('Play error:', error);
+      this._switching = false;
+      this._cleanupCurrentStream();
       this.emit('error', error);
       throw error;
     }
@@ -133,7 +159,10 @@ class MusicPlayer extends EventEmitter {
    * Stop playback
    */
   stop() {
+    this._switching = true;
     this.audioPlayer.stop();
+    this._cleanupCurrentStream();
+    this._switching = false;
     this.currentTrack = null;
     this.startTime = null;
     this.pausedAt = null;

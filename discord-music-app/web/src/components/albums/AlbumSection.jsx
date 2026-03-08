@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Plus } from '../icons';
 import { AlbumItem } from './AlbumItem';
 import { AddAlbumModal } from './AddAlbumModal';
-import { PlaylistDetailModal } from './PlaylistDetailModal';
 
 /**
  * AlbumSection — Wave sidebar "My Playlists" compact list
@@ -17,10 +16,10 @@ export function AlbumSection({
   onDeleteAlbum,
   onCreateAlbum,
   onAddToQueue,
+  onSelectPlaylist,
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loadingAlbumId, setLoadingAlbumId] = useState(null);
-  const [inspectedPlaylist, setInspectedPlaylist] = useState(null);
 
   const handleLoadAlbum = async (album) => {
     setLoadingAlbumId(album.id);
@@ -40,18 +39,7 @@ export function AlbumSection({
   };
 
   const handleInspect = (album) => {
-    setInspectedPlaylist(album);
-  };
-
-  const handleAddTrack = (spotifyUrl) => {
-    onAddToQueue?.(spotifyUrl);
-  };
-
-  const handleAddAll = () => {
-    if (inspectedPlaylist?.spotifyUrl) {
-      onAddToQueue?.(inspectedPlaylist.spotifyUrl);
-      setInspectedPlaylist(null);
-    }
+    onSelectPlaylist?.(album);
   };
 
   const isEmpty = albums.length === 0;
@@ -132,14 +120,6 @@ export function AlbumSection({
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onCreate={handleCreateAlbum}
-      />
-
-      <PlaylistDetailModal
-        isOpen={!!inspectedPlaylist}
-        onClose={() => setInspectedPlaylist(null)}
-        playlist={inspectedPlaylist}
-        onAddTrack={handleAddTrack}
-        onAddAll={handleAddAll}
       />
     </>
   );

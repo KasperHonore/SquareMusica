@@ -25,6 +25,13 @@ class MusicPlayer extends EventEmitter {
   }
 
   _setupListeners() {
+    // Debug: log all AudioPlayer state transitions
+    this.audioPlayer.on('stateChange', (oldState, newState) => {
+      console.log(`[Player] State: ${oldState.status} -> ${newState.status}`,
+        `resource=${!!newState.resource}`,
+        `missedFrames=${newState.missedFrames ?? 'n/a'}`);
+    });
+
     this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
       if (this.currentTrack) {
         this.emit('trackEnd', this.currentTrack);

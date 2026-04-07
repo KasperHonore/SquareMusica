@@ -5,7 +5,7 @@ import { requireVoiceConnection } from './utils/checks.js';
 import { formatTime } from '../utils/formatTime.js';
 
 export async function handleQueue(interaction) {
-  if (!await requireVoiceConnection(interaction)) return;
+  if (!(await requireVoiceConnection(interaction))) return;
 
   const q = getQueue();
   const tracks = q.getAll();
@@ -20,9 +20,7 @@ export async function handleQueue(interaction) {
   const p = getPlayer();
   const currentIndex = q.currentIndex;
 
-  const embed = new EmbedBuilder()
-    .setTitle('Music Queue')
-    .setColor(0x00ff00);
+  const embed = new EmbedBuilder().setTitle('Music Queue').setColor(0x00ff00);
 
   let description = '';
   const maxTracks = 10;
@@ -46,7 +44,7 @@ export async function handleQueue(interaction) {
 }
 
 export async function handleNowPlaying(interaction) {
-  if (!await requireVoiceConnection(interaction)) return;
+  if (!(await requireVoiceConnection(interaction))) return;
 
   const p = getPlayer();
   const track = p.currentTrack;
@@ -66,7 +64,11 @@ export async function handleNowPlaying(interaction) {
     .setDescription(`**${track.title}**`)
     .setColor(0x00ff00)
     .addFields(
-      { name: 'Duration', value: `${formatTime(position)} / ${formatTime(track.duration)}`, inline: true },
+      {
+        name: 'Duration',
+        value: `${formatTime(position)} / ${formatTime(track.duration)}`,
+        inline: true
+      },
       { name: 'Requested by', value: track.requestedBy || 'Unknown', inline: true },
       { name: 'Progress', value: progress }
     );
@@ -79,7 +81,7 @@ export async function handleNowPlaying(interaction) {
 }
 
 export async function handleRemove(interaction) {
-  if (!await requireVoiceConnection(interaction)) return;
+  if (!(await requireVoiceConnection(interaction))) return;
 
   const position = interaction.options.getInteger('position') - 1; // Convert to 0-based
   const q = getQueue();
@@ -98,7 +100,7 @@ export async function handleRemove(interaction) {
 }
 
 export async function handleShuffle(interaction) {
-  if (!await requireVoiceConnection(interaction)) return;
+  if (!(await requireVoiceConnection(interaction))) return;
 
   const q = getQueue();
 
@@ -116,7 +118,7 @@ export async function handleShuffle(interaction) {
 }
 
 export async function handleClear(interaction) {
-  if (!await requireVoiceConnection(interaction)) return;
+  if (!(await requireVoiceConnection(interaction))) return;
 
   const q = getQueue();
   const current = q.getCurrent();
@@ -128,7 +130,6 @@ export async function handleClear(interaction) {
 
   await interaction.reply('Cleared the queue.');
 }
-
 
 function createProgressBar(current, total) {
   const length = 20;

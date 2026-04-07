@@ -1,6 +1,18 @@
 import { useState, useEffect } from 'react';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
-import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
 import { QueueItem } from './QueueItem';
 import { Shuffle, MusicNote, Trash } from './icons';
 
@@ -22,7 +34,10 @@ function getTrackId(track, index) {
  */
 function EmptyQueue({ isRightPanel }) {
   return (
-    <div className="flex-1 min-h-0 flex flex-col items-center justify-center" style={{ padding: isRightPanel ? '20px 10px' : '40px 20px' }}>
+    <div
+      className="flex-1 min-h-0 flex flex-col items-center justify-center"
+      style={{ padding: isRightPanel ? '20px 10px' : '40px 20px' }}
+    >
       <div className="relative w-16 h-16 mb-4">
         <div
           className="absolute inset-0 rounded-full animate-pulse-glow"
@@ -32,26 +47,40 @@ function EmptyQueue({ isRightPanel }) {
           <MusicNote size={28} style={{ color: 'var(--color-accent)' }} />
         </div>
       </div>
-      <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>Queue is empty</p>
+      <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>
+        Queue is empty
+      </p>
       <p
         className="text-center"
         style={{ fontSize: '12px', color: 'var(--color-text-muted)', maxWidth: '200px' }}
       >
-        Search for songs or use <code
+        Search for songs or use{' '}
+        <code
           style={{
             color: 'rgba(232,200,122,0.8)',
             background: 'var(--color-accent-subtle)',
             padding: '1px 6px',
             borderRadius: '4px',
-            fontSize: '11px',
+            fontSize: '11px'
           }}
-        >/play</code> in Discord
+        >
+          /play
+        </code>{' '}
+        in Discord
       </p>
     </div>
   );
 }
 
-export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolutionStats, isRightPanel = false }) {
+export function Queue({
+  tracks,
+  onReorder,
+  onRemove,
+  onShuffle,
+  onClear,
+  resolutionStats,
+  isRightPanel = false
+}) {
   const [activeId, setActiveId] = useState(null);
   const [removingId, setRemovingId] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -80,11 +109,11 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 5,
-      },
+        distance: 5
+      }
     }),
     useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
+      coordinateGetter: sortableKeyboardCoordinates
     })
   );
 
@@ -115,18 +144,14 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
     }, 250);
   };
 
-  const hasUnresolved = resolutionStats && (
-    resolutionStats.unresolved > 0 ||
-    resolutionStats.resolving > 0 ||
-    resolutionStats.pending > 0
-  );
+  const hasUnresolved =
+    resolutionStats &&
+    (resolutionStats.unresolved > 0 ||
+      resolutionStats.resolving > 0 ||
+      resolutionStats.pending > 0);
 
-  const activeTrack = activeId
-    ? tracks.find((t, i) => getTrackId(t, i) === activeId)
-    : null;
-  const activeIndex = activeId
-    ? tracks.findIndex((t, i) => getTrackId(t, i) === activeId)
-    : -1;
+  const activeTrack = activeId ? tracks.find((t, i) => getTrackId(t, i) === activeId) : null;
+  const activeIndex = activeId ? tracks.findIndex((t, i) => getTrackId(t, i) === activeId) : -1;
 
   const isEmpty = tracks.length === 0;
 
@@ -148,7 +173,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
               fontWeight: 600,
               letterSpacing: isRightPanel ? '1px' : '0.8px',
               textTransform: 'uppercase',
-              color: 'var(--color-text-muted)',
+              color: 'var(--color-text-muted)'
             }}
             id="queue-heading"
           >
@@ -162,16 +187,25 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
                 padding: '1px 6px',
                 borderRadius: '9999px',
                 backgroundColor: 'var(--color-accent-subtle)',
-                color: 'var(--color-accent)',
+                color: 'var(--color-accent)'
               }}
             >
               {tracks.length}
             </span>
           )}
           {hasUnresolved && (
-            <span className="flex items-center gap-1" title="Resolving Spotify tracks" aria-label="Resolving Spotify tracks">
-              <svg className="w-4 h-4 animate-pulse" fill="#1DB954" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+            <span
+              className="flex items-center gap-1"
+              title="Resolving Spotify tracks"
+              aria-label="Resolving Spotify tracks"
+            >
+              <svg
+                className="w-4 h-4 animate-pulse"
+                fill="#1DB954"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
               </svg>
             </span>
           )}
@@ -179,12 +213,23 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
         <div className="flex items-center" style={{ gap: isRightPanel ? '10px' : '4px' }}>
           {/* Clear button with inline confirmation */}
           {showClearConfirm ? (
-            <div className="flex items-center gap-1 animate-fade-in" style={{
-              background: 'var(--color-bg-elevated)',
-              borderRadius: '9999px',
-              padding: '2px 8px',
-            }}>
-              <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Clear?</span>
+            <div
+              className="flex items-center gap-1 animate-fade-in"
+              style={{
+                background: 'var(--color-bg-elevated)',
+                borderRadius: '9999px',
+                padding: '2px 8px'
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--color-text-secondary)',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                Clear?
+              </span>
               <button
                 onClick={handleClearConfirm}
                 className="flex items-center justify-center"
@@ -197,7 +242,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
                   cursor: 'pointer',
                   transition: 'background 0.12s',
                   minWidth: '24px',
-                  minHeight: '24px',
+                  minHeight: '24px'
                 }}
                 title="Confirm clear"
                 aria-label="Confirm clear queue"
@@ -218,7 +263,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
                   cursor: 'pointer',
                   transition: 'background 0.12s',
                   minWidth: '24px',
-                  minHeight: '24px',
+                  minHeight: '24px'
                 }}
                 title="Cancel"
                 aria-label="Cancel clear queue"
@@ -242,7 +287,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
                   fontFamily: 'var(--font-body)',
                   transition: 'color 0.12s',
                   padding: 0,
-                  opacity: isEmpty ? 0.5 : 1,
+                  opacity: isEmpty ? 0.5 : 1
                 }}
                 className="wave-queue-action"
                 title="Shuffle queue"
@@ -262,7 +307,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
                   fontFamily: 'var(--font-body)',
                   transition: 'color 0.12s',
                   padding: 0,
-                  opacity: isEmpty ? 0.5 : 1,
+                  opacity: isEmpty ? 0.5 : 1
                 }}
                 className="wave-queue-action-danger"
                 title="Clear queue"
@@ -287,7 +332,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
                   background: 'none',
                   transition: 'color 0.12s, background 0.12s',
                   minWidth: '44px',
-                  minHeight: '44px',
+                  minHeight: '44px'
                 }}
                 title="Clear queue"
                 aria-label="Clear queue"
@@ -308,7 +353,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
                   background: 'none',
                   transition: 'color 0.12s, background 0.12s',
                   minWidth: '44px',
-                  minHeight: '44px',
+                  minHeight: '44px'
                 }}
                 title="Shuffle queue"
                 aria-label="Shuffle queue"
@@ -344,7 +389,7 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
               className="flex-1 min-h-0 overflow-y-auto queue-list"
               style={{
                 padding: isRightPanel ? '0 10px 12px' : '0 0 12px',
-                scrollbarGutter: 'stable',
+                scrollbarGutter: 'stable'
               }}
               role="list"
               aria-label="Queue items"
@@ -369,10 +414,12 @@ export function Queue({ tracks, onReorder, onRemove, onShuffle, onClear, resolut
             </div>
           </SortableContext>
 
-          <DragOverlay dropAnimation={{
-            duration: 200,
-            easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
-          }}>
+          <DragOverlay
+            dropAnimation={{
+              duration: 200,
+              easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)'
+            }}
+          >
             {activeTrack ? (
               <QueueItem
                 track={activeTrack}

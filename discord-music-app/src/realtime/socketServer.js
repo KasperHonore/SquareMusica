@@ -55,8 +55,7 @@ export function setupSocketServer(httpServer) {
   // Authentication middleware
   io.use((socket, next) => {
     const token =
-      socket.handshake.auth?.token ||
-      getCookieTokenFromHeaders(socket.handshake.headers);
+      socket.handshake.auth?.token || getCookieTokenFromHeaders(socket.handshake.headers);
     const { user, error } = verifyToken(token);
 
     if (error) {
@@ -75,7 +74,9 @@ export function setupSocketServer(httpServer) {
       ...musicManager.getFullState(),
       playlists: db.getPlaylists()
     };
-    console.log(`[Socket] Sending initial:state to ${socket.user.username}: connected=${initialState.playerState?.connected}, voiceContext=${initialState.voiceContext ? initialState.voiceContext.channelName : 'null'}`);
+    console.log(
+      `[Socket] Sending initial:state to ${socket.user.username}: connected=${initialState.playerState?.connected}, voiceContext=${initialState.voiceContext ? initialState.voiceContext.channelName : 'null'}`
+    );
     socket.emit(ServerEvents.INITIAL_STATE, initialState);
 
     // Register client event handlers
@@ -120,7 +121,9 @@ export function setupSocketServer(httpServer) {
   });
 
   musicManager.on('player:state', (state) => {
-    console.log(`[Socket] Broadcasting player:state connected=${state.connected} playing=${state.playing}`);
+    console.log(
+      `[Socket] Broadcasting player:state connected=${state.connected} playing=${state.playing}`
+    );
     io.emit(ServerEvents.PLAYER_STATE, state);
   });
 
@@ -129,7 +132,10 @@ export function setupSocketServer(httpServer) {
   });
 
   musicManager.on('voice:context', (context) => {
-    console.log(`[Socket] Broadcasting voice:context`, context ? `channel=${context.channelName}` : 'null');
+    console.log(
+      `[Socket] Broadcasting voice:context`,
+      context ? `channel=${context.channelName}` : 'null'
+    );
     io.emit(ServerEvents.VOICE_CONTEXT, context);
   });
 

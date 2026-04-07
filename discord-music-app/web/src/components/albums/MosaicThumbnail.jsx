@@ -12,14 +12,7 @@ function Spinner({ className = '' }) {
       viewBox="0 0 24 24"
       fill="none"
     >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path
         className="opacity-75"
         fill="currentColor"
@@ -37,11 +30,7 @@ function Spinner({ className = '' }) {
  * @param {boolean} props.isLoading - Show loading spinner overlay
  * @param {string} props.className - Additional CSS classes
  */
-export function MosaicThumbnail({
-  thumbnails = [],
-  isLoading = false,
-  className = ''
-}) {
+export function MosaicThumbnail({ thumbnails = [], isLoading = false, className = '' }) {
   // Take up to 4 thumbnails and pad with nulls if needed
   const slots = [...thumbnails.slice(0, 4), null, null, null, null].slice(0, 4);
 
@@ -58,17 +47,9 @@ export function MosaicThumbnail({
             className="w-full h-full bg-surface-elevated flex items-center justify-center overflow-hidden"
           >
             {thumbnail ? (
-              <img
-                src={thumbnail}
-                alt=""
-                className="w-full h-full object-cover"
-                loading="lazy"
-              />
+              <img src={thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" />
             ) : (
-              <MusicNote
-                size={10}
-                className="text-text-muted opacity-40"
-              />
+              <MusicNote size={10} className="text-text-muted opacity-40" />
             )}
           </div>
         ))}

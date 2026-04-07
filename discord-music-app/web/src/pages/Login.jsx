@@ -3,7 +3,12 @@ import { useEffect, useState } from 'react';
 
 function MusicNoteIcon() {
   return (
-    <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor" style={{ width: 48, height: 48 }}>
+    <svg
+      className="w-8 h-8"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      style={{ width: 48, height: 48 }}
+    >
       <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
     </svg>
   );
@@ -18,8 +23,8 @@ function DiscordIcon() {
 }
 
 const errorMessages = {
-  not_member: "You must be a member of the Discord server to use this app.",
-  guild_fetch: "Failed to verify server membership. Please try again.",
+  not_member: 'You must be a member of the Discord server to use this app.',
+  guild_fetch: 'Failed to verify server membership. Please try again.'
 };
 
 export function Login() {
@@ -34,8 +39,10 @@ export function Login() {
 
   useEffect(() => {
     fetch('/api/bot-info')
-      .then(res => res.ok ? res.json() : null)
-      .then(data => { if (data) setBotInfo(data); })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setBotInfo(data);
+      })
       .catch(() => {});
   }, []);
 
@@ -49,7 +56,7 @@ export function Login() {
         justifyContent: 'center',
         padding: '16px',
         position: 'relative',
-        overflow: 'hidden',
+        overflow: 'hidden'
       }}
       role="main"
       aria-label="Login page"
@@ -63,7 +70,7 @@ export function Login() {
             radial-gradient(ellipse at 30% 40%, rgba(232,200,122,0.06) 0%, transparent 50%),
             radial-gradient(ellipse at 70% 60%, rgba(232,200,122,0.04) 0%, transparent 50%)
           `,
-          pointerEvents: 'none',
+          pointerEvents: 'none'
         }}
       />
 
@@ -74,7 +81,7 @@ export function Login() {
           inset: 0,
           opacity: 0.03,
           backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
-          pointerEvents: 'none',
+          pointerEvents: 'none'
         }}
       />
 
@@ -87,7 +94,7 @@ export function Login() {
           width: '100%',
           transition: 'all 0.7s ease-out',
           opacity: mounted ? 1 : 0,
-          transform: mounted ? 'translateY(0)' : 'translateY(12px)',
+          transform: mounted ? 'translateY(0)' : 'translateY(12px)'
         }}
       >
         <div
@@ -96,7 +103,7 @@ export function Login() {
             border: '1px solid var(--color-border-strong)',
             borderRadius: '14px',
             padding: '40px 32px',
-            textAlign: 'center',
+            textAlign: 'center'
           }}
         >
           {/* Logo */}
@@ -106,10 +113,17 @@ export function Login() {
               transition: 'all 0.5s ease-out',
               transitionDelay: '200ms',
               opacity: mounted ? 1 : 0,
-              transform: mounted ? 'translateY(0)' : 'translateY(8px)',
+              transform: mounted ? 'translateY(0)' : 'translateY(8px)'
             }}
           >
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '12px'
+              }}
+            >
               {botInfo?.avatarUrl ? (
                 <img
                   src={botInfo.avatarUrl}
@@ -118,7 +132,7 @@ export function Login() {
                     width: 64,
                     height: 64,
                     borderRadius: '50%',
-                    objectFit: 'cover',
+                    objectFit: 'cover'
                   }}
                 />
               ) : (
@@ -131,7 +145,7 @@ export function Login() {
                   fontFamily: 'var(--font-heading)',
                   fontSize: '36px',
                   color: 'var(--color-text-primary)',
-                  letterSpacing: '-0.3px',
+                  letterSpacing: '-0.3px'
                 }}
               >
                 {botInfo?.name || 'Music'}
@@ -149,7 +163,7 @@ export function Login() {
               transition: 'all 0.5s ease-out',
               transitionDelay: '300ms',
               opacity: mounted ? 1 : 0,
-              transform: mounted ? 'translateY(0)' : 'translateY(8px)',
+              transform: mounted ? 'translateY(0)' : 'translateY(8px)'
             }}
           >
             Sign in to continue
@@ -166,11 +180,11 @@ export function Login() {
                 background: 'rgba(232,122,122,0.08)',
                 color: 'var(--color-danger)',
                 fontSize: '13px',
-                textAlign: 'left',
+                textAlign: 'left'
               }}
               className="animate-fade-in"
             >
-              {errorMessages[authError] || "An error occurred. Please try again."}
+              {errorMessages[authError] || 'An error occurred. Please try again.'}
             </div>
           )}
 
@@ -180,7 +194,7 @@ export function Login() {
               transition: 'all 0.5s ease-out',
               transitionDelay: '400ms',
               opacity: mounted ? 1 : 0,
-              transform: mounted ? 'translateY(0)' : 'translateY(8px)',
+              transform: mounted ? 'translateY(0)' : 'translateY(8px)'
             }}
           >
             <button
@@ -200,12 +214,12 @@ export function Login() {
                 fontSize: '14px',
                 fontWeight: 500,
                 cursor: 'pointer',
-                transition: 'all 0.12s',
+                transition: 'all 0.12s'
               }}
               className="btn-accent"
               aria-label="Continue with Discord to sign in"
-              onMouseEnter={(e) => e.currentTarget.style.filter = 'brightness(1.08)'}
-              onMouseLeave={(e) => e.currentTarget.style.filter = 'none'}
+              onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
             >
               <DiscordIcon aria-hidden="true" />
               <span>Continue with Discord</span>
@@ -221,7 +235,7 @@ export function Login() {
               transition: 'all 0.5s ease-out',
               transitionDelay: '500ms',
               opacity: mounted ? 1 : 0,
-              transform: mounted ? 'translateY(0)' : 'translateY(8px)',
+              transform: mounted ? 'translateY(0)' : 'translateY(8px)'
             }}
           >
             Sign in to access your server's queue

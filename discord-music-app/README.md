@@ -68,6 +68,7 @@ cp .env.sample .env
 ```
 
 Required variables:
+
 - `DISCORD_TOKEN` - Your bot token from Discord Developer Portal
 - `APP_ID` - Your application ID
 - `GUILD_ID` - Your Discord server ID (restricts web UI to this server's members)
@@ -92,28 +93,29 @@ npm run dev
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/join` | Join your voice channel |
-| `/leave` | Leave the voice channel |
-| `/play <query>` | Play a song (URL or search) |
-| `/pause` | Pause playback |
-| `/resume` | Resume playback |
-| `/skip` | Skip to next track |
-| `/stop` | Stop playback and clear queue |
-| `/queue` | View current queue |
-| `/nowplaying` | Show current track |
-| `/remove <position>` | Remove track from queue |
-| `/shuffle` | Shuffle the queue |
-| `/clear` | Clear the queue |
-| `/loop <off/track/queue>` | Set loop mode |
-| `/webui` | Get web control panel link |
+| Command                   | Description                   |
+| ------------------------- | ----------------------------- |
+| `/join`                   | Join your voice channel       |
+| `/leave`                  | Leave the voice channel       |
+| `/play <query>`           | Play a song (URL or search)   |
+| `/pause`                  | Pause playback                |
+| `/resume`                 | Resume playback               |
+| `/skip`                   | Skip to next track            |
+| `/stop`                   | Stop playback and clear queue |
+| `/queue`                  | View current queue            |
+| `/nowplaying`             | Show current track            |
+| `/remove <position>`      | Remove track from queue       |
+| `/shuffle`                | Shuffle the queue             |
+| `/clear`                  | Clear the queue               |
+| `/loop <off/track/queue>` | Set loop mode                 |
+| `/webui`                  | Get web control panel link    |
 
 ## Web UI
 
 The bot includes a web control panel accessible at `http://localhost:5173` (or your configured WEB_URL).
 
 Features:
+
 - Discord OAuth login
 - Real-time queue display
 - Playback controls
@@ -185,11 +187,11 @@ rm bin/yt-dlp && npm run setup
 
 ### Common Error Patterns
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Sign in to confirm you're not a bot` | Rate limited | Add cookies file via `YT_DLP_COOKIES` |
-| `Video unavailable` | Region/age restriction | Use VPN or cookies |
-| `Unable to extract` | yt-dlp outdated | Run `yt-dlp -U` |
+| Error                                 | Cause                  | Solution                              |
+| ------------------------------------- | ---------------------- | ------------------------------------- |
+| `Sign in to confirm you're not a bot` | Rate limited           | Add cookies file via `YT_DLP_COOKIES` |
+| `Video unavailable`                   | Region/age restriction | Use VPN or cookies                    |
+| `Unable to extract`                   | yt-dlp outdated        | Run `yt-dlp -U`                       |
 
 ### Using Cookies
 

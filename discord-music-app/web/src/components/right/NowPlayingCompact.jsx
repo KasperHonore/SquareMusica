@@ -25,7 +25,7 @@ export function NowPlayingCompact({ currentTrack, playerState }) {
           fontWeight: 600,
           letterSpacing: '1px',
           textTransform: 'uppercase',
-          color: 'var(--color-text-muted)',
+          color: 'var(--color-text-muted)'
         }}
       >
         Now Playing
@@ -37,7 +37,7 @@ export function NowPlayingCompact({ currentTrack, playerState }) {
         style={{
           aspectRatio: '1',
           borderRadius: '10px',
-          backgroundColor: 'var(--color-bg-elevated)',
+          backgroundColor: 'var(--color-bg-elevated)'
         }}
       >
         {currentTrack?.thumbnail ? (
@@ -62,7 +62,7 @@ export function NowPlayingCompact({ currentTrack, playerState }) {
             fontFamily: 'var(--font-heading)',
             fontSize: '17px',
             lineHeight: '1.25',
-            color: 'var(--color-text-primary)',
+            color: 'var(--color-text-primary)'
           }}
         >
           {currentTrack?.title || 'Nothing playing'}
@@ -71,7 +71,7 @@ export function NowPlayingCompact({ currentTrack, playerState }) {
           className="truncate"
           style={{
             fontSize: '12px',
-            color: 'var(--color-text-muted)',
+            color: 'var(--color-text-muted)'
           }}
         >
           {currentTrack?.artist || '\u2014'}
@@ -85,7 +85,7 @@ export function NowPlayingCompact({ currentTrack, playerState }) {
           style={{
             height: '3px',
             backgroundColor: 'var(--color-bg-elevated)',
-            borderRadius: '3px',
+            borderRadius: '3px'
           }}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
@@ -100,7 +100,7 @@ export function NowPlayingCompact({ currentTrack, playerState }) {
             style={{
               width: `${Math.min(progress, 100)}%`,
               backgroundColor: 'var(--color-accent)',
-              borderRadius: '3px',
+              borderRadius: '3px'
             }}
           >
             {/* Scrubber dot - visible on hover */}
@@ -114,7 +114,7 @@ export function NowPlayingCompact({ currentTrack, playerState }) {
                 backgroundColor: 'var(--color-accent)',
                 borderRadius: '50%',
                 opacity: isHovered ? 1 : 0,
-                transition: 'opacity 0.15s',
+                transition: 'opacity 0.15s'
               }}
             />
           </div>
@@ -126,7 +126,7 @@ export function NowPlayingCompact({ currentTrack, playerState }) {
           style={{
             fontSize: '10px',
             color: 'var(--color-text-muted)',
-            marginTop: '6px',
+            marginTop: '6px'
           }}
         >
           <span>{formatTime(position)}</span>

@@ -74,13 +74,7 @@ function AlbumIcon({ size = 24, className = '' }) {
  */
 function Spinner({ size = 20 }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      className="animate-spin"
-    >
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="animate-spin">
       <circle
         cx="12"
         cy="12"
@@ -138,10 +132,9 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
     setError('');
 
     try {
-      const response = await fetch(
-        `/api/playlists/${playlist.id}/tracks`,
-        { credentials: 'include' }
-      );
+      const response = await fetch(`/api/playlists/${playlist.id}/tracks`, {
+        credentials: 'include'
+      });
 
       if (!response.ok) {
         const data = await response.json();
@@ -258,7 +251,7 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '16px',
+    padding: '16px'
   };
 
   const modalBoxStyle = {
@@ -271,7 +264,7 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
     maxHeight: '85vh',
     display: 'flex',
     flexDirection: 'column',
-    gap: '14px',
+    gap: '14px'
   };
 
   const btnBaseStyle = {
@@ -285,20 +278,20 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
     cursor: 'pointer',
     transition: 'all 0.12s',
     border: 'none',
-    fontFamily: 'var(--font-body)',
+    fontFamily: 'var(--font-body)'
   };
 
   const btnGhostStyle = {
     ...btnBaseStyle,
     background: 'var(--color-bg-elevated)',
     color: 'var(--color-text-secondary)',
-    border: '1px solid var(--color-border)',
+    border: '1px solid var(--color-border)'
   };
 
   const btnAccentStyle = {
     ...btnBaseStyle,
     background: 'var(--color-accent)',
-    color: '#0d0d0f',
+    color: '#0d0d0f'
   };
 
   const resultAddStyle = {
@@ -313,7 +306,7 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
     fontFamily: 'var(--font-body)',
     transition: 'background 0.12s',
     whiteSpace: 'nowrap',
-    flexShrink: 0,
+    flexShrink: 0
   };
 
   return createPortal(
@@ -334,14 +327,16 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', flexShrink: 0 }}>
           {/* Cover image */}
-          <div style={{
-            width: '80px',
-            height: '80px',
-            borderRadius: '7px',
-            overflow: 'hidden',
-            background: 'var(--color-bg-surface3)',
-            flexShrink: 0,
-          }}>
+          <div
+            style={{
+              width: '80px',
+              height: '80px',
+              borderRadius: '7px',
+              overflow: 'hidden',
+              background: 'var(--color-bg-surface3)',
+              flexShrink: 0
+            }}
+          >
             {playlist?.coverImage ? (
               <img
                 src={playlist.coverImage}
@@ -349,14 +344,16 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             ) : (
-              <div style={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--color-text-muted)',
-              }}>
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--color-text-muted)'
+                }}
+              >
                 <AlbumIcon size={32} />
               </div>
             )}
@@ -374,17 +371,21 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
                 margin: 0,
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                textOverflow: 'ellipsis'
               }}
             >
               {playlist?.name || 'Playlist'}
             </h2>
-            <p style={{
-              fontSize: '12px',
-              color: 'var(--color-text-muted)',
-              margin: '6px 0 0',
-            }}>
-              {isLoading ? 'Loading...' : `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`}
+            <p
+              style={{
+                fontSize: '12px',
+                color: 'var(--color-text-muted)',
+                margin: '6px 0 0'
+              }}
+            >
+              {isLoading
+                ? 'Loading...'
+                : `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`}
             </p>
           </div>
 
@@ -402,56 +403,64 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
               alignItems: 'center',
               justifyContent: 'center',
               transition: 'color 0.12s',
-              flexShrink: 0,
+              flexShrink: 0
             }}
             aria-label="Close modal"
-            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--color-text-primary)'}
-            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-text-muted)'}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-text-primary)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-muted)')}
           >
             <CloseIcon size={18} />
           </button>
         </div>
 
         {/* Track list - scrollable */}
-        <div style={{
-          flex: 1,
-          overflowY: 'auto',
-          minHeight: 0,
-          margin: '0 -8px',
-          padding: '0 8px',
-        }}>
+        <div
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            minHeight: 0,
+            margin: '0 -8px',
+            padding: '0 8px'
+          }}
+        >
           {isLoading ? (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '40px 0',
-              gap: '10px',
-              color: 'var(--color-text-muted)',
-            }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '40px 0',
+                gap: '10px',
+                color: 'var(--color-text-muted)'
+              }}
+            >
               <Spinner size={20} />
               <span style={{ fontSize: '13px' }}>Loading tracks...</span>
             </div>
           ) : error ? (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <p style={{ color: 'var(--color-danger)', marginBottom: '12px', fontSize: '13px' }}>{error}</p>
+              <p style={{ color: 'var(--color-danger)', marginBottom: '12px', fontSize: '13px' }}>
+                {error}
+              </p>
               <button
                 onClick={fetchTracks}
                 style={{
                   ...btnGhostStyle,
-                  display: 'inline-flex',
+                  display: 'inline-flex'
                 }}
               >
                 Retry
               </button>
             </div>
           ) : tracks.length === 0 ? (
-            <div style={{
-              textAlign: 'center',
-              padding: '40px 20px',
-              color: 'var(--color-text-muted)',
-              fontSize: '13px',
-            }}>
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '40px 20px',
+                color: 'var(--color-text-muted)',
+                fontSize: '13px'
+              }}
+            >
               <MusicNoteIcon size={32} className="text-muted" />
               <p style={{ marginTop: '12px' }}>No tracks in this playlist</p>
             </div>
@@ -467,23 +476,27 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
                     padding: '9px 10px',
                     borderRadius: '9px',
                     cursor: 'pointer',
-                    transition: 'background 0.1s',
+                    transition: 'background 0.1s'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-elevated)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = 'var(--color-bg-elevated)')
+                  }
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
                   {/* Thumbnail */}
-                  <div style={{
-                    width: '48px',
-                    height: '36px',
-                    borderRadius: '5px',
-                    flexShrink: 0,
-                    overflow: 'hidden',
-                    background: 'var(--color-bg-surface3)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
+                  <div
+                    style={{
+                      width: '48px',
+                      height: '36px',
+                      borderRadius: '5px',
+                      flexShrink: 0,
+                      overflow: 'hidden',
+                      background: 'var(--color-bg-surface3)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
                     {track.albumArt ? (
                       <img
                         src={track.albumArt}
@@ -498,35 +511,41 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
 
                   {/* Track info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{
-                      fontSize: '13px',
-                      fontWeight: 500,
-                      color: 'var(--color-text-primary)',
-                      margin: 0,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}>
+                    <p
+                      style={{
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: 'var(--color-text-primary)',
+                        margin: 0,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}
+                    >
                       {track.title}
                     </p>
-                    <p style={{
-                      fontSize: '11px',
-                      color: 'var(--color-text-muted)',
-                      margin: '2px 0 0',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}>
+                    <p
+                      style={{
+                        fontSize: '11px',
+                        color: 'var(--color-text-muted)',
+                        margin: '2px 0 0',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}
+                    >
                       {track.artists?.join(', ') || 'Unknown artist'}
                     </p>
                   </div>
 
                   {/* Duration */}
-                  <span style={{
-                    fontSize: '11px',
-                    color: 'var(--color-text-muted)',
-                    flexShrink: 0,
-                  }}>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      color: 'var(--color-text-muted)',
+                      flexShrink: 0
+                    }}
+                  >
                     {formatDuration(track.durationMs || 0)}
                   </span>
 
@@ -534,8 +553,12 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
                   <button
                     onClick={() => handleAddTrack(track.spotifyUrl)}
                     style={resultAddStyle}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(232,200,122,0.18)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'var(--color-accent-muted)'}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background = 'rgba(232,200,122,0.18)')
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = 'var(--color-accent-muted)')
+                    }
                     aria-label={`Add ${track.title} to queue`}
                     title="Add to queue"
                   >
@@ -548,20 +571,17 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
         </div>
 
         {/* Footer */}
-        <div style={{
-          display: 'flex',
-          gap: '8px',
-          justifyContent: 'flex-end',
-          paddingTop: '14px',
-          borderTop: '1px solid var(--color-border)',
-          flexShrink: 0,
-        }}>
-          <button
-            type="button"
-            onClick={handleClose}
-            style={btnGhostStyle}
-            className="btn-ghost"
-          >
+        <div
+          style={{
+            display: 'flex',
+            gap: '8px',
+            justifyContent: 'flex-end',
+            paddingTop: '14px',
+            borderTop: '1px solid var(--color-border)',
+            flexShrink: 0
+          }}
+        >
+          <button type="button" onClick={handleClose} style={btnGhostStyle} className="btn-ghost">
             Close
           </button>
           <button
@@ -570,8 +590,8 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
             disabled={isLoading || tracks.length === 0}
             style={{
               ...btnAccentStyle,
-              opacity: (isLoading || tracks.length === 0) ? 0.5 : 1,
-              cursor: (isLoading || tracks.length === 0) ? 'not-allowed' : 'pointer',
+              opacity: isLoading || tracks.length === 0 ? 0.5 : 1,
+              cursor: isLoading || tracks.length === 0 ? 'not-allowed' : 'pointer'
             }}
             className="btn-accent"
           >

@@ -18,7 +18,9 @@ router.get('/', optionalAuth, (req, res) => {
 router.post('/:action', authMiddleware, (req, res) => {
   const guildId = musicManager.guildId || process.env.GUILD_ID;
   if (!isConnected(guildId)) {
-    return res.status(400).json({ error: 'Bot is not in a voice channel. Use /join in Discord first.' });
+    return res
+      .status(400)
+      .json({ error: 'Bot is not in a voice channel. Use /join in Discord first.' });
   }
 
   const { action } = req.params;

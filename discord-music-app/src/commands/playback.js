@@ -25,7 +25,7 @@ export function getPlayer() {
           const { played } = await tryPlayWithFallback(player, queue, connection, true);
 
           if (played) {
-            resolutionManager.processLookahead(queue?.currentIndex || 0).catch(err => {
+            resolutionManager.processLookahead(queue?.currentIndex || 0).catch((err) => {
               console.error('Lookahead resolution error:', err);
             });
             musicManager.emitQueueUpdate();
@@ -93,9 +93,7 @@ export async function handlePlay(interaction) {
     const { tracks: rawTracks, error } = await resolveQuery(query, userInfo);
 
     if (error) {
-      return interaction.editReply(
-        resolveQueryErrorToMessage(error, 'Failed to process query.')
-      );
+      return interaction.editReply(resolveQueryErrorToMessage(error, 'Failed to process query.'));
     }
 
     const { tracks, lazyResolution } = addTracksToQueue({
@@ -148,7 +146,7 @@ export async function handlePlay(interaction) {
 }
 
 export async function handlePause(interaction) {
-  if (!await requireVoiceConnection(interaction)) return;
+  if (!(await requireVoiceConnection(interaction))) return;
 
   const p = getPlayer();
 
@@ -164,7 +162,7 @@ export async function handlePause(interaction) {
 }
 
 export async function handleResume(interaction) {
-  if (!await requireVoiceConnection(interaction)) return;
+  if (!(await requireVoiceConnection(interaction))) return;
 
   const p = getPlayer();
 
@@ -180,7 +178,7 @@ export async function handleResume(interaction) {
 }
 
 export async function handleSkip(interaction) {
-  if (!await requireVoiceConnection(interaction)) return;
+  if (!(await requireVoiceConnection(interaction))) return;
 
   const p = getPlayer();
   const q = getQueue();
@@ -199,7 +197,7 @@ export async function handleSkip(interaction) {
 
   if (played) {
     await interaction.reply(`Skipped **${skipped}**. Now playing: **${playingTrack.title}**`);
-    resolutionManager.processLookahead(q.currentIndex).catch(err => {
+    resolutionManager.processLookahead(q.currentIndex).catch((err) => {
       console.error('Lookahead resolution error:', err);
     });
   } else {
@@ -213,7 +211,7 @@ export async function handleSkip(interaction) {
 }
 
 export async function handleStop(interaction) {
-  if (!await requireVoiceConnection(interaction)) return;
+  if (!(await requireVoiceConnection(interaction))) return;
 
   const p = getPlayer();
   const q = getQueue();

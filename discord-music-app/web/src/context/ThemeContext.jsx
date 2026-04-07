@@ -10,11 +10,7 @@ export function ThemeProvider({ children }) {
     root.classList.remove('light-theme');
   }, []);
 
-  return (
-    <ThemeContext.Provider value={{ theme: 'dark' }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ theme: 'dark' }}>{children}</ThemeContext.Provider>;
 }
 
 export const useTheme = () => {

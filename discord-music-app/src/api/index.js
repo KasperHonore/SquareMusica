@@ -15,10 +15,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 // CORS configuration
-app.use(cors({
-  origin: process.env.WEB_URL || 'http://localhost:5173',
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: process.env.WEB_URL || 'http://localhost:5173',
+    credentials: true
+  })
+);
 
 // Body parsing
 app.use(express.json());

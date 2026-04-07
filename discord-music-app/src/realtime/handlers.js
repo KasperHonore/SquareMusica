@@ -1,9 +1,19 @@
 import { musicManager } from '../state/musicManager.js';
-import { getConnection, isConnected, joinChannel, leaveChannel, setChannelCache } from '../bot/voiceManager.js';
+import {
+  getConnection,
+  isConnected,
+  joinChannel,
+  leaveChannel,
+  setChannelCache
+} from '../bot/voiceManager.js';
 import { resolveQuery, tryPlayWithFallback } from '../music/trackResolver.js';
 import { resolutionManager } from '../music/resolutionManager.js';
 import { client } from '../bot/client.js';
-import { addTracksToQueue, ensureVoiceConnected, resolveQueryErrorToMessage } from '../shared/queueHelpers.js';
+import {
+  addTracksToQueue,
+  ensureVoiceConnected,
+  resolveQueryErrorToMessage
+} from '../shared/queueHelpers.js';
 
 /**
  * Check if bot is connected to voice channel
@@ -15,7 +25,10 @@ function checkVoiceConnection(socket) {
   return ensureVoiceConnected({
     guildId,
     isConnected,
-    onNotConnected: () => socket.emit('error', { message: 'Bot is not in a voice channel. Use /join in Discord first.' })
+    onNotConnected: () =>
+      socket.emit('error', {
+        message: 'Bot is not in a voice channel. Use /join in Discord first.'
+      })
   });
 }
 
@@ -139,7 +152,7 @@ export function handlePlayerControl(socket) {
         case 'clear':
           musicManager.clearUpcomingQueue();
           break;
-        case 'previous':
+        case 'previous': {
           // Handle previous track
           const queue = musicManager.queue;
           const player = musicManager.player;
@@ -158,6 +171,7 @@ export function handlePlayerControl(socket) {
             musicManager.emitQueueUpdate();
           }
           break;
+        }
         default:
           socket.emit('error', { message: 'Unknown action' });
       }
@@ -179,12 +193,16 @@ export function handleVoiceJoin(socket) {
   return async () => {
     try {
       if (!client.isReady()) {
-        socket.emit('error', { message: 'Bot is still starting up. Please wait a moment and try again.' });
+        socket.emit('error', {
+          message: 'Bot is still starting up. Please wait a moment and try again.'
+        });
         return;
       }
 
       const discordId = socket.user.discord_id;
-      console.log(`[HandleVoiceJoin] User ${socket.user.username} (${discordId}) requesting voice join`);
+      console.log(
+        `[HandleVoiceJoin] User ${socket.user.username} (${discordId}) requesting voice join`
+      );
 
       const guildId = musicManager.guildId || process.env.GUILD_ID;
       if (!guildId) {
@@ -202,9 +220,13 @@ export function handleVoiceJoin(socket) {
         return;
       }
 
-      console.log(`[HandleVoiceJoin] Found user in channel ${voiceChannel.name} in guild ${voiceChannel.guild.name} (${voiceChannel.guild.id}), joining...`);
+      console.log(
+        `[HandleVoiceJoin] Found user in channel ${voiceChannel.name} in guild ${voiceChannel.guild.name} (${voiceChannel.guild.id}), joining...`
+      );
       const conn = await joinChannel(voiceChannel);
-      console.log(`[HandleVoiceJoin] joinChannel returned, connection status: ${conn?.state?.status}`);
+      console.log(
+        `[HandleVoiceJoin] joinChannel returned, connection status: ${conn?.state?.status}`
+      );
       musicManager.setGuildId(voiceChannel.guild.id);
       setChannelCache(voiceChannel.guild.id, voiceChannel);
       console.log(`[HandleVoiceJoin] About to emit voice context and state...`);

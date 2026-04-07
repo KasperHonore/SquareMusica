@@ -103,7 +103,12 @@
   }
 
   /* Heading styles - use Instrument Serif */
-  h1, h2, h3, h4, h5, h6,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
   .font-heading {
     font-family: var(--font-heading);
     line-height: 1.2;
@@ -292,8 +297,12 @@
 
   /* Fade in */
   @keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   .animate-fade-in {
@@ -318,8 +327,12 @@
 
   /* EQ bars animation - Wave 4-bar gold style */
   @keyframes eq {
-    from { transform: scaleY(0.3); }
-    to { transform: scaleY(1); }
+    from {
+      transform: scaleY(0.3);
+    }
+    to {
+      transform: scaleY(1);
+    }
   }
 
   .eq {
@@ -337,14 +350,27 @@
     animation: eq 0.8s ease-in-out infinite alternate;
   }
 
-  .eq-bar:nth-child(1) { height: 5px; animation-delay: 0s; }
-  .eq-bar:nth-child(2) { height: 10px; animation-delay: 0.2s; }
-  .eq-bar:nth-child(3) { height: 7px; animation-delay: 0.1s; }
-  .eq-bar:nth-child(4) { height: 12px; animation-delay: 0.3s; }
+  .eq-bar:nth-child(1) {
+    height: 5px;
+    animation-delay: 0s;
+  }
+  .eq-bar:nth-child(2) {
+    height: 10px;
+    animation-delay: 0.2s;
+  }
+  .eq-bar:nth-child(3) {
+    height: 7px;
+    animation-delay: 0.1s;
+  }
+  .eq-bar:nth-child(4) {
+    height: 12px;
+    animation-delay: 0.3s;
+  }
 
   /* Playback indicator wave animation (legacy compat) */
   @keyframes wave {
-    0%, 100% {
+    0%,
+    100% {
       transform: scaleY(0.5);
     }
     50% {
@@ -373,9 +399,15 @@
 
   /* Gradient animation */
   @keyframes gradient-shift {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
   }
 
   .animate-gradient {
@@ -385,7 +417,8 @@
 
   /* Pulse glow - gold */
   @keyframes pulse-glow {
-    0%, 100% {
+    0%,
+    100% {
       box-shadow: 0 0 20px var(--color-accent-muted);
     }
     50% {
@@ -398,7 +431,8 @@
   }
 
   @keyframes pulse-glow-album {
-    0%, 100% {
+    0%,
+    100% {
       box-shadow: 0 0 20px var(--color-accent-muted);
     }
     50% {
@@ -412,26 +446,51 @@
 
   /* Toast animations */
   @keyframes toastIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: none; }
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 
   @keyframes toastOut {
-    to { opacity: 0; transform: translateY(-6px); }
+    to {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
   }
 
   .toast-animate {
-    animation: toastIn 0.2s ease, toastOut 0.3s ease 2.7s forwards;
+    animation:
+      toastIn 0.2s ease,
+      toastOut 0.3s ease 2.7s forwards;
   }
 
   /* Stagger animation delays */
-  .delay-75 { animation-delay: 75ms; }
-  .delay-100 { animation-delay: 100ms; }
-  .delay-150 { animation-delay: 150ms; }
-  .delay-200 { animation-delay: 200ms; }
-  .delay-300 { animation-delay: 300ms; }
-  .delay-400 { animation-delay: 400ms; }
-  .delay-500 { animation-delay: 500ms; }
+  .delay-75 {
+    animation-delay: 75ms;
+  }
+  .delay-100 {
+    animation-delay: 100ms;
+  }
+  .delay-150 {
+    animation-delay: 150ms;
+  }
+  .delay-200 {
+    animation-delay: 200ms;
+  }
+  .delay-300 {
+    animation-delay: 300ms;
+  }
+  .delay-400 {
+    animation-delay: 400ms;
+  }
+  .delay-500 {
+    animation-delay: 500ms;
+  }
 
   /* Transition utilities */
   .transition-smooth {
@@ -497,28 +556,64 @@
 
 @layer utilities {
   /* Background colors */
-  .bg-surface { background-color: var(--color-bg); }
-  .bg-surface-raised { background-color: var(--color-bg-raised); }
-  .bg-surface-elevated { background-color: var(--color-bg-elevated); }
-  .bg-surface3 { background-color: var(--color-bg-surface3); }
-  .bg-overlay { background-color: var(--color-bg-overlay); }
-  .bg-accent { background-color: var(--color-accent); }
-  .bg-accent-hover { background-color: var(--color-accent-hover); }
-  .bg-accent-muted { background-color: var(--color-accent-muted); }
-  .bg-accent-subtle { background-color: var(--color-accent-subtle); }
+  .bg-surface {
+    background-color: var(--color-bg);
+  }
+  .bg-surface-raised {
+    background-color: var(--color-bg-raised);
+  }
+  .bg-surface-elevated {
+    background-color: var(--color-bg-elevated);
+  }
+  .bg-surface3 {
+    background-color: var(--color-bg-surface3);
+  }
+  .bg-overlay {
+    background-color: var(--color-bg-overlay);
+  }
+  .bg-accent {
+    background-color: var(--color-accent);
+  }
+  .bg-accent-hover {
+    background-color: var(--color-accent-hover);
+  }
+  .bg-accent-muted {
+    background-color: var(--color-accent-muted);
+  }
+  .bg-accent-subtle {
+    background-color: var(--color-accent-subtle);
+  }
 
   /* Text colors */
-  .text-primary { color: var(--color-text-primary); }
-  .text-secondary { color: var(--color-text-secondary); }
-  .text-muted { color: var(--color-text-muted); }
-  .text-inverse { color: var(--color-text-inverse); }
-  .text-accent { color: var(--color-accent); }
-  .text-danger { color: var(--color-danger); }
+  .text-primary {
+    color: var(--color-text-primary);
+  }
+  .text-secondary {
+    color: var(--color-text-secondary);
+  }
+  .text-muted {
+    color: var(--color-text-muted);
+  }
+  .text-inverse {
+    color: var(--color-text-inverse);
+  }
+  .text-accent {
+    color: var(--color-accent);
+  }
+  .text-danger {
+    color: var(--color-danger);
+  }
 
   /* Border colors */
-  .border-default { border-color: var(--color-border); }
-  .border-strong { border-color: var(--color-border-strong); }
-  .border-accent { border-color: var(--color-accent); }
+  .border-default {
+    border-color: var(--color-border);
+  }
+  .border-strong {
+    border-color: var(--color-border-strong);
+  }
+  .border-accent {
+    border-color: var(--color-accent);
+  }
 
   /* Divide colors */
   .divide-default > :not([hidden]) ~ :not([hidden]) {
@@ -526,8 +621,12 @@
   }
 
   /* Ring colors */
-  .ring-accent { --tw-ring-color: var(--color-accent); }
-  .ring-border { --tw-ring-color: var(--color-border); }
+  .ring-accent {
+    --tw-ring-color: var(--color-accent);
+  }
+  .ring-border {
+    --tw-ring-color: var(--color-border);
+  }
 
   /* =========================================================================
      ACCESSIBILITY UTILITIES
@@ -546,7 +645,9 @@
   }
 
   .focus-ring {
-    transition: box-shadow 0.2s ease, outline 0.2s ease;
+    transition:
+      box-shadow 0.2s ease,
+      outline 0.2s ease;
   }
 
   .focus-ring:focus-visible {
@@ -645,10 +746,12 @@
      ========================================================================= */
 
   @keyframes marquee-scroll {
-    0%, 10% {
+    0%,
+    10% {
       transform: translateX(0);
     }
-    90%, 100% {
+    90%,
+    100% {
       transform: translateX(var(--scroll-distance, -50%));
     }
   }

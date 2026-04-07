@@ -16,7 +16,7 @@ export function AlbumSection({
   onDeleteAlbum,
   onCreateAlbum,
   onAddToQueue,
-  onSelectPlaylist,
+  onSelectPlaylist
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loadingAlbumId, setLoadingAlbumId] = useState(null);
@@ -48,21 +48,25 @@ export function AlbumSection({
     <>
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
         {/* Section header row */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 10px',
-          marginBottom: '4px',
-          flexShrink: 0,
-        }}>
-          <span style={{
-            fontSize: '10px',
-            fontWeight: 600,
-            letterSpacing: '1.2px',
-            textTransform: 'uppercase',
-            color: 'var(--color-text-muted)',
-          }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 10px',
+            marginBottom: '4px',
+            flexShrink: 0
+          }}
+        >
+          <span
+            style={{
+              fontSize: '10px',
+              fontWeight: 600,
+              letterSpacing: '1.2px',
+              textTransform: 'uppercase',
+              color: 'var(--color-text-muted)'
+            }}
+          >
             My Playlists
           </span>
           <button
@@ -78,10 +82,14 @@ export function AlbumSection({
               borderRadius: '4px',
               display: 'flex',
               alignItems: 'center',
-              transition: 'color 0.12s',
+              transition: 'color 0.12s'
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-accent)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--color-accent)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--color-text-muted)';
+            }}
           >
             <Plus size={14} />
           </button>
@@ -98,7 +106,7 @@ export function AlbumSection({
             style={{
               flex: 1,
               overflowY: 'auto',
-              minHeight: 0,
+              minHeight: 0
             }}
           >
             {albums.map((album, index) => (
@@ -147,7 +155,7 @@ function EmptyState({ onClick }) {
         gap: '6px',
         color: 'var(--color-text-muted)',
         fontFamily: 'var(--font-body)',
-        width: 'calc(100% - 8px)',
+        width: 'calc(100% - 8px)'
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.borderColor = 'rgba(232,200,122,0.3)';
@@ -160,7 +168,14 @@ function EmptyState({ onClick }) {
         e.currentTarget.style.color = 'var(--color-text-muted)';
       }}
     >
-      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+      <svg
+        width="20"
+        height="20"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      >
         <line x1="12" y1="5" x2="12" y2="19" />
         <line x1="5" y1="12" x2="19" y2="12" />
       </svg>

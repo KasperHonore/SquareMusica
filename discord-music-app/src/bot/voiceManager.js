@@ -1,4 +1,9 @@
-import { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus, entersState } from '@discordjs/voice';
+import {
+  joinVoiceChannel,
+  getVoiceConnection,
+  VoiceConnectionStatus,
+  entersState
+} from '@discordjs/voice';
 import { db } from '../database/db.js';
 import { botEvents } from './client.js';
 
@@ -11,7 +16,7 @@ export async function joinChannel(channel) {
   const connection = joinVoiceChannel({
     channelId: channel.id,
     guildId: guildId,
-    adapterCreator: channel.guild.voiceAdapterCreator,
+    adapterCreator: channel.guild.voiceAdapterCreator
   });
 
   // Log state transitions for diagnostics
@@ -37,7 +42,9 @@ export async function joinChannel(channel) {
     const status = connection.state?.status || 'unknown';
     console.error(`[VoiceManager] Connection failed for guild ${guildId} (stuck in ${status})`);
     connection.destroy();
-    throw new Error(`Voice connection timed out (stuck in ${status}). Check bot permissions and voice region.`);
+    throw new Error(
+      `Voice connection timed out (stuck in ${status}). Check bot permissions and voice region.`
+    );
   }
 }
 
@@ -46,11 +53,13 @@ function setupConnectionListeners(connection, guildId) {
   connection.removeAllListeners(VoiceConnectionStatus.Destroyed);
 
   connection.on(VoiceConnectionStatus.Disconnected, async () => {
-    console.log(`[VoiceManager] Connection disconnected for guild ${guildId}, attempting reconnect...`);
+    console.log(
+      `[VoiceManager] Connection disconnected for guild ${guildId}, attempting reconnect...`
+    );
     try {
       await Promise.race([
         entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
-        entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
+        entersState(connection, VoiceConnectionStatus.Connecting, 5_000)
       ]);
       console.log(`[VoiceManager] Reconnect succeeded for guild ${guildId}`);
     } catch (error) {
@@ -59,7 +68,9 @@ function setupConnectionListeners(connection, guildId) {
         console.log(`[VoiceManager] Connection already recovered to Ready for guild ${guildId}`);
         return;
       }
-      console.log(`[VoiceManager] Connection destroyed after failed reconnect for guild ${guildId}`);
+      console.log(
+        `[VoiceManager] Connection destroyed after failed reconnect for guild ${guildId}`
+      );
       connection.destroy();
       connections.delete(guildId);
       // Don't emit voiceDisconnected here - Destroyed handler does it
@@ -68,13 +79,19 @@ function setupConnectionListeners(connection, guildId) {
 
   connection.on(VoiceConnectionStatus.Destroyed, () => {
     connections.delete(guildId);
-    console.log(`[VoiceManager] *** Destroyed listener fired *** guild=${guildId}`, new Error().stack.split('\n').slice(1, 4).join(' <- '));
+    console.log(
+      `[VoiceManager] *** Destroyed listener fired *** guild=${guildId}`,
+      new Error().stack.split('\n').slice(1, 4).join(' <- ')
+    );
     botEvents.emit('voiceDisconnected', guildId);
   });
 }
 
 export function leaveChannel(guildId) {
-  console.log(`[VoiceManager] leaveChannel(${guildId}) called`, new Error().stack.split('\n').slice(1, 4).join(' <- '));
+  console.log(
+    `[VoiceManager] leaveChannel(${guildId}) called`,
+    new Error().stack.split('\n').slice(1, 4).join(' <- ')
+  );
   const connection = connections.get(guildId);
   if (connection) {
     // Remove listeners before destroy to prevent Destroyed handler from firing
@@ -97,7 +114,9 @@ export function getConnection(guildId) {
   const fromMap = connections.get(guildId);
   const fromDiscord = getVoiceConnection(guildId);
   const result = fromMap || fromDiscord;
-  console.log(`[VoiceManager] getConnection(${guildId}): map=${fromMap?.state?.status || 'none'}, discord=${fromDiscord?.state?.status || 'none'}`);
+  console.log(
+    `[VoiceManager] getConnection(${guildId}): map=${fromMap?.state?.status || 'none'}, discord=${fromDiscord?.state?.status || 'none'}`
+  );
   return result;
 }
 
@@ -105,7 +124,9 @@ export function isConnected(guildId) {
   const conn = getConnection(guildId);
   const status = conn?.state?.status || 'none';
   const result = !!conn;
-  console.log(`[VoiceManager] isConnected(${guildId}) = ${result} (status: ${status}, inMap: ${connections.has(guildId)})`);
+  console.log(
+    `[VoiceManager] isConnected(${guildId}) = ${result} (status: ${status}, inMap: ${connections.has(guildId)})`
+  );
   return result;
 }
 
@@ -128,8 +149,8 @@ export function getChannelInfo(guildId) {
 
   const guild = channel.guild;
   const connectedUsers = channel.members
-    .filter(m => !m.user.bot)
-    .map(m => ({
+    .filter((m) => !m.user.bot)
+    .map((m) => ({
       id: m.user.id,
       username: m.user.username,
       avatar: m.user.avatar

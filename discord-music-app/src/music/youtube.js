@@ -6,6 +6,13 @@ import { StreamType } from '@discordjs/voice';
 
 const execFileAsync = promisify(execFile);
 
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const searchCache = new Map(); // key -> { expiresAt, results }
+
+function isDebugEnabled() {
+  return process.env.DEBUG_YTDLP === '1' || process.env.DEBUG_YTDLP === 'true';
+}
+
 /**
  * Get the yt-dlp binary path, auto-detecting Docker vs local environments
  */
@@ -50,7 +57,15 @@ export function isValidUrl(url) {
  */
 export async function search(query, limit = 5) {
   try {
-    console.log('Searching YouTube for:', query);
+    const cacheKey = `${String(query)}::${Number(limit)}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.results;
+    }
+
+    if (isDebugEnabled()) {
+      console.log('Searching YouTube for:', query);
+    }
 
     const { stdout } = await execFileAsync(YT_DLP_PATH, [
       `ytsearch${limit}:${query}`,
@@ -75,7 +90,11 @@ export async function search(query, limit = 5) {
         };
       });
 
-    console.log('Search results:', JSON.stringify(results, null, 2));
+    searchCache.set(cacheKey, { results, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
+
+    if (isDebugEnabled()) {
+      console.log('Search results:', JSON.stringify(results, null, 2));
+    }
     return results;
   } catch (error) {
     console.error('YouTube search error:', error);

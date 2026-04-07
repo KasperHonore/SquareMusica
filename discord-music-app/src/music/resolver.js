@@ -6,7 +6,6 @@ const CACHE_MAX_ENTRIES = 5000;
 
 // In-memory cache with TTL
 const cache = new Map();
-const cacheOrder = []; // FIFO eviction tracking
 
 /**
  * Generate cache key for a Spotify track
@@ -33,6 +32,10 @@ function getCached(key) {
     return null;
   }
 
+  // Refresh recency (LRU-ish) without a separate tracking structure
+  cache.delete(key);
+  cache.set(key, entry);
+
   return entry.value;
 }
 
@@ -43,16 +46,18 @@ function getCached(key) {
  */
 function setCache(key, value) {
   // Evict oldest entries if at capacity
-  while (cache.size >= CACHE_MAX_ENTRIES && cacheOrder.length > 0) {
-    const oldestKey = cacheOrder.shift();
+  while (cache.size >= CACHE_MAX_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) break;
     cache.delete(oldestKey);
   }
 
+  // Ensure insertion order reflects recency
+  if (cache.has(key)) cache.delete(key);
   cache.set(key, {
     value,
     expiresAt: Date.now() + CACHE_TTL_MS
   });
-  cacheOrder.push(key);
 }
 
 /**

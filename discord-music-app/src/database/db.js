@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { mkdirSync, existsSync } from 'fs';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -76,25 +76,32 @@ class DatabaseManager {
   }
 
   // Session methods
+  hashToken(token) {
+    return createHash('sha256').update(String(token)).digest('hex');
+  }
+
   createSession(userId, token, expiresAt) {
     const id = randomUUID();
+    const tokenHash = this.hashToken(token);
     const stmt = this.db.prepare(
       'INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)'
     );
-    stmt.run(id, userId, token, expiresAt.toISOString());
-    return { id, userId, token, expiresAt };
+    stmt.run(id, userId, tokenHash, expiresAt.toISOString());
+    return { id, userId, expiresAt };
   }
 
   getSessionByToken(token) {
+    const tokenHash = this.hashToken(token);
     const stmt = this.db.prepare(
       "SELECT * FROM sessions WHERE token = ? AND expires_at > datetime('now')"
     );
-    return stmt.get(token);
+    return stmt.get(tokenHash);
   }
 
   deleteSessionByToken(token) {
+    const tokenHash = this.hashToken(token);
     const stmt = this.db.prepare('DELETE FROM sessions WHERE token = ?');
-    stmt.run(token);
+    stmt.run(tokenHash);
   }
 
   // History methods

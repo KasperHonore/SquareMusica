@@ -13,7 +13,9 @@
     "dev": "node src/index.js",
     "register": "node src/commands/register.js",
     "setup": "node scripts/setup-ytdlp.js",
-    "postinstall": "node scripts/setup-ytdlp.js"
+    "lint": "eslint .",
+    "format": "prettier -w .",
+    "format:check": "prettier -c ."
   },
   "author": "Shay DeWael",
   "license": "MIT",
@@ -34,7 +36,11 @@
     "sodium-native": "^4.0.4"
   },
   "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
     "nodemon": "^3.0.0"
+    ,
+    "prettier": "^3.0.0"
   },
   "nodemonConfig": {
     "ignore": [

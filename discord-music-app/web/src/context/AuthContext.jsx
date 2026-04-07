@@ -5,54 +5,36 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    // Check for token in URL (from OAuth callback)
+    // Read errors/success signals from URL and clear them (do not accept tokens via URL).
     const params = new URLSearchParams(window.location.search);
-    const urlToken = params.get('token');
-
-    if (urlToken) {
-      // Store token and clear from URL
-      localStorage.setItem('token', urlToken);
-      setToken(urlToken);
-      window.history.replaceState({}, '', window.location.pathname);
-    }
 
     const errorParam = params.get('error');
     if (errorParam) {
       setAuthError(errorParam);
       window.history.replaceState({}, '', window.location.pathname);
     }
-
-    // Use URL token, state token, or stored token
-    const authToken = urlToken || token || localStorage.getItem('token');
-
-    if (!authToken) {
-      setLoading(false);
-      return;
+    const authParam = params.get('auth');
+    if (authParam) {
+      window.history.replaceState({}, '', window.location.pathname);
     }
 
     // Check if logged in on mount
     fetch('/api/auth/me', {
-      credentials: 'include',
-      headers: { Authorization: `Bearer ${authToken}` }
+      credentials: 'include'
     })
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data?.user) {
           setUser(data.user);
-          setToken(authToken);
         } else {
-          // Invalid token, clear it
-          localStorage.removeItem('token');
-          setToken(null);
+          setUser(null);
         }
       })
       .catch(() => {
-        localStorage.removeItem('token');
-        setToken(null);
+        setUser(null);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -65,19 +47,16 @@ export function AuthProvider({ children }) {
     try {
       await fetch('/api/auth/logout', {
         method: 'POST',
-        credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        credentials: 'include'
       });
     } catch (e) {
       console.error('Logout error:', e);
     }
-    localStorage.removeItem('token');
     setUser(null);
-    setToken(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, token, authError }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, token: null, authError }}>
       {children}
     </AuthContext.Provider>
   );

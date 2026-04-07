@@ -7,6 +7,12 @@ const router = Router();
 
 const DISCORD_API = 'https://discord.com/api/v10';
 
+function isDeveloperModeEnabled() {
+  const raw = process.env.developerMode ?? process.env.DEVELOPER_MODE;
+  if (raw == null) return false;
+  return String(raw).trim().toLowerCase() === 'true';
+}
+
 /**
  * Get the frontend URL for redirects.
  * Avoid deriving redirect targets from request headers to prevent host-header / forwarded-header injection.
@@ -19,6 +25,10 @@ function getWebUrl() {
  * GET /api/auth/discord - Redirect to Discord OAuth
  */
 router.get('/discord', (req, res) => {
+  if (isDeveloperModeEnabled()) {
+    return res.redirect(`${getWebUrl()}?auth=success`);
+  }
+
   const params = new URLSearchParams({
     client_id: process.env.APP_ID,
     redirect_uri: process.env.OAUTH_REDIRECT_URI,

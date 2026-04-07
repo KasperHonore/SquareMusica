@@ -2,7 +2,11 @@ import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import { db } from '../../database/db.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { parseSpotifyUrl, getPublicPlaylistTracks, getPublicAlbumTracks } from '../../music/spotify.js';
+import {
+  parseSpotifyUrl,
+  getPublicPlaylistTracks,
+  getPublicAlbumTracks
+} from '../../music/spotify.js';
 
 const router = Router();
 

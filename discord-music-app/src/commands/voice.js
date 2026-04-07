@@ -33,7 +33,7 @@ export async function handleLeave(interaction) {
 
   if (!connection) {
     return interaction.reply({
-      content: 'I\'m not in a voice channel!',
+      content: "I'm not in a voice channel!",
       ephemeral: true
     });
   }

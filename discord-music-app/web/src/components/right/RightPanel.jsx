@@ -16,7 +16,7 @@ export function RightPanel({
   onRemove,
   onShuffle,
   onClear,
-  resolutionStats,
+  resolutionStats
 }) {
   return (
     <div
@@ -35,7 +35,7 @@ export function RightPanel({
         className="flex-1 flex flex-col min-h-0 overflow-hidden"
         style={{
           borderTop: '1px solid var(--color-border)',
-          marginTop: '10px',
+          marginTop: '10px'
         }}
       >
         <Queue

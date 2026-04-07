@@ -1,7 +1,13 @@
 import { registerCommand } from '../bot/commandHandler.js';
 import { handleJoin, handleLeave } from './voice.js';
 import { handlePlay, handlePause, handleResume, handleSkip, handleStop } from './playback.js';
-import { handleQueue, handleNowPlaying, handleRemove, handleShuffle, handleClear } from './queue.js';
+import {
+  handleQueue,
+  handleNowPlaying,
+  handleRemove,
+  handleShuffle,
+  handleClear
+} from './queue.js';
 import { handleLoop } from './settings.js';
 import { handleWebUI } from './utility.js';
 

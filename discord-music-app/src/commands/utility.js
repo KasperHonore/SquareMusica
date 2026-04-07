@@ -7,9 +7,11 @@ export async function handleWebUI(interaction) {
     .setTitle('Web Control Panel')
     .setDescription(`Control the music bot from your browser:\n\n**${webUrl}**`)
     .setColor(0x5865f2)
-    .addFields(
-      { name: 'Features', value: '• View and manage queue\n• Control playback\n• Search and add songs\n• Real-time updates' }
-    );
+    .addFields({
+      name: 'Features',
+      value:
+        '• View and manage queue\n• Control playback\n• Search and add songs\n• Real-time updates'
+    });
 
   await interaction.reply({ embeds: [embed], ephemeral: true });
 }

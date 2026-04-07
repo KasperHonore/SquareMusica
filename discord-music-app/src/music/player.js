@@ -28,9 +28,11 @@ class MusicPlayer extends EventEmitter {
   _setupListeners() {
     // Debug: log all AudioPlayer state transitions
     this.audioPlayer.on('stateChange', (oldState, newState) => {
-      console.log(`[Player] State: ${oldState.status} -> ${newState.status}`,
+      console.log(
+        `[Player] State: ${oldState.status} -> ${newState.status}`,
         `resource=${!!newState.resource}`,
-        `missedFrames=${newState.missedFrames ?? 'n/a'}`);
+        `missedFrames=${newState.missedFrames ?? 'n/a'}`
+      );
     });
 
     this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
@@ -146,7 +148,7 @@ class MusicPlayer extends EventEmitter {
     if (this.audioPlayer.state.status === AudioPlayerStatus.Paused) {
       if (this.pausedAt && this.startTime) {
         // Adjust start time to account for pause duration
-        this.startTime += (Date.now() - this.pausedAt);
+        this.startTime += Date.now() - this.pausedAt;
       }
       this.pausedAt = null;
       this.audioPlayer.unpause();
@@ -197,7 +199,6 @@ class MusicPlayer extends EventEmitter {
   isPaused() {
     return this.audioPlayer.state.status === AudioPlayerStatus.Paused;
   }
-
 }
 
 export { MusicPlayer };

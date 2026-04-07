@@ -40,23 +40,21 @@ export function AppLayout({
   onDeleteAlbum,
   onCreateAlbum,
   onAddToQueue,
-  onSelectPlaylist,
+  onSelectPlaylist
 }) {
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div
-      className="h-screen overflow-hidden"
-      style={{ backgroundColor: 'var(--color-bg)' }}
-    >
+    <div className="h-screen overflow-hidden" style={{ backgroundColor: 'var(--color-bg)' }}>
       {/* CSS Grid layout */}
       <div className="h-full grid grid-rows-[1fr_72px] lg:grid-cols-[220px_1fr_300px] grid-cols-1">
         {/* Sidebar - hidden on mobile, visible on desktop */}
-        <aside className="hidden lg:flex lg:flex-col row-start-1 row-end-2 border-r overflow-hidden"
+        <aside
+          className="hidden lg:flex lg:flex-col row-start-1 row-end-2 border-r overflow-hidden"
           style={{
             backgroundColor: 'var(--color-bg-raised)',
-            borderColor: 'var(--color-border)',
+            borderColor: 'var(--color-border)'
           }}
         >
           <Sidebar
@@ -86,7 +84,14 @@ export function AppLayout({
               className="p-2 rounded-lg hover:bg-white/10 transition-colors"
               aria-label="Open menu"
             >
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <svg
+                width="20"
+                height="20"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <path d="M3 12h18M3 6h18M3 18h18" />
               </svg>
             </button>
@@ -115,7 +120,7 @@ export function AppLayout({
             className="hidden lg:flex lg:flex-col row-start-1 row-end-2 border-l overflow-hidden"
             style={{
               backgroundColor: 'var(--color-bg-raised)',
-              borderColor: 'var(--color-border)',
+              borderColor: 'var(--color-border)'
             }}
           >
             {rightPanel}
@@ -127,7 +132,7 @@ export function AppLayout({
           className="row-start-2 row-end-3 lg:col-span-3 border-t"
           style={{
             backgroundColor: 'var(--color-bg-raised)',
-            borderColor: 'var(--color-border)',
+            borderColor: 'var(--color-border)'
           }}
           id="bottom-bar-slot"
         />
@@ -192,7 +197,8 @@ export function AppLayout({
           `}
           style={{ backgroundColor: 'var(--color-bg-raised)' }}
         >
-          <div className="flex-shrink-0 p-4 border-b flex items-center justify-between"
+          <div
+            className="flex-shrink-0 p-4 border-b flex items-center justify-between"
             style={{ borderColor: 'var(--color-border)' }}
           >
             <span className="font-heading text-lg">Now Playing</span>
@@ -202,13 +208,16 @@ export function AppLayout({
               aria-label="Close panel"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
-          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-            {rightPanel}
-          </div>
+          <div className="flex-1 overflow-hidden flex flex-col min-h-0">{rightPanel}</div>
         </div>
       )}
     </div>

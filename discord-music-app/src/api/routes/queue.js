@@ -6,7 +6,11 @@ import { isConnected } from '../../bot/voiceManager.js';
 import { resolveQuery } from '../../music/trackResolver.js';
 import { resolutionManager } from '../../music/resolutionManager.js';
 import { db } from '../../database/db.js';
-import { addTracksToQueue, ensureVoiceConnected, resolveQueryErrorToMessage } from '../../shared/queueHelpers.js';
+import {
+  addTracksToQueue,
+  ensureVoiceConnected,
+  resolveQueryErrorToMessage
+} from '../../shared/queueHelpers.js';
 
 const router = Router();
 
@@ -16,7 +20,8 @@ function requireVoiceConnection(req, res, next) {
   const ok = ensureVoiceConnected({
     guildId,
     isConnected,
-    onNotConnected: () => res.status(400).json({ error: 'Bot is not in a voice channel. Use /join in Discord first.' })
+    onNotConnected: () =>
+      res.status(400).json({ error: 'Bot is not in a voice channel. Use /join in Discord first.' })
   });
   if (!ok) return;
   next();

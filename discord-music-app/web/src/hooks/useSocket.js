@@ -57,20 +57,22 @@ export function useSocket() {
     });
 
     newSocket.on('track:progress', ({ position }) => {
-      setPlayerState(prev => ({ ...prev, position }));
+      setPlayerState((prev) => ({ ...prev, position }));
     });
 
     newSocket.on('initial:state', (state) => {
       setQueue(Array.isArray(state.queue) ? state.queue : []);
       setCurrentIndex(typeof state.currentIndex === 'number' ? state.currentIndex : 0);
       setCurrentTrack(state.currentTrack || null);
-      setPlayerState(state.playerState || {
-        playing: false,
-        paused: false,
-        loop: 'off',
-        position: 0,
-        connected: false
-      });
+      setPlayerState(
+        state.playerState || {
+          playing: false,
+          paused: false,
+          loop: 'off',
+          position: 0,
+          connected: false
+        }
+      );
       if (state.resolutionStats) {
         setResolutionStats(state.resolutionStats);
       }
@@ -99,7 +101,7 @@ export function useSocket() {
 
     newSocket.on('history:cleared', (data) => {
       console.log('[Socket] Received history:cleared event', data);
-      setHistoryVersion(v => v + 1);
+      setHistoryVersion((v) => v + 1);
     });
 
     newSocket.on('error', (err) => {
@@ -113,21 +115,33 @@ export function useSocket() {
     };
   }, [user]);
 
-  const addToQueue = useCallback((query) => {
-    socket?.emit('queue:add', { query });
-  }, [socket]);
+  const addToQueue = useCallback(
+    (query) => {
+      socket?.emit('queue:add', { query });
+    },
+    [socket]
+  );
 
-  const removeFromQueue = useCallback((position) => {
-    socket?.emit('queue:remove', { position });
-  }, [socket]);
+  const removeFromQueue = useCallback(
+    (position) => {
+      socket?.emit('queue:remove', { position });
+    },
+    [socket]
+  );
 
-  const reorderQueue = useCallback((from, to) => {
-    socket?.emit('queue:reorder', { from, to });
-  }, [socket]);
+  const reorderQueue = useCallback(
+    (from, to) => {
+      socket?.emit('queue:reorder', { from, to });
+    },
+    [socket]
+  );
 
-  const playerControl = useCallback((action, value) => {
-    socket?.emit('player:control', { action, value });
-  }, [socket]);
+  const playerControl = useCallback(
+    (action, value) => {
+      socket?.emit('player:control', { action, value });
+    },
+    [socket]
+  );
 
   const voiceJoin = useCallback(() => {
     socket?.emit('voice:join');
@@ -137,13 +151,19 @@ export function useSocket() {
     socket?.emit('voice:leave');
   }, [socket]);
 
-  const createPlaylist = useCallback((name, spotifyUrl, coverImage) => {
-    socket?.emit('playlist:create', { name, spotifyUrl, coverImage });
-  }, [socket]);
+  const createPlaylist = useCallback(
+    (name, spotifyUrl, coverImage) => {
+      socket?.emit('playlist:create', { name, spotifyUrl, coverImage });
+    },
+    [socket]
+  );
 
-  const deletePlaylist = useCallback((id) => {
-    socket?.emit('playlist:delete', { id });
-  }, [socket]);
+  const deletePlaylist = useCallback(
+    (id) => {
+      socket?.emit('playlist:delete', { id });
+    },
+    [socket]
+  );
 
   const clearError = useCallback(() => {
     setError(null);

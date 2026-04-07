@@ -79,7 +79,11 @@ function normalize(str) {
  * @returns {Set<string>} Set of words
  */
 function getWords(str) {
-  return new Set(normalize(str).split(' ').filter(w => w.length > 1));
+  return new Set(
+    normalize(str)
+      .split(' ')
+      .filter((w) => w.length > 1)
+  );
 }
 
 /**
@@ -89,10 +93,12 @@ function getWords(str) {
  */
 function isOfficialChannel(channel) {
   const lower = (channel || '').toLowerCase();
-  return lower.includes('official') ||
-         lower.includes(' - topic') ||
-         lower.includes('vevo') ||
-         lower.endsWith('topic');
+  return (
+    lower.includes('official') ||
+    lower.includes(' - topic') ||
+    lower.includes('vevo') ||
+    lower.endsWith('topic')
+  );
 }
 
 /**
@@ -186,9 +192,7 @@ export async function resolveSpotifyTrack(spotifyTrack) {
     }
 
     // Build search query
-    const query = artists.length > 0
-      ? `${artists.join(', ')} - ${title}`
-      : title;
+    const query = artists.length > 0 ? `${artists.join(', ')} - ${title}` : title;
 
     console.log(`[Resolver] Searching YouTube for: "${query}"`);
 
@@ -209,7 +213,9 @@ export async function resolveSpotifyTrack(spotifyTrack) {
 
     for (const result of results) {
       const score = scoreMatch(spotifyTrack, result);
-      console.log(`[Resolver] Score ${score} for: "${result.title}" (duration: ${result.duration}s)`);
+      console.log(
+        `[Resolver] Score ${score} for: "${result.title}" (duration: ${result.duration}s)`
+      );
       if (score > bestScore) {
         bestScore = score;
         bestResult = result;
@@ -223,7 +229,9 @@ export async function resolveSpotifyTrack(spotifyTrack) {
       return null;
     }
 
-    console.log(`[Resolver] Best match for "${query}": "${bestResult.title}" (score: ${bestScore})`)
+    console.log(
+      `[Resolver] Best match for "${query}": "${bestResult.title}" (score: ${bestScore})`
+    );
 
     const resolved = {
       url: bestResult.url,
@@ -235,7 +243,6 @@ export async function resolveSpotifyTrack(spotifyTrack) {
 
     setCache(cacheKey, resolved);
     return resolved;
-
   } catch (error) {
     console.error('Error resolving Spotify track:', error);
     return null;
@@ -334,7 +341,7 @@ export async function resolveSpotifyTracks(spotifyTracks, { concurrency = 3 } = 
       continue;
     }
 
-    const { type, track, spotifyTrack, reason } = result.value;
+    const { type, track, reason } = result.value;
 
     if (type === 'resolved') {
       resolved.push(track);
@@ -355,7 +362,6 @@ export async function resolveSpotifyTracks(spotifyTracks, { concurrency = 3 } = 
  */
 export function clearCache() {
   cache.clear();
-  cacheOrder.length = 0;
 }
 
 /**

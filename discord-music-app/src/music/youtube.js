@@ -43,7 +43,7 @@ export function isValidUrl(url) {
       'm.youtube.com',
       'music.youtube.com'
     ];
-    return validHosts.some(host => urlObj.hostname === host);
+    return validHosts.some((host) => urlObj.hostname === host);
   } catch {
     return false;
   }
@@ -67,19 +67,23 @@ export async function search(query, limit = 5) {
       console.log('Searching YouTube for:', query);
     }
 
-    const { stdout } = await execFileAsync(YT_DLP_PATH, [
-      `ytsearch${limit}:${query}`,
-      '--dump-json',
-      '--flat-playlist',
-      '--no-warnings',
-      '--ignore-errors'
-    ], { maxBuffer: 10 * 1024 * 1024 });
+    const { stdout } = await execFileAsync(
+      YT_DLP_PATH,
+      [
+        `ytsearch${limit}:${query}`,
+        '--dump-json',
+        '--flat-playlist',
+        '--no-warnings',
+        '--ignore-errors'
+      ],
+      { maxBuffer: 10 * 1024 * 1024 }
+    );
 
     const results = stdout
       .trim()
       .split('\n')
-      .filter(line => line)
-      .map(line => {
+      .filter((line) => line)
+      .map((line) => {
         const data = JSON.parse(line);
         return {
           title: data.title || 'Unknown',
@@ -113,13 +117,7 @@ export async function getInfo(url) {
       return null;
     }
 
-    const args = [
-      url,
-      '--dump-json',
-      '--no-download',
-      '--no-warnings',
-      '--no-playlist'
-    ];
+    const args = [url, '--dump-json', '--no-download', '--no-warnings', '--no-playlist'];
 
     // Add cookies support if configured
     if (process.env.YT_DLP_COOKIES) {
@@ -153,8 +151,10 @@ export async function getStream(url) {
 
   const args = [
     url,
-    '-f', 'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=webm]/bestaudio/best',
-    '-o', '-',
+    '-f',
+    'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=webm]/bestaudio/best',
+    '-o',
+    '-',
     '--no-warnings',
     '--no-playlist',
     '--quiet'
@@ -242,7 +242,8 @@ export async function getPlaylist(url, limit = 50) {
       '--flat-playlist',
       '--no-warnings',
       '--ignore-errors',
-      '--playlist-end', String(limit)
+      '--playlist-end',
+      String(limit)
     ];
 
     // Add cookies support if configured
@@ -255,8 +256,8 @@ export async function getPlaylist(url, limit = 50) {
     const results = stdout
       .trim()
       .split('\n')
-      .filter(line => line)
-      .map(line => {
+      .filter((line) => line)
+      .map((line) => {
         const data = JSON.parse(line);
         return {
           title: data.title || 'Unknown',

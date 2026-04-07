@@ -43,7 +43,7 @@ export function Dashboard() {
   }, []);
 
   // Transform playlists from server format to component format (albums)
-  const albums = playlists.map(p => ({
+  const albums = playlists.map((p) => ({
     id: p.id,
     name: p.name,
     spotifyUrl: p.spotify_url,
@@ -61,9 +61,7 @@ export function Dashboard() {
   }, [error, clearError]);
 
   // Filter queue to show only upcoming tracks (not the currently playing one)
-  const upcomingTracks = currentTrack && currentIndex >= 0
-    ? queue.slice(currentIndex + 1)
-    : [];
+  const upcomingTracks = currentTrack && currentIndex >= 0 ? queue.slice(currentIndex + 1) : [];
 
   // Handlers that adjust indices to account for filtered display
   const handleReorder = (from, to) => {
@@ -93,30 +91,39 @@ export function Dashboard() {
   };
 
   // Album handlers
-  const handleLoadAlbum = useCallback(async (album) => {
-    if (!album.spotifyUrl) {
-      if (album.tracks && album.tracks.length > 0) {
-        album.tracks.forEach(track => {
-          if (track.url) {
-            addToQueue(track.url);
-          }
-        });
+  const handleLoadAlbum = useCallback(
+    async (album) => {
+      if (!album.spotifyUrl) {
+        if (album.tracks && album.tracks.length > 0) {
+          album.tracks.forEach((track) => {
+            if (track.url) {
+              addToQueue(track.url);
+            }
+          });
+        }
+        return;
       }
-      return;
-    }
 
-    playerControl('stop');
-    await new Promise(resolve => setTimeout(resolve, 100));
-    addToQueue(album.spotifyUrl);
-  }, [addToQueue, playerControl]);
+      playerControl('stop');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      addToQueue(album.spotifyUrl);
+    },
+    [addToQueue, playerControl]
+  );
 
-  const handleDeleteAlbum = useCallback((albumId) => {
-    deletePlaylist(albumId);
-  }, [deletePlaylist]);
+  const handleDeleteAlbum = useCallback(
+    (albumId) => {
+      deletePlaylist(albumId);
+    },
+    [deletePlaylist]
+  );
 
-  const handleCreateAlbum = useCallback((name, spotifyUrl, coverImage) => {
-    createPlaylist(name, spotifyUrl, coverImage);
-  }, [createPlaylist]);
+  const handleCreateAlbum = useCallback(
+    (name, spotifyUrl, coverImage) => {
+      createPlaylist(name, spotifyUrl, coverImage);
+    },
+    [createPlaylist]
+  );
 
   // Right panel: Now Playing + Controls + Queue
   const rightPanel = (
@@ -152,7 +159,7 @@ export function Dashboard() {
             display: 'flex',
             alignItems: 'center',
             gap: '12px',
-            animation: 'toastIn 0.2s ease',
+            animation: 'toastIn 0.2s ease'
           }}
         >
           <span>{error}</span>
@@ -165,7 +172,7 @@ export function Dashboard() {
               cursor: 'pointer',
               fontSize: '18px',
               lineHeight: 1,
-              padding: '0 2px',
+              padding: '0 2px'
             }}
           >
             &times;

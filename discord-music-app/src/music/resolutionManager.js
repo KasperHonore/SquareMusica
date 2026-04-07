@@ -51,8 +51,13 @@ class ResolutionManager extends EventEmitter {
         if (!track) continue;
 
         // Skip already resolved, failed, or currently resolving tracks
-        if (track.status === 'resolved' || track.status === 'resolving' || track.status === 'failed') continue;
-        if (track.url) continue;  // Already has URL
+        if (
+          track.status === 'resolved' ||
+          track.status === 'resolving' ||
+          track.status === 'failed'
+        )
+          continue;
+        if (track.url) continue; // Already has URL
         if (this.processingTracks.has(this._getTrackId(track))) continue;
 
         // Skip if no Spotify data to resolve from
@@ -70,11 +75,8 @@ class ResolutionManager extends EventEmitter {
       const chunks = this._chunkArray(tracksToResolve, this.concurrency);
 
       for (const chunk of chunks) {
-        await Promise.all(chunk.map(({ track, index }) =>
-          this._resolveTrack(track, index)
-        ));
+        await Promise.all(chunk.map(({ track, index }) => this._resolveTrack(track, index)));
       }
-
     } finally {
       this.isProcessing = false;
     }
@@ -229,7 +231,7 @@ class ResolutionManager extends EventEmitter {
 
     for (const track of tracks) {
       const status = track.status || (track.url ? 'resolved' : 'unresolved');
-      if (stats.hasOwnProperty(status)) {
+      if (Object.prototype.hasOwnProperty.call(stats, status)) {
         stats[status]++;
       }
     }
@@ -278,9 +280,8 @@ class ResolutionManager extends EventEmitter {
    */
   static createUnresolvedTrack(spotifyTrack, userInfo) {
     // Handle both string (legacy) and object formats
-    const user = typeof userInfo === 'string'
-      ? { username: userInfo, id: null, avatar: null }
-      : userInfo;
+    const user =
+      typeof userInfo === 'string' ? { username: userInfo, id: null, avatar: null } : userInfo;
 
     return {
       title: spotifyTrack.title,
@@ -293,7 +294,7 @@ class ResolutionManager extends EventEmitter {
       channel: null,
       spotifyData: {
         spotifyId: spotifyTrack.spotifyId,
-        title: spotifyTrack.title,  // Required for resolver search query
+        title: spotifyTrack.title, // Required for resolver search query
         artists: spotifyTrack.artists,
         durationMs: spotifyTrack.durationMs,
         spotifyUrl: spotifyTrack.spotifyUrl

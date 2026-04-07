@@ -13,14 +13,7 @@ const CHIP_COLORS = ['#e8c87a', '#9b7fe8', '#7ec87a', '#e87a7a', '#7ac4e8', '#e8
  * - Staggered list animations (delay by index * 50ms)
  * - Marquee text for long names
  */
-export function AlbumItem({
-  album,
-  index = 0,
-  isLoading = false,
-  onPlay,
-  onDelete,
-  onInspect,
-}) {
+export function AlbumItem({ album, index = 0, isLoading = false, onPlay, onDelete, onInspect }) {
   const [shouldScroll, setShouldScroll] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const textRef = useRef(null);
@@ -37,7 +30,10 @@ export function AlbumItem({
         const containerWidth = containerRef.current.clientWidth;
         setShouldScroll(textWidth > containerWidth);
         if (textWidth > containerWidth) {
-          textRef.current.style.setProperty('--scroll-distance', `-${textWidth - containerWidth + 16}px`);
+          textRef.current.style.setProperty(
+            '--scroll-distance',
+            `-${textWidth - containerWidth + 16}px`
+          );
         }
       }
     };
@@ -52,7 +48,8 @@ export function AlbumItem({
     }
   };
 
-  const trackCount = album.trackCount ?? (album.spotifyUrl?.includes('playlist') ? 'Playlist' : 'Album');
+  const trackCount =
+    album.trackCount ?? (album.spotifyUrl?.includes('playlist') ? 'Playlist' : 'Album');
   const trackLabel = typeof trackCount === 'number' ? `${trackCount} songs` : trackCount;
 
   return (
@@ -74,7 +71,7 @@ export function AlbumItem({
         backgroundColor: isHovered ? 'var(--color-bg-elevated)' : 'transparent',
         position: 'relative',
         animationDelay,
-        '--animation-delay': animationDelay,
+        '--animation-delay': animationDelay
       }}
     >
       {/* Color-coded thumbnail */}
@@ -91,7 +88,7 @@ export function AlbumItem({
           justifyContent: 'center',
           fontSize: '13px',
           overflow: 'hidden',
-          position: 'relative',
+          position: 'relative'
         }}
       >
         {album.coverImage ? (
@@ -102,36 +99,41 @@ export function AlbumItem({
             loading="lazy"
           />
         ) : (
-          <span style={{ color: chipColor }}>
-            {String.fromCodePoint(0x1F3B5)}
-          </span>
+          <span style={{ color: chipColor }}>{String.fromCodePoint(0x1f3b5)}</span>
         )}
 
         {/* Loading overlay on thumbnail */}
         {isLoading && (
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <div style={{
-              width: '12px',
-              height: '12px',
-              border: '2px solid rgba(255,255,255,0.3)',
-              borderTopColor: '#fff',
-              borderRadius: '50%',
-              animation: 'spin 0.7s linear infinite',
-            }} />
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <div
+              style={{
+                width: '12px',
+                height: '12px',
+                border: '2px solid rgba(255,255,255,0.3)',
+                borderTopColor: '#fff',
+                borderRadius: '50%',
+                animation: 'spin 0.7s linear infinite'
+              }}
+            />
           </div>
         )}
 
         {/* Play overlay on hover (thumbnail click area) */}
         {isHovered && !isLoading && (
           <button
-            onClick={(e) => { e.stopPropagation(); onPlay?.(album); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPlay?.(album);
+            }}
             title="Play playlist"
             aria-label={`Play playlist ${album.name}`}
             style={{
@@ -143,7 +145,7 @@ export function AlbumItem({
               justifyContent: 'center',
               border: 'none',
               cursor: 'pointer',
-              padding: 0,
+              padding: 0
             }}
           >
             <Play size={12} className="text-white" />
@@ -164,16 +166,18 @@ export function AlbumItem({
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              display: 'block',
+              display: 'block'
             }}
           >
             {album.name}
           </span>
         </div>
-        <span style={{
-          fontSize: '11px',
-          color: 'var(--color-text-muted)',
-        }}>
+        <span
+          style={{
+            fontSize: '11px',
+            color: 'var(--color-text-muted)'
+          }}
+        >
           {trackLabel}
         </span>
       </div>
@@ -182,7 +186,10 @@ export function AlbumItem({
       {isHovered && (
         <button
           className="delete-button"
-          onClick={(e) => { e.stopPropagation(); onDelete?.(album); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete?.(album);
+          }}
           disabled={isLoading}
           title="Delete playlist"
           aria-label={`Delete playlist ${album.name}`}
@@ -195,7 +202,7 @@ export function AlbumItem({
             borderRadius: '4px',
             flexShrink: 0,
             display: 'flex',
-            transition: 'all 0.12s',
+            transition: 'all 0.12s'
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.color = 'var(--color-danger)';

@@ -3,6 +3,7 @@ import { dirname, join } from 'path';
 import { existsSync, mkdirSync, chmodSync } from 'fs';
 import { get } from 'https';
 import { createWriteStream } from 'fs';
+import { createHash } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const binDir = join(__dirname, '..', 'bin');
@@ -16,7 +17,12 @@ function downloadFile(url, dest) {
       if (response.statusCode === 302 || response.statusCode === 301) {
         // Follow redirect
         file.close();
-        downloadFile(response.headers.location, dest).then(resolve).catch(reject);
+        const redirectUrl = response.headers.location;
+        if (!redirectUrl) {
+          reject(new Error('Redirect with no location'));
+          return;
+        }
+        downloadFile(redirectUrl, dest).then(resolve).catch(reject);
         return;
       }
       if (response.statusCode !== 200) {
@@ -60,11 +66,33 @@ async function setup() {
     binaryName = 'yt-dlp';
   }
 
-  const url = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${binaryName}`;
+  const version = process.env.YTDLP_VERSION;
+  const url = version
+    ? `https://github.com/yt-dlp/yt-dlp/releases/download/${version}/${binaryName}`
+    : `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${binaryName}`;
 
   try {
     console.log('Downloading yt-dlp from:', url);
     await downloadFile(url, ytDlpPath);
+
+    const expectedSha256 = process.env.YTDLP_SHA256;
+    if (expectedSha256) {
+      const { createReadStream } = await import('fs');
+      const hash = createHash('sha256');
+      await new Promise((resolve, reject) => {
+        const stream = createReadStream(ytDlpPath);
+        stream.on('data', (chunk) => hash.update(chunk));
+        stream.on('end', resolve);
+        stream.on('error', reject);
+      });
+      const actual = hash.digest('hex');
+      if (actual.toLowerCase() !== String(expectedSha256).toLowerCase()) {
+        throw new Error(`SHA256 mismatch for yt-dlp (expected ${expectedSha256}, got ${actual})`);
+      }
+      console.log('yt-dlp SHA256 verified');
+    } else {
+      console.warn('Warning: yt-dlp download was not checksum-verified. Set YTDLP_SHA256 to verify.');
+    }
 
     // Make executable on Unix systems
     if (!isWin) {

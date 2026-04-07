@@ -9,12 +9,10 @@ const DISCORD_API = 'https://discord.com/api/v10';
 
 /**
  * Get the frontend URL for redirects.
- * Uses the request origin so OAuth redirects back to wherever the user accessed the app.
+ * Avoid deriving redirect targets from request headers to prevent host-header / forwarded-header injection.
  */
-function getWebUrl(req) {
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.headers['x-forwarded-host'] || req.get('host');
-  return `${protocol}://${host}`;
+function getWebUrl() {
+  return process.env.WEB_URL || 'http://localhost:5173';
 }
 
 /**
@@ -37,7 +35,7 @@ router.get('/callback', async (req, res) => {
   const { code } = req.query;
 
   if (!code) {
-    return res.redirect(`${getWebUrl(req)}?error=no_code`);
+    return res.redirect(`${getWebUrl()}?error=no_code`);
   }
 
   try {
@@ -58,7 +56,7 @@ router.get('/callback', async (req, res) => {
 
     if (!tokenResponse.ok) {
       console.error('Token exchange failed:', await tokenResponse.text());
-      return res.redirect(`${getWebUrl(req)}?error=token_exchange`);
+      return res.redirect(`${getWebUrl()}?error=token_exchange`);
     }
 
     const tokens = await tokenResponse.json();
@@ -72,7 +70,7 @@ router.get('/callback', async (req, res) => {
 
     if (!userResponse.ok) {
       console.error('User fetch failed:', await userResponse.text());
-      return res.redirect(`${getWebUrl(req)}?error=user_fetch`);
+      return res.redirect(`${getWebUrl()}?error=user_fetch`);
     }
 
     const discordUser = await userResponse.json();
@@ -86,14 +84,14 @@ router.get('/callback', async (req, res) => {
 
     if (!guildsResponse.ok) {
       console.error('Guild fetch failed:', await guildsResponse.text());
-      return res.redirect(`${getWebUrl(req)}?error=guild_fetch`);
+      return res.redirect(`${getWebUrl()}?error=guild_fetch`);
     }
 
     const guilds = await guildsResponse.json();
     const isMember = guilds.some(g => g.id === process.env.GUILD_ID);
 
     if (!isMember) {
-      return res.redirect(`${getWebUrl(req)}?error=not_member`);
+      return res.redirect(`${getWebUrl()}?error=not_member`);
     }
 
     // Create or update user in database
@@ -122,11 +120,11 @@ router.get('/callback', async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
-    // Redirect with token in URL for cross-port cookie issue in development
-    res.redirect(`${getWebUrl(req)}?token=${jwtToken}`);
+    // Cookie-based auth: do not put tokens in URLs.
+    res.redirect(`${getWebUrl()}?auth=success`);
   } catch (error) {
     console.error('OAuth callback error:', error);
-    res.redirect(`${getWebUrl(req)}?error=server_error`);
+    res.redirect(`${getWebUrl()}?error=server_error`);
   }
 });
 
@@ -135,8 +133,7 @@ router.get('/callback', async (req, res) => {
  */
 router.get('/me', authMiddleware, (req, res) => {
   res.json({
-    user: req.user,
-    token: req.token
+    user: req.user
   });
 });
 

@@ -17,6 +17,20 @@ import {
 let io;
 let progressInterval;
 
+function getCookieTokenFromHeaders(headers) {
+  const cookieHeader = headers?.cookie;
+  if (!cookieHeader) return null;
+  const parts = cookieHeader.split(';');
+  for (const part of parts) {
+    const [rawKey, ...rest] = part.trim().split('=');
+    if (rawKey === 'token') {
+      const value = rest.join('=');
+      return value ? decodeURIComponent(value) : null;
+    }
+  }
+  return null;
+}
+
 /**
  * Broadcast playlists update to all connected clients
  */
@@ -40,7 +54,9 @@ export function setupSocketServer(httpServer) {
 
   // Authentication middleware
   io.use((socket, next) => {
-    const token = socket.handshake.auth.token;
+    const token =
+      socket.handshake.auth?.token ||
+      getCookieTokenFromHeaders(socket.handshake.headers);
     const { user, error } = verifyToken(token);
 
     if (error) {

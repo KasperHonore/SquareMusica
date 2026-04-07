@@ -3,8 +3,9 @@ import { requireVoiceConnection } from './utils/checks.js';
 import { musicManager } from '../state/musicManager.js';
 import { MusicPlayer } from '../music/player.js';
 import { Queue } from '../music/queue.js';
-import { resolveQuery, enrichWithUserInfo, triggerLookaheadIfNeeded, tryPlayWithFallback } from '../music/trackResolver.js';
+import { resolveQuery, tryPlayWithFallback } from '../music/trackResolver.js';
 import { resolutionManager } from '../music/resolutionManager.js';
+import { addTracksToQueue, resolveQueryErrorToMessage } from '../shared/queueHelpers.js';
 
 // Singleton instances
 let player = null;
@@ -17,23 +18,29 @@ export function getPlayer() {
     musicManager.setGetConnection(getConnection);
 
     // Auto-play next track
-    player.on('trackEnd', async () => {
-      const connection = getConnection(musicManager.guildId);
-      const { played } = await tryPlayWithFallback(player, queue, connection, true);
+    player.on('trackEnd', () => {
+      void (async () => {
+        try {
+          const connection = getConnection(musicManager.guildId);
+          const { played } = await tryPlayWithFallback(player, queue, connection, true);
 
-      if (played) {
-        resolutionManager.processLookahead(queue?.currentIndex || 0).catch(err => {
-          console.error('Lookahead resolution error:', err);
-        });
-        musicManager.emitQueueUpdate();
-      } else {
-        console.log('[TrackEnd] No more playable tracks');
-        resolutionManager.stop();
-        resolutionManager.processingTracks.clear();
-        musicManager.emit('queue:update', { tracks: [], currentIndex: 0 });
-        musicManager.emit('track:change', null);
-        musicManager.emitState();
-      }
+          if (played) {
+            resolutionManager.processLookahead(queue?.currentIndex || 0).catch(err => {
+              console.error('Lookahead resolution error:', err);
+            });
+            musicManager.emitQueueUpdate();
+          } else {
+            console.log('[TrackEnd] No more playable tracks');
+            resolutionManager.stop();
+            resolutionManager.processingTracks.clear();
+            musicManager.emit('queue:update', { tracks: [], currentIndex: 0 });
+            musicManager.emit('track:change', null);
+            musicManager.emitState();
+          }
+        } catch (error) {
+          console.error('[TrackEnd] Failed to autoplay next track:', error);
+        }
+      })();
     });
 
     // Handle failed tracks (skip to next)
@@ -86,25 +93,19 @@ export async function handlePlay(interaction) {
     const { tracks: rawTracks, error } = await resolveQuery(query, userInfo);
 
     if (error) {
-      const messages = {
-        SPOTIFY_PLAYLIST_EMPTY: 'Could not load Spotify playlist or playlist is empty.',
-        SPOTIFY_TRACK_NOT_FOUND: 'Could not find that Spotify track.',
-        SPOTIFY_ALBUM_EMPTY: 'Could not load Spotify album or album is empty.',
-        PLAYLIST_EMPTY: 'Could not load playlist.',
-        VIDEO_NOT_FOUND: 'Could not find that video.',
-        NO_RESULTS: 'No results found.'
-      };
-      return interaction.editReply(messages[error] || 'Failed to process query.');
+      return interaction.editReply(
+        resolveQueryErrorToMessage(error, 'Failed to process query.')
+      );
     }
 
-    // Add user info to non-Spotify tracks (Spotify tracks already have it from createUnresolvedTrack)
-    let tracks = enrichWithUserInfo(rawTracks, userInfo);
-
-    // Add to queue using musicManager facade
-    tracks.forEach(t => musicManager.addToQueue(t));
-
-    // Trigger lookahead resolution if needed
-    const hasUnresolved = triggerLookaheadIfNeeded(tracks, resolutionManager, q, q.currentIndex);
+    const { tracks, lazyResolution } = addTracksToQueue({
+      musicManager,
+      resolutionManager,
+      queue: q,
+      currentIndex: q.currentIndex,
+      rawTracks,
+      userInfo
+    });
 
     // Get or create voice connection
     let connection = getConnection(interaction.guildId);
@@ -135,7 +136,7 @@ export async function handlePlay(interaction) {
       }
     } else {
       let message = `Added ${tracks.length} tracks to queue`;
-      if (hasUnresolved) {
+      if (lazyResolution) {
         message += ' (resolving YouTube URLs in background...)';
       }
       await interaction.editReply(message);

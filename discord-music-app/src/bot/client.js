@@ -54,25 +54,51 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
 
   if (!leftBotChannel && !joinedBotChannel) return;
 
-  // Refetch channel to get current members
-  botChannel.fetch().then(channel => {
-    const humanMembers = channel.members.filter(m => !m.user.bot).size;
-    console.log(`[Bot] VoiceStateUpdate: humanMembers=${humanMembers} in channel ${channel.name}`);
+  // Prefer cached channel membership to avoid REST calls on frequent voice events.
+  const humanMembers = botChannel.members?.filter(m => !m.user.bot).size;
 
-    if (humanMembers === 0) {
-      console.log(`[Bot] VoiceStateUpdate: no humans left, starting inactivity timer`);
-      startInactivityTimer(guildId, () => {
-        console.log(`[Bot] Inactivity timer fired, leaving channel`);
-        leaveChannel(guildId);
-        setChannelCache(guildId, null);
-        musicManager.stop();
-        musicManager.emitVoiceContext();
-        musicManager.emitState();
-      });
-    } else {
-      cancelInactivityTimer(guildId);
-    }
-  });
+  if (typeof humanMembers === 'number') {
+    console.log(`[Bot] VoiceStateUpdate: humanMembers=${humanMembers} in channel ${botChannel.name}`);
+
+      if (humanMembers === 0) {
+        console.log(`[Bot] VoiceStateUpdate: no humans left, starting inactivity timer`);
+        startInactivityTimer(guildId, () => {
+          console.log(`[Bot] Inactivity timer fired, leaving channel`);
+          leaveChannel(guildId);
+          setChannelCache(guildId, null);
+          musicManager.stop();
+          musicManager.emitVoiceContext();
+          musicManager.emitState();
+        });
+      } else {
+        cancelInactivityTimer(guildId);
+      }
+    return;
+  }
+
+  // Fallback: if cache is missing (partial channel), do a single fetch and ignore errors.
+  botChannel.fetch()
+    .then(channel => {
+      const fetchedHumanMembers = channel.members.filter(m => !m.user.bot).size;
+      console.log(`[Bot] VoiceStateUpdate(fetch): humanMembers=${fetchedHumanMembers} in channel ${channel.name}`);
+
+      if (fetchedHumanMembers === 0) {
+        console.log(`[Bot] VoiceStateUpdate(fetch): no humans left, starting inactivity timer`);
+        startInactivityTimer(guildId, () => {
+          console.log(`[Bot] Inactivity timer fired, leaving channel`);
+          leaveChannel(guildId);
+          setChannelCache(guildId, null);
+          musicManager.stop();
+          musicManager.emitVoiceContext();
+          musicManager.emitState();
+        });
+      } else {
+        cancelInactivityTimer(guildId);
+      }
+    })
+    .catch((error) => {
+      console.error('[Bot] VoiceStateUpdate: failed to fetch channel:', error);
+    });
 });
 
 botEvents.on('voiceDisconnected', (guildId) => {

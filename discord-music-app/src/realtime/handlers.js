@@ -1,8 +1,9 @@
 import { musicManager } from '../state/musicManager.js';
 import { getConnection, isConnected, joinChannel, leaveChannel, setChannelCache } from '../bot/voiceManager.js';
-import { resolveQuery, enrichWithUserInfo, triggerLookaheadIfNeeded, tryPlayWithFallback } from '../music/trackResolver.js';
+import { resolveQuery, tryPlayWithFallback } from '../music/trackResolver.js';
 import { resolutionManager } from '../music/resolutionManager.js';
 import { client } from '../bot/client.js';
+import { addTracksToQueue, ensureVoiceConnected, resolveQueryErrorToMessage } from '../shared/queueHelpers.js';
 
 /**
  * Check if bot is connected to voice channel
@@ -11,11 +12,11 @@ import { client } from '../bot/client.js';
  */
 function checkVoiceConnection(socket) {
   const guildId = musicManager.guildId || process.env.GUILD_ID;
-  if (!isConnected(guildId)) {
-    socket.emit('error', { message: 'Bot is not in a voice channel. Use /join in Discord first.' });
-    return false;
-  }
-  return true;
+  return ensureVoiceConnected({
+    guildId,
+    isConnected,
+    onNotConnected: () => socket.emit('error', { message: 'Bot is not in a voice channel. Use /join in Discord first.' })
+  });
 }
 
 /**
@@ -38,28 +39,18 @@ export function handleQueueAdd(socket) {
       const { tracks: rawTracks, error } = await resolveQuery(query, userInfo);
 
       if (error) {
-        const errorMap = {
-          SPOTIFY_PLAYLIST_EMPTY: 'Spotify playlist not found or empty',
-          SPOTIFY_TRACK_NOT_FOUND: 'Spotify track not found',
-          SPOTIFY_ALBUM_EMPTY: 'Spotify album not found or empty',
-          PLAYLIST_EMPTY: 'Playlist not found or empty',
-          VIDEO_NOT_FOUND: 'Video not found',
-          NO_RESULTS: 'No results found'
-        };
-        socket.emit('error', { message: errorMap[error] || 'Failed to process query' });
+        socket.emit('error', { message: resolveQueryErrorToMessage(error) });
         return;
       }
 
-      // Add user info to tracks
-      let tracks = enrichWithUserInfo(rawTracks, userInfo);
-
-      // Add to queue
-      tracks.forEach(track => musicManager.addToQueue(track));
-
-      // Trigger lookahead resolution if needed
-      triggerLookaheadIfNeeded(
-        tracks, resolutionManager, musicManager.queue, musicManager.getCurrentIndex()
-      );
+      const { tracks } = addTracksToQueue({
+        musicManager,
+        resolutionManager,
+        queue: musicManager.queue,
+        currentIndex: musicManager.getCurrentIndex(),
+        rawTracks,
+        userInfo
+      });
 
       // Auto-play if not playing
       const player = musicManager.player;
@@ -195,18 +186,15 @@ export function handleVoiceJoin(socket) {
       const discordId = socket.user.discord_id;
       console.log(`[HandleVoiceJoin] User ${socket.user.username} (${discordId}) requesting voice join`);
 
-      let voiceChannel = null;
-      for (const [guildId, guild] of client.guilds.cache) {
-        try {
-          const member = await guild.members.fetch(discordId);
-          if (member.voice?.channel) {
-            voiceChannel = member.voice.channel;
-            break;
-          }
-        } catch {
-          // User not in this guild, continue searching
-        }
+      const guildId = musicManager.guildId || process.env.GUILD_ID;
+      if (!guildId) {
+        socket.emit('error', { message: 'Server is not configured with a target guild.' });
+        return;
       }
+
+      const guild = await client.guilds.fetch(guildId);
+      const member = await guild.members.fetch(discordId);
+      const voiceChannel = member.voice?.channel || null;
 
       if (!voiceChannel) {
         console.log(`[HandleVoiceJoin] User ${socket.user.username} not in any voice channel`);

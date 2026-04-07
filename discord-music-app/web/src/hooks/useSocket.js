@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 
 export function useSocket() {
-  const { token } = useAuth();
+  const { user } = useAuth();
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
   const [queue, setQueue] = useState([]);
@@ -24,10 +24,10 @@ export function useSocket() {
   const [playlists, setPlaylists] = useState([]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!user) return;
 
     const newSocket = io({
-      auth: { token }
+      withCredentials: true
     });
 
     newSocket.on('connect', () => {
@@ -111,7 +111,7 @@ export function useSocket() {
     return () => {
       newSocket.close();
     };
-  }, [token]);
+  }, [user]);
 
   const addToQueue = useCallback((query) => {
     socket?.emit('queue:add', { query });

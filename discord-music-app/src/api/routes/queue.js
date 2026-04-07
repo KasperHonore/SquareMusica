@@ -3,18 +3,22 @@ import { musicManager } from '../../state/musicManager.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
 import { search } from '../../music/youtube.js';
 import { isConnected } from '../../bot/voiceManager.js';
-import { resolveQuery, enrichWithUserInfo, triggerLookaheadIfNeeded } from '../../music/trackResolver.js';
+import { resolveQuery } from '../../music/trackResolver.js';
 import { resolutionManager } from '../../music/resolutionManager.js';
 import { db } from '../../database/db.js';
+import { addTracksToQueue, ensureVoiceConnected, resolveQueryErrorToMessage } from '../../shared/queueHelpers.js';
 
 const router = Router();
 
 // Middleware to check voice connection for mutating operations
 function requireVoiceConnection(req, res, next) {
   const guildId = musicManager.guildId || process.env.GUILD_ID;
-  if (!isConnected(guildId)) {
-    return res.status(400).json({ error: 'Bot is not in a voice channel. Use /join in Discord first.' });
-  }
+  const ok = ensureVoiceConnected({
+    guildId,
+    isConnected,
+    onNotConnected: () => res.status(400).json({ error: 'Bot is not in a voice channel. Use /join in Discord first.' })
+  });
+  if (!ok) return;
   next();
 }
 
@@ -50,33 +54,23 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
     const { tracks: rawTracks, error } = await resolveQuery(query, userInfo);
 
     if (error) {
-      const errorMap = {
-        SPOTIFY_PLAYLIST_EMPTY: 'Spotify playlist not found or empty',
-        SPOTIFY_TRACK_NOT_FOUND: 'Spotify track not found',
-        SPOTIFY_ALBUM_EMPTY: 'Spotify album not found or empty',
-        PLAYLIST_EMPTY: 'Playlist not found or empty',
-        VIDEO_NOT_FOUND: 'Video not found',
-        NO_RESULTS: 'No results found'
-      };
-      return res.status(404).json({ error: errorMap[error] || 'Failed to process query' });
+      return res.status(404).json({ error: resolveQueryErrorToMessage(error) });
     }
 
-    // Add user info to tracks
-    let tracks = enrichWithUserInfo(rawTracks, userInfo);
-
-    // Add to queue
-    tracks.forEach(track => musicManager.addToQueue(track));
-
-    // Trigger lookahead resolution if needed
-    const hasUnresolved = triggerLookaheadIfNeeded(
-      tracks, resolutionManager, musicManager.queue, musicManager.getCurrentIndex()
-    );
+    const { tracks, lazyResolution } = addTracksToQueue({
+      musicManager,
+      resolutionManager,
+      queue: musicManager.queue,
+      currentIndex: musicManager.getCurrentIndex(),
+      rawTracks,
+      userInfo
+    });
 
     res.json({
       success: true,
       added: tracks.length,
       tracks,
-      lazyResolution: hasUnresolved
+      lazyResolution
     });
   } catch (error) {
     console.error('Add to queue error:', error);

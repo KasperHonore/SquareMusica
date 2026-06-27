@@ -15,7 +15,9 @@
     "setup": "node scripts/setup-ytdlp.js",
     "lint": "eslint .",
     "format": "prettier -w .",
-    "format:check": "prettier -c ."
+    "format:check": "prettier -c .",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "author": "Shay DeWael",
   "license": "MIT",
@@ -38,9 +40,9 @@
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "eslint": "^9.0.0",
-    "nodemon": "^3.0.0"
-    ,
-    "prettier": "^3.0.0"
+    "nodemon": "^3.0.0",
+    "prettier": "^3.0.0",
+    "vitest": "^4.1.9"
   },
   "nodemonConfig": {
     "ignore": [

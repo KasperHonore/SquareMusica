@@ -15,9 +15,8 @@ import { resolveSpotifyTrack } from '../../src/music/resolver.js';
 // across that 50-point threshold to isolate each scoring contribution.
 //
 // IMPORTANT: the resolver keeps a module-level cache keyed by
-// `${artists}:${title}`. clearCache() is broken (references an undefined
-// `cacheOrder`), so each test uses a UNIQUE artist key to guarantee a fresh
-// cache entry instead of clearing the cache.
+// `${artists}:${title}` with no exported reset, so each test uses a UNIQUE
+// artist key to guarantee a fresh cache entry instead of clearing the cache.
 
 const yt = (overrides = {}) => ({
   url: 'https://youtu.be/vid',
@@ -55,18 +54,16 @@ describe('resolveSpotifyTrack', () => {
   });
 
   describe('search results handling', () => {
-    it('returns null when search yields no results, and re-searches on the next call', async () => {
+    it('returns null when search yields no results, and serves the negative cache on the next call', async () => {
       search.mockResolvedValue([]);
       const track = { title: 'alpha beta', artists: ['k3empty'], durationMs: 0 };
 
       expect(await resolveSpotifyTrack(track)).toBeNull();
       expect(await resolveSpotifyTrack(track)).toBeNull();
-      // NOTE: genuine bug -- the resolver setCache()s `null` for a no-match, but
-      // getCached() returns null for BOTH a cache miss and a cached `null`, and
-      // resolveSpotifyTrack only short-circuits when `cached !== null`. So the
-      // negative cache is never honored: every unresolved track is re-searched
-      // on every call. Characterized here (search is called twice), not fixed.
-      expect(search).toHaveBeenCalledTimes(2);
+      // The resolver caches a NEGATIVE sentinel for a no-match and getCached()
+      // distinguishes a true miss from a cached negative, so the second lookup
+      // of the same not-found track is served from cache without re-searching.
+      expect(search).toHaveBeenCalledTimes(1);
     });
 
     it('returns the best match shape when the top score clears the threshold', async () => {

@@ -1,9 +1,49 @@
 import { musicManager } from '../state/musicManager.js';
-import { getConnection, isConnected, joinChannel, leaveChannel, setChannelCache } from '../bot/voiceManager.js';
+import {
+  getConnection,
+  isConnected,
+  joinChannel,
+  leaveChannel,
+  setChannelCache
+} from '../bot/voiceManager.js';
 import { resolveQuery, tryPlayWithFallback } from '../music/trackResolver.js';
 import { resolutionManager } from '../music/resolutionManager.js';
 import { client } from '../bot/client.js';
-import { addTracksToQueue, ensureVoiceConnected, resolveQueryErrorToMessage } from '../shared/queueHelpers.js';
+import {
+  addTracksToQueue,
+  ensureVoiceConnected,
+  resolveQueryErrorToMessage,
+  MAX_QUERY_LENGTH
+} from '../shared/queueHelpers.js';
+import { logger } from '../utils/logger.js';
+
+// Minimum interval (ms) between accepted events of a given type. Lightweight
+// in-memory throttle to stop a single user from flooding yt-dlp searches or
+// voice-join attempts. Keyed per USER (not per socket) so one user with several
+// open tabs can't multiply their budget by the number of connections.
+const THROTTLE_INTERVALS_MS = {
+  'queue:add': 1000,
+  'voice:join': 3000
+};
+
+// `${userId}:${event}` -> last-accepted timestamp. Bounded by (users x events).
+const lastEventAt = new Map();
+
+function isThrottled(socket, key) {
+  const intervalMs = THROTTLE_INTERVALS_MS[key];
+  if (!intervalMs) return false;
+
+  const userId = socket.user?.discord_id || socket.user?.id || 'anonymous';
+  const mapKey = `${userId}:${key}`;
+  const now = Date.now();
+  const last = lastEventAt.get(mapKey) || 0;
+  if (now - last < intervalMs) {
+    return true;
+  }
+
+  lastEventAt.set(mapKey, now);
+  return false;
+}
 
 /**
  * Check if bot is connected to voice channel
@@ -15,7 +55,10 @@ function checkVoiceConnection(socket) {
   return ensureVoiceConnected({
     guildId,
     isConnected,
-    onNotConnected: () => socket.emit('error', { message: 'Bot is not in a voice channel. Use /join in Discord first.' })
+    onNotConnected: () =>
+      socket.emit('error', {
+        message: 'Bot is not in a voice channel. Use /join in Discord first.'
+      })
   });
 }
 
@@ -26,7 +69,20 @@ function checkVoiceConnection(socket) {
  */
 export function handleQueueAdd(socket) {
   return async ({ query }) => {
+    if (isThrottled(socket, 'queue:add')) {
+      socket.emit('error', { message: 'You are adding tracks too quickly. Please slow down.' });
+      return;
+    }
     if (!checkVoiceConnection(socket)) return;
+
+    if (typeof query !== 'string' || query.length === 0) {
+      socket.emit('error', { message: 'A search query is required.' });
+      return;
+    }
+    if (query.length > MAX_QUERY_LENGTH) {
+      socket.emit('error', { message: `Query must be at most ${MAX_QUERY_LENGTH} characters.` });
+      return;
+    }
 
     try {
       const userInfo = {
@@ -43,7 +99,7 @@ export function handleQueueAdd(socket) {
         return;
       }
 
-      const { tracks } = addTracksToQueue({
+      addTracksToQueue({
         musicManager,
         resolutionManager,
         queue: musicManager.queue,
@@ -65,8 +121,8 @@ export function handleQueueAdd(socket) {
         }
       }
     } catch (err) {
-      console.error('Queue add error:', err);
-      socket.emit('error', { message: err.message });
+      logger.error('Queue add error:', err);
+      socket.emit('error', { message: 'Failed to add to the queue. Please try again.' });
     }
   };
 }
@@ -83,7 +139,8 @@ export function handleQueueRemove(socket) {
     try {
       musicManager.removeFromQueue(position);
     } catch (err) {
-      socket.emit('error', { message: err.message });
+      logger.error('Queue remove error:', err);
+      socket.emit('error', { message: 'Failed to remove the track. Please try again.' });
     }
   };
 }
@@ -100,7 +157,8 @@ export function handleQueueReorder(socket) {
     try {
       musicManager.reorderQueue(from, to);
     } catch (err) {
-      socket.emit('error', { message: err.message });
+      logger.error('Queue reorder error:', err);
+      socket.emit('error', { message: 'Failed to reorder the queue. Please try again.' });
     }
   };
 }
@@ -139,7 +197,7 @@ export function handlePlayerControl(socket) {
         case 'clear':
           musicManager.clearUpcomingQueue();
           break;
-        case 'previous':
+        case 'previous': {
           // Handle previous track
           const queue = musicManager.queue;
           const player = musicManager.player;
@@ -158,12 +216,13 @@ export function handlePlayerControl(socket) {
             musicManager.emitQueueUpdate();
           }
           break;
+        }
         default:
           socket.emit('error', { message: 'Unknown action' });
       }
     } catch (err) {
-      console.error('Player control error:', err);
-      socket.emit('error', { message: err.message });
+      logger.error('Player control error:', err);
+      socket.emit('error', { message: 'Playback control failed. Please try again.' });
     }
   };
 }
@@ -177,14 +236,22 @@ export function handlePlayerControl(socket) {
  */
 export function handleVoiceJoin(socket) {
   return async () => {
+    if (isThrottled(socket, 'voice:join')) {
+      socket.emit('error', { message: 'Please wait a moment before trying to join again.' });
+      return;
+    }
     try {
       if (!client.isReady()) {
-        socket.emit('error', { message: 'Bot is still starting up. Please wait a moment and try again.' });
+        socket.emit('error', {
+          message: 'Bot is still starting up. Please wait a moment and try again.'
+        });
         return;
       }
 
       const discordId = socket.user.discord_id;
-      console.log(`[HandleVoiceJoin] User ${socket.user.username} (${discordId}) requesting voice join`);
+      logger.debug(
+        `[HandleVoiceJoin] User ${socket.user.username} (${discordId}) requesting voice join`
+      );
 
       const guildId = musicManager.guildId || process.env.GUILD_ID;
       if (!guildId) {
@@ -197,23 +264,27 @@ export function handleVoiceJoin(socket) {
       const voiceChannel = member.voice?.channel || null;
 
       if (!voiceChannel) {
-        console.log(`[HandleVoiceJoin] User ${socket.user.username} not in any voice channel`);
+        logger.debug(`[HandleVoiceJoin] User ${socket.user.username} not in any voice channel`);
         socket.emit('error', { message: 'You need to be in a voice channel in Discord!' });
         return;
       }
 
-      console.log(`[HandleVoiceJoin] Found user in channel ${voiceChannel.name} in guild ${voiceChannel.guild.name} (${voiceChannel.guild.id}), joining...`);
+      logger.debug(
+        `[HandleVoiceJoin] Found user in channel ${voiceChannel.name} in guild ${voiceChannel.guild.name} (${voiceChannel.guild.id}), joining...`
+      );
       const conn = await joinChannel(voiceChannel);
-      console.log(`[HandleVoiceJoin] joinChannel returned, connection status: ${conn?.state?.status}`);
+      logger.debug(
+        `[HandleVoiceJoin] joinChannel returned, connection status: ${conn?.state?.status}`
+      );
       musicManager.setGuildId(voiceChannel.guild.id);
       setChannelCache(voiceChannel.guild.id, voiceChannel);
-      console.log(`[HandleVoiceJoin] About to emit voice context and state...`);
+      logger.debug(`[HandleVoiceJoin] About to emit voice context and state...`);
       musicManager.emitVoiceContext();
       musicManager.emitState();
-      console.log(`[HandleVoiceJoin] Join complete, voice context and state emitted`);
+      logger.debug(`[HandleVoiceJoin] Join complete, voice context and state emitted`);
     } catch (err) {
-      console.error('[HandleVoiceJoin] Voice join error:', err.message);
-      socket.emit('error', { message: err.message || 'Failed to join voice channel' });
+      logger.error('[HandleVoiceJoin] Voice join error:', err);
+      socket.emit('error', { message: 'Failed to join the voice channel. Please try again.' });
     }
   };
 }
@@ -234,8 +305,8 @@ export function handleVoiceLeave(socket) {
       musicManager.emitVoiceContext();
       musicManager.emitState();
     } catch (err) {
-      console.error('Voice leave error:', err);
-      socket.emit('error', { message: err.message || 'Failed to leave voice channel' });
+      logger.error('Voice leave error:', err);
+      socket.emit('error', { message: 'Failed to leave the voice channel. Please try again.' });
     }
   };
 }

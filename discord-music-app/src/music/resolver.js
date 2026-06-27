@@ -1,4 +1,5 @@
 import { search } from './youtube.js';
+import { logger } from '../utils/logger.js';
 
 // Cache configuration
 const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -6,6 +7,12 @@ const CACHE_MAX_ENTRIES = 5000;
 
 // In-memory cache with TTL
 const cache = new Map();
+
+// Sentinels so getCached() can distinguish a true cache miss from a cached
+// negative ("we searched and found nothing") result. Storing plain null for a
+// negative result is ambiguous with a miss, which defeats the negative cache.
+const MISS = Symbol('cache-miss');
+const NEGATIVE = Symbol('cache-negative');
 
 /**
  * Generate cache key for a Spotify track
@@ -19,17 +26,18 @@ function getCacheKey(spotifyTrack) {
 }
 
 /**
- * Get cached result if valid
+ * Get cached result if valid.
  * @param {string} key - Cache key
- * @returns {Object|null} Cached result or null
+ * @returns {Object|symbol} Cached value (an Object, or the NEGATIVE sentinel for
+ *   a cached not-found), or the MISS sentinel when there is no valid entry.
  */
 function getCached(key) {
   const entry = cache.get(key);
-  if (!entry) return null;
+  if (!entry) return MISS;
 
   if (Date.now() > entry.expiresAt) {
     cache.delete(key);
-    return null;
+    return MISS;
   }
 
   // Refresh recency (LRU-ish) without a separate tracking structure
@@ -79,7 +87,11 @@ function normalize(str) {
  * @returns {Set<string>} Set of words
  */
 function getWords(str) {
-  return new Set(normalize(str).split(' ').filter(w => w.length > 1));
+  return new Set(
+    normalize(str)
+      .split(' ')
+      .filter((w) => w.length > 1)
+  );
 }
 
 /**
@@ -89,10 +101,12 @@ function getWords(str) {
  */
 function isOfficialChannel(channel) {
   const lower = (channel || '').toLowerCase();
-  return lower.includes('official') ||
-         lower.includes(' - topic') ||
-         lower.includes('vevo') ||
-         lower.endsWith('topic');
+  return (
+    lower.includes('official') ||
+    lower.includes(' - topic') ||
+    lower.includes('vevo') ||
+    lower.endsWith('topic')
+  );
 }
 
 /**
@@ -171,10 +185,11 @@ export async function resolveSpotifyTrack(spotifyTrack) {
 
   const cacheKey = getCacheKey(spotifyTrack);
 
-  // Check cache first
+  // Check cache first. A NEGATIVE sentinel means we previously searched and
+  // found no acceptable match, so honor it instead of re-searching.
   const cached = getCached(cacheKey);
-  if (cached !== null) {
-    return cached;
+  if (cached !== MISS) {
+    return cached === NEGATIVE ? null : cached;
   }
 
   try {
@@ -186,22 +201,20 @@ export async function resolveSpotifyTrack(spotifyTrack) {
     }
 
     // Build search query
-    const query = artists.length > 0
-      ? `${artists.join(', ')} - ${title}`
-      : title;
+    const query = artists.length > 0 ? `${artists.join(', ')} - ${title}` : title;
 
-    console.log(`[Resolver] Searching YouTube for: "${query}"`);
+    logger.debug(`[Resolver] Searching YouTube for: "${query}"`);
 
     // Search YouTube (get top 5 results)
     const results = await search(query, 5);
 
     if (!results || results.length === 0) {
-      console.log(`[Resolver] No YouTube results for: "${query}"`);
-      setCache(cacheKey, null);
+      logger.debug(`[Resolver] No YouTube results for: "${query}"`);
+      setCache(cacheKey, NEGATIVE);
       return null;
     }
 
-    console.log(`[Resolver] Found ${results.length} YouTube results for: "${query}"`);
+    logger.debug(`[Resolver] Found ${results.length} YouTube results for: "${query}"`);
 
     // Score each result and find best match
     let bestResult = null;
@@ -209,7 +222,9 @@ export async function resolveSpotifyTrack(spotifyTrack) {
 
     for (const result of results) {
       const score = scoreMatch(spotifyTrack, result);
-      console.log(`[Resolver] Score ${score} for: "${result.title}" (duration: ${result.duration}s)`);
+      logger.debug(
+        `[Resolver] Score ${score} for: "${result.title}" (duration: ${result.duration}s)`
+      );
       if (score > bestScore) {
         bestScore = score;
         bestResult = result;
@@ -218,12 +233,14 @@ export async function resolveSpotifyTrack(spotifyTrack) {
 
     // Require minimum score of 50 (>= 50 passes)
     if (bestScore < 50 || !bestResult) {
-      console.log(`[Resolver] Best score ${bestScore} below threshold (50) for: "${query}"`);
-      setCache(cacheKey, null);
+      logger.debug(`[Resolver] Best score ${bestScore} below threshold (50) for: "${query}"`);
+      setCache(cacheKey, NEGATIVE);
       return null;
     }
 
-    console.log(`[Resolver] Best match for "${query}": "${bestResult.title}" (score: ${bestScore})`)
+    logger.debug(
+      `[Resolver] Best match for "${query}": "${bestResult.title}" (score: ${bestScore})`
+    );
 
     const resolved = {
       url: bestResult.url,
@@ -235,137 +252,8 @@ export async function resolveSpotifyTrack(spotifyTrack) {
 
     setCache(cacheKey, resolved);
     return resolved;
-
   } catch (error) {
-    console.error('Error resolving Spotify track:', error);
+    logger.error('Error resolving Spotify track:', error);
     return null;
   }
-}
-
-/**
- * Create a promise pool for controlled concurrency
- * @param {Array} items - Items to process
- * @param {Function} fn - Async function to apply to each item
- * @param {number} concurrency - Max concurrent operations
- * @returns {Promise<Array>} Results in order
- */
-async function promisePool(items, fn, concurrency) {
-  const results = new Array(items.length);
-  let nextIndex = 0;
-
-  async function worker() {
-    while (nextIndex < items.length) {
-      const index = nextIndex++;
-      try {
-        results[index] = { success: true, value: await fn(items[index], index) };
-      } catch (error) {
-        results[index] = { success: false, error };
-      }
-    }
-  }
-
-  // Start workers
-  const workers = [];
-  for (let i = 0; i < Math.min(concurrency, items.length); i++) {
-    workers.push(worker());
-  }
-
-  await Promise.all(workers);
-  return results;
-}
-
-/**
- * Resolve multiple Spotify tracks to YouTube in batch
- * @param {Array} spotifyTracks - Array of Spotify track objects
- * @param {Object} options - Options
- * @param {number} options.concurrency - Max parallel searches (default 3)
- * @returns {Promise<Object>} { resolved: YouTubeTrack[], skipped: SkippedTrack[] }
- */
-export async function resolveSpotifyTracks(spotifyTracks, { concurrency = 3 } = {}) {
-  const resolved = [];
-  const skipped = [];
-
-  if (!spotifyTracks || spotifyTracks.length === 0) {
-    return { resolved, skipped };
-  }
-
-  // Process tracks with controlled concurrency
-  const results = await promisePool(
-    spotifyTracks,
-    async (track) => {
-      // Check for local tracks before attempting resolution
-      if (track.is_local) {
-        return {
-          type: 'skipped',
-          track,
-          reason: 'local_track'
-        };
-      }
-
-      const youtubeTrack = await resolveSpotifyTrack(track);
-
-      if (youtubeTrack) {
-        return {
-          type: 'resolved',
-          track: youtubeTrack,
-          spotifyTrack: track
-        };
-      } else {
-        return {
-          type: 'skipped',
-          track,
-          reason: 'not_found'
-        };
-      }
-    },
-    concurrency
-  );
-
-  // Collect results
-  for (const result of results) {
-    if (!result.success) {
-      // Handle errors during resolution
-      const track = result.error?.track || { title: 'Unknown', artists: [] };
-      skipped.push({
-        title: track.title || track.name || 'Unknown',
-        artists: track.artists || [],
-        reason: 'spotify_error'
-      });
-      continue;
-    }
-
-    const { type, track, spotifyTrack, reason } = result.value;
-
-    if (type === 'resolved') {
-      resolved.push(track);
-    } else {
-      skipped.push({
-        title: track.title || track.name || 'Unknown',
-        artists: track.artists || [],
-        reason
-      });
-    }
-  }
-
-  return { resolved, skipped };
-}
-
-/**
- * Clear the resolver cache (useful for testing)
- */
-export function clearCache() {
-  cache.clear();
-  cacheOrder.length = 0;
-}
-
-/**
- * Get cache statistics
- * @returns {Object} Cache stats
- */
-export function getCacheStats() {
-  return {
-    size: cache.size,
-    maxSize: CACHE_MAX_ENTRIES,
-    ttlMs: CACHE_TTL_MS
-  };
 }

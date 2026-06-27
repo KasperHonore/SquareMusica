@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { musicManager } from '../../state/musicManager.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
 import { search } from '../../music/youtube.js';
@@ -6,9 +7,26 @@ import { isConnected } from '../../bot/voiceManager.js';
 import { resolveQuery } from '../../music/trackResolver.js';
 import { resolutionManager } from '../../music/resolutionManager.js';
 import { db } from '../../database/db.js';
-import { addTracksToQueue, ensureVoiceConnected, resolveQueryErrorToMessage } from '../../shared/queueHelpers.js';
+import {
+  addTracksToQueue,
+  ensureVoiceConnected,
+  resolveQueryErrorToMessage,
+  MAX_QUERY_LENGTH
+} from '../../shared/queueHelpers.js';
+import { logger } from '../../utils/logger.js';
 
 const router = Router();
+
+// GET /search is a read but it spawns a yt-dlp subprocess, so it gets its own
+// limiter (the global mutation limiter intentionally skips GETs). Cheap reads
+// like /history stay unthrottled.
+const searchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many searches, please slow down.' }
+});
 
 // Middleware to check voice connection for mutating operations
 function requireVoiceConnection(req, res, next) {
@@ -16,7 +34,8 @@ function requireVoiceConnection(req, res, next) {
   const ok = ensureVoiceConnected({
     guildId,
     isConnected,
-    onNotConnected: () => res.status(400).json({ error: 'Bot is not in a voice channel. Use /join in Discord first.' })
+    onNotConnected: () =>
+      res.status(400).json({ error: 'Bot is not in a voice channel. Use /join in Discord first.' })
   });
   if (!ok) return;
   next();
@@ -41,6 +60,12 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
 
   if (!query) {
     return res.status(400).json({ error: 'Query is required' });
+  }
+
+  if (typeof query !== 'string' || query.length > MAX_QUERY_LENGTH) {
+    return res
+      .status(400)
+      .json({ error: `Query must be a string of at most ${MAX_QUERY_LENGTH} characters` });
   }
 
   try {
@@ -73,7 +98,7 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
       lazyResolution
     });
   } catch (error) {
-    console.error('Add to queue error:', error);
+    logger.error('Add to queue error:', error);
     res.status(500).json({ error: 'Failed to add to queue' });
   }
 });
@@ -135,18 +160,28 @@ router.delete('/', authMiddleware, requireVoiceConnection, (req, res) => {
 /**
  * GET /api/queue/search - Search YouTube
  */
-router.get('/search', authMiddleware, async (req, res) => {
-  const { q, limit = 5 } = req.query;
+router.get('/search', searchLimiter, authMiddleware, async (req, res) => {
+  const { q } = req.query;
 
   if (!q) {
     return res.status(400).json({ error: 'Query is required' });
   }
 
+  if (typeof q !== 'string' || q.length > MAX_QUERY_LENGTH) {
+    return res
+      .status(400)
+      .json({ error: `Query must be a string of at most ${MAX_QUERY_LENGTH} characters` });
+  }
+
+  // Clamp limit to an integer in [1, 10] (default 5), ignoring junk input.
+  const parsedLimit = parseInt(req.query.limit, 10);
+  const limit = Number.isNaN(parsedLimit) ? 5 : Math.min(10, Math.max(1, parsedLimit));
+
   try {
-    const results = await search(q, parseInt(limit));
+    const results = await search(q, limit);
     res.json({ results });
   } catch (error) {
-    console.error('Search error:', error);
+    logger.error('Search error:', error);
     res.status(500).json({ error: 'Search failed' });
   }
 });
@@ -158,14 +193,14 @@ router.get('/history', optionalAuth, (req, res) => {
   const limit = parseInt(req.query.limit) || 50;
   const offset = parseInt(req.query.offset) || 0;
 
-  console.log(`[History API] Fetching history: limit=${limit}, offset=${offset}`);
+  logger.debug(`[History API] Fetching history: limit=${limit}, offset=${offset}`);
 
   try {
     const history = db.getHistory(limit, offset);
-    console.log(`[History API] Returning ${history.length} records`);
+    logger.debug(`[History API] Returning ${history.length} records`);
     res.json({ history });
   } catch (error) {
-    console.error('[History API] Database error:', error);
+    logger.error('[History API] Database error:', error);
     res.status(500).json({ error: 'Failed to get history' });
   }
 });

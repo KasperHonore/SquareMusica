@@ -30,7 +30,7 @@ src/
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 22+
 - A Discord application with bot token
 - FFmpeg (for audio processing)
 - yt-dlp (for YouTube streaming)
@@ -68,13 +68,20 @@ cp .env.sample .env
 ```
 
 Required variables:
+
 - `DISCORD_TOKEN` - Your bot token from Discord Developer Portal
 - `APP_ID` - Your application ID
 - `GUILD_ID` - Your Discord server ID (restricts web UI to this server's members)
 - `DISCORD_CLIENT_SECRET` - OAuth client secret (for web UI)
 - `JWT_SECRET` - Random string for JWT signing
-- `OAUTH_REDIRECT_URI` - OAuth callback URL
-- `WEB_URL` - Frontend URL (for CORS)
+- `OAUTH_REDIRECT_URI` - OAuth callback URL (Discord redirects here after login)
+- `WEB_URL` - Frontend URL; used for CORS and as the destination the server redirects back to after the OAuth flow completes
+
+Optional variables:
+
+- `TRUST_PROXY` - Reverse-proxy hop count. Leave unset for direct local runs; set to `1` when running behind a single reverse proxy / Docker so the rate limiter sees the real client IP. It is a hop count, not a boolean — do not set it to `true`.
+- `LOG_LEVEL` - `error` | `warn` | `info` | `debug` (default `info`).
+- `YT_DLP_MAX_CONCURRENCY` (default 4), `YT_DLP_MAX_QUEUE` (default 50), `YT_DLP_STREAM_TIMEOUT_MS` (default 15000) - yt-dlp resource limits.
 
 ### 3. Register Commands
 
@@ -92,28 +99,29 @@ npm run dev
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/join` | Join your voice channel |
-| `/leave` | Leave the voice channel |
-| `/play <query>` | Play a song (URL or search) |
-| `/pause` | Pause playback |
-| `/resume` | Resume playback |
-| `/skip` | Skip to next track |
-| `/stop` | Stop playback and clear queue |
-| `/queue` | View current queue |
-| `/nowplaying` | Show current track |
-| `/remove <position>` | Remove track from queue |
-| `/shuffle` | Shuffle the queue |
-| `/clear` | Clear the queue |
-| `/loop <off/track/queue>` | Set loop mode |
-| `/webui` | Get web control panel link |
+| Command                   | Description                   |
+| ------------------------- | ----------------------------- |
+| `/join`                   | Join your voice channel       |
+| `/leave`                  | Leave the voice channel       |
+| `/play <query>`           | Play a song (URL or search)   |
+| `/pause`                  | Pause playback                |
+| `/resume`                 | Resume playback               |
+| `/skip`                   | Skip to next track            |
+| `/stop`                   | Stop playback and clear queue |
+| `/queue`                  | View current queue            |
+| `/nowplaying`             | Show current track            |
+| `/remove <position>`      | Remove track from queue       |
+| `/shuffle`                | Shuffle the queue             |
+| `/clear`                  | Clear the queue               |
+| `/loop <off/track/queue>` | Set loop mode                 |
+| `/webui`                  | Get web control panel link    |
 
 ## Web UI
 
 The bot includes a web control panel accessible at `http://localhost:5173` (or your configured WEB_URL).
 
 Features:
+
 - Discord OAuth login
 - Real-time queue display
 - Playback controls
@@ -132,9 +140,9 @@ Features:
 - `PATCH /api/queue/reorder` - Reorder tracks
 - `POST /api/queue/shuffle` - Shuffle queue
 - `GET /api/queue/search` - Search YouTube
+- `GET /api/queue/history` - Get play history
 - `GET /api/player` - Get player state
 - `POST /api/player/:action` - Control playback
-- `GET /api/player/history` - Get play history
 
 ## Development
 
@@ -185,11 +193,11 @@ rm bin/yt-dlp && npm run setup
 
 ### Common Error Patterns
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Sign in to confirm you're not a bot` | Rate limited | Add cookies file via `YT_DLP_COOKIES` |
-| `Video unavailable` | Region/age restriction | Use VPN or cookies |
-| `Unable to extract` | yt-dlp outdated | Run `yt-dlp -U` |
+| Error                                 | Cause                  | Solution                              |
+| ------------------------------------- | ---------------------- | ------------------------------------- |
+| `Sign in to confirm you're not a bot` | Rate limited           | Add cookies file via `YT_DLP_COOKIES` |
+| `Video unavailable`                   | Region/age restriction | Use VPN or cookies                    |
+| `Unable to extract`                   | yt-dlp outdated        | Run `yt-dlp -U`                       |
 
 ### Using Cookies
 

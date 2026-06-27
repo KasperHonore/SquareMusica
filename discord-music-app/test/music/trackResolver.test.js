@@ -4,24 +4,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // module load. tryPlayWithFallback itself uses none of them (it only touches the
 // player/queue/connection arguments), so we mock those modules purely to avoid
 // any import-time side effects (yt-dlp path resolution, Spotify SDK, etc.).
-vi.mock('../../src/music/youtube.js', () => ({
+vi.mock('../../src/integrations/youtube.js', () => ({
   search: vi.fn(),
   getInfo: vi.fn(),
   isValidUrl: vi.fn(),
   isPlaylist: vi.fn(),
   getPlaylist: vi.fn()
 }));
-vi.mock('../../src/music/spotify.js', () => ({
+vi.mock('../../src/integrations/spotify.js', () => ({
   parseSpotifyUrl: vi.fn(),
   getPublicTrack: vi.fn(),
   getPublicPlaylistTracks: vi.fn(),
   getPublicAlbumTracks: vi.fn()
 }));
-vi.mock('../../src/music/resolutionManager.js', () => ({
+vi.mock('../../src/services/resolutionManager.js', () => ({
   ResolutionManager: class {}
 }));
 
-import { tryPlayWithFallback } from '../../src/music/trackResolver.js';
+import { tryPlayWithFallback } from '../../src/services/trackResolver.js';
 
 const connection = { id: 'conn' };
 

@@ -17,13 +17,14 @@ validateEnv([
 // Loaded dynamically (after validation) so their side effects don't run on a
 // misconfigured environment. Static imports would be hoisted above the check.
 const { createServer } = await import('http');
-const { app } = await import('./api/index.js');
-const { client } = await import('./bot/client.js');
-const { setupCommandHandler } = await import('./bot/commandHandler.js');
-const { registerAllCommands } = await import('./commands/index.js');
-const { setupSocketServer, shutdownSocketServer } = await import('./realtime/socketServer.js');
-const { db } = await import('./database/db.js');
-const { getPlayer, getQueue } = await import('./commands/playback.js');
+const { app } = await import('./transports/http/index.js');
+const { client } = await import('./transports/discord/client.js');
+const { setupCommandHandler } = await import('./transports/discord/commandHandler.js');
+const { registerAllCommands } = await import('./transports/discord/commands/index.js');
+const { setupSocketServer, shutdownSocketServer } =
+  await import('./transports/realtime/socketServer.js');
+const { db } = await import('./persistence/db.js');
+const { getPlayer, getQueue } = await import('./services/playback.js');
 const { logger } = await import('./utils/logger.js');
 
 const PORT = process.env.PORT || 3000;

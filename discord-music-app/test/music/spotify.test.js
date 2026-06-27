@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSpotifyUrl } from '../../src/music/spotify.js';
+import { parseSpotifyUrl } from '../../src/integrations/spotify.js';
 
 describe('parseSpotifyUrl', () => {
   describe('spotify: URI format', () => {

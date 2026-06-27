@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatTime } from '../../shared/formatTime.js';
+import { formatTime } from '../../src/shared/formatTime.js';
 
 describe('formatTime', () => {
   it('formats a normal second count as m:ss', () => {

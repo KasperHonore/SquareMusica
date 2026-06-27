@@ -1,4 +1,4 @@
-import { enrichWithUserInfo, triggerLookaheadIfNeeded } from '../music/trackResolver.js';
+import { enrichWithUserInfo, triggerLookaheadIfNeeded } from '../services/trackResolver.js';
 
 // Upper bound on a user-supplied search/URL query. Anything longer is rejected
 // before it reaches yt-dlp, since legitimate queries and URLs are well under this.

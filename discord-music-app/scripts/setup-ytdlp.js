@@ -91,7 +91,9 @@ async function setup() {
       }
       console.log('yt-dlp SHA256 verified');
     } else {
-      console.warn('Warning: yt-dlp download was not checksum-verified. Set YTDLP_SHA256 to verify.');
+      console.warn(
+        'Warning: yt-dlp download was not checksum-verified. Set YTDLP_SHA256 to verify.'
+      );
     }
 
     // Make executable on Unix systems

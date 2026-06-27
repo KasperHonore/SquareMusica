@@ -17,13 +17,6 @@ export default [
     }
   },
   {
-    ignores: [
-      'node_modules/**',
-      'data/**',
-      'bin/**',
-      'dist/**',
-      'web/dist/**'
-    ]
+    ignores: ['node_modules/**', 'data/**', 'bin/**', 'dist/**', 'web/dist/**']
   }
 ];
-

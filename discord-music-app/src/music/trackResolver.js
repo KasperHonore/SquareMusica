@@ -1,5 +1,10 @@
 import { search, getInfo, isValidUrl, isPlaylist, getPlaylist } from './youtube.js';
-import { parseSpotifyUrl, getPublicTrack, getPublicPlaylistTracks, getPublicAlbumTracks } from './spotify.js';
+import {
+  parseSpotifyUrl,
+  getPublicTrack,
+  getPublicPlaylistTracks,
+  getPublicAlbumTracks
+} from './spotify.js';
 import { ResolutionManager } from './resolutionManager.js';
 
 /**
@@ -18,9 +23,7 @@ export async function resolveQuery(query, userInfo) {
     if (spotifyTracks.length === 0) {
       return { tracks: [], error: 'SPOTIFY_PLAYLIST_EMPTY' };
     }
-    const tracks = spotifyTracks.map(st =>
-      ResolutionManager.createUnresolvedTrack(st, userInfo)
-    );
+    const tracks = spotifyTracks.map((st) => ResolutionManager.createUnresolvedTrack(st, userInfo));
     return { tracks, error: null };
   }
 
@@ -38,9 +41,7 @@ export async function resolveQuery(query, userInfo) {
     if (albumTracks.length === 0) {
       return { tracks: [], error: 'SPOTIFY_ALBUM_EMPTY' };
     }
-    const tracks = albumTracks.map(st =>
-      ResolutionManager.createUnresolvedTrack(st, userInfo)
-    );
+    const tracks = albumTracks.map((st) => ResolutionManager.createUnresolvedTrack(st, userInfo));
     return { tracks, error: null };
   }
 
@@ -75,7 +76,7 @@ export async function resolveQuery(query, userInfo) {
  * @returns {Object[]} New array with user info added
  */
 export function enrichWithUserInfo(tracks, userInfo) {
-  return tracks.map(track => ({
+  return tracks.map((track) => ({
     ...track,
     requestedBy: userInfo.username,
     requestedById: userInfo.id,
@@ -91,11 +92,11 @@ export function enrichWithUserInfo(tracks, userInfo) {
  * @param {number} currentIndex - Current playback index
  */
 export function triggerLookaheadIfNeeded(tracks, resMgr, queue, currentIndex) {
-  const hasUnresolved = tracks.some(t => t.status === 'unresolved');
+  const hasUnresolved = tracks.some((t) => t.status === 'unresolved');
   if (hasUnresolved && queue) {
     resMgr.setQueue(queue);
     resMgr.start();
-    resMgr.processLookahead(currentIndex).catch(err => {
+    resMgr.processLookahead(currentIndex).catch((err) => {
       console.error('Lookahead resolution error:', err);
     });
   }

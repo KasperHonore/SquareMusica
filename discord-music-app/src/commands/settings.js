@@ -3,7 +3,7 @@ import { musicManager } from '../state/musicManager.js';
 import { requireVoiceConnection } from './utils/checks.js';
 
 export async function handleLoop(interaction) {
-  if (!await requireVoiceConnection(interaction)) return;
+  if (!(await requireVoiceConnection(interaction))) return;
 
   const mode = interaction.options.getString('mode');
   const q = getQueue();

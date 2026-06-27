@@ -160,9 +160,13 @@ class Queue {
    * @returns {boolean} Success
    */
   reorder(from, to) {
-    if (from < 0 || from >= this.tracks.length ||
-        to < 0 || to >= this.tracks.length ||
-        from === to) {
+    if (
+      from < 0 ||
+      from >= this.tracks.length ||
+      to < 0 ||
+      to >= this.tracks.length ||
+      from === to
+    ) {
       return false;
     }
 

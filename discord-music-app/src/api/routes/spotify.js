@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { parseSpotifyUrl, getPublicAlbum, getPublicPlaylist, isSpotifyConfigured } from '../../music/spotify.js';
+import {
+  parseSpotifyUrl,
+  getPublicAlbum,
+  getPublicPlaylist,
+  isSpotifyConfigured
+} from '../../music/spotify.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 const router = Router();
@@ -48,7 +53,9 @@ router.get('/info', authMiddleware, async (req, res) => {
     });
   }
 
-  return res.status(400).json({ error: 'Invalid Spotify URL. Please use an album or playlist link.' });
+  return res
+    .status(400)
+    .json({ error: 'Invalid Spotify URL. Please use an album or playlist link.' });
 });
 
 export default router;

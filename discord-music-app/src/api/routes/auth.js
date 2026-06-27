@@ -88,18 +88,14 @@ router.get('/callback', async (req, res) => {
     }
 
     const guilds = await guildsResponse.json();
-    const isMember = guilds.some(g => g.id === process.env.GUILD_ID);
+    const isMember = guilds.some((g) => g.id === process.env.GUILD_ID);
 
     if (!isMember) {
       return res.redirect(`${getWebUrl()}?error=not_member`);
     }
 
     // Create or update user in database
-    const user = db.findOrCreateUser(
-      discordUser.id,
-      discordUser.username,
-      discordUser.avatar
-    );
+    const user = db.findOrCreateUser(discordUser.id, discordUser.username, discordUser.avatar);
 
     // Create JWT token
     const jwtToken = jwt.sign(

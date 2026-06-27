@@ -41,13 +41,14 @@ async function withRetry(fn, maxRetries = 3) {
 
       // Check for rate limit (429)
       if (error.status === 429 || error.message?.includes('429')) {
-        const retryAfter = error.headers?.get?.('retry-after') ||
-                          error.retryAfter ||
-                          Math.pow(2, attempt + 1);
+        const retryAfter =
+          error.headers?.get?.('retry-after') || error.retryAfter || Math.pow(2, attempt + 1);
         const waitMs = (parseInt(retryAfter, 10) || Math.pow(2, attempt + 1)) * 1000;
 
-        console.warn(`Spotify rate limited, waiting ${waitMs}ms before retry ${attempt + 1}/${maxRetries}`);
-        await new Promise(resolve => setTimeout(resolve, waitMs));
+        console.warn(
+          `Spotify rate limited, waiting ${waitMs}ms before retry ${attempt + 1}/${maxRetries}`
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
         continue;
       }
 
@@ -55,7 +56,7 @@ async function withRetry(fn, maxRetries = 3) {
       if (attempt < maxRetries - 1) {
         const waitMs = Math.pow(2, attempt + 1) * 1000;
         console.warn(`Spotify API error, retrying in ${waitMs}ms: ${error.message}`);
-        await new Promise(resolve => setTimeout(resolve, waitMs));
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
         continue;
       }
 
@@ -121,7 +122,7 @@ function normalizeTrack(track) {
   return {
     spotifyId: track.id,
     title: track.name,
-    artists: track.artists?.map(a => a.name) || [],
+    artists: track.artists?.map((a) => a.name) || [],
     durationMs: track.duration_ms,
     spotifyUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`
   };
@@ -143,7 +144,7 @@ export async function getPublicAlbum(albumId) {
     return {
       name: album.name,
       images: album.images || [],
-      artists: album.artists?.map(a => a.name) || [],
+      artists: album.artists?.map((a) => a.name) || [],
       totalTracks: album.total_tracks
     };
   } catch (error) {
@@ -247,10 +248,10 @@ export async function getPublicAlbumTracks(albumId) {
     // Get album with tracks (API returns up to 50 tracks embedded)
     const response = await withRetry(() => client.albums.get(albumId));
 
-    const tracks = response.tracks.items.map(track => ({
+    const tracks = response.tracks.items.map((track) => ({
       spotifyId: track.id,
       title: track.name,
-      artists: track.artists?.map(a => a.name) || [],
+      artists: track.artists?.map((a) => a.name) || [],
       durationMs: track.duration_ms,
       spotifyUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`
     }));

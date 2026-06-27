@@ -51,14 +51,8 @@ function AlbumIcon({ size = 24, className = '' }) {
  */
 function SpotifyIcon({ size = 20, className = '' }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-    >
-      <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
     </svg>
   );
 }
@@ -68,13 +62,7 @@ function SpotifyIcon({ size = 20, className = '' }) {
  */
 function Spinner({ size = 20 }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      className="animate-spin"
-    >
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="animate-spin">
       <circle
         cx="12"
         cy="12"
@@ -138,6 +126,8 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
 
   // Fetch Spotify metadata when URL changes
   useEffect(() => {
+    const controller = new AbortController();
+
     const fetchMetadata = async () => {
       // Check if it looks like a Spotify URL
       if (!spotifyUrl.includes('spotify.com') && !spotifyUrl.startsWith('spotify:')) {
@@ -157,10 +147,10 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
       setMetadataLoaded(false);
 
       try {
-        const response = await fetch(
-          `/api/spotify/info?url=${encodeURIComponent(spotifyUrl)}`,
-          { credentials: 'include' }
-        );
+        const response = await fetch(`/api/spotify/info?url=${encodeURIComponent(spotifyUrl)}`, {
+          credentials: 'include',
+          signal: controller.signal
+        });
 
         if (!response.ok) {
           const data = await response.json();
@@ -174,19 +164,27 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
         setContentType(data.type);
         setMetadataLoaded(true);
       } catch (err) {
+        // A newer keystroke aborted this request — ignore it so the stale
+        // response can't overwrite fresher state.
+        if (err.name === 'AbortError') return;
         setError(err.message);
         setAlbumName('');
         setCoverImage('');
         setTrackCount(0);
         setContentType('');
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
       }
     };
 
     // Debounce the fetch
     const timer = setTimeout(fetchMetadata, 500);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [spotifyUrl]);
 
   // Handle close with animation
@@ -294,7 +292,7 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '16px',
+    padding: '16px'
   };
 
   const modalBoxStyle = {
@@ -306,7 +304,7 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
     maxWidth: '100%',
     display: 'flex',
     flexDirection: 'column',
-    gap: '14px',
+    gap: '14px'
   };
 
   const modalTitleStyle = {
@@ -314,7 +312,7 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
     fontSize: '20px',
     color: 'var(--color-text-primary)',
     lineHeight: 1.2,
-    margin: 0,
+    margin: 0
   };
 
   const inputStyle = {
@@ -328,13 +326,13 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
     color: 'var(--color-text-primary)',
     outline: 'none',
     transition: 'border-color 0.2s',
-    boxSizing: 'border-box',
+    boxSizing: 'border-box'
   };
 
   const inputWithIconStyle = {
     ...inputStyle,
     paddingLeft: '40px',
-    paddingRight: isLoading ? '40px' : '14px',
+    paddingRight: isLoading ? '40px' : '14px'
   };
 
   const btnBaseStyle = {
@@ -348,20 +346,20 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
     cursor: 'pointer',
     transition: 'all 0.12s',
     border: 'none',
-    fontFamily: 'var(--font-body)',
+    fontFamily: 'var(--font-body)'
   };
 
   const btnGhostStyle = {
     ...btnBaseStyle,
     background: 'var(--color-bg-elevated)',
     color: 'var(--color-text-secondary)',
-    border: '1px solid var(--color-border)',
+    border: '1px solid var(--color-border)'
   };
 
   const btnAccentStyle = {
     ...btnBaseStyle,
     background: 'var(--color-accent)',
-    color: '#0d0d0f',
+    color: '#0d0d0f'
   };
 
   return createPortal(
@@ -396,29 +394,34 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              transition: 'color 0.12s',
+              transition: 'color 0.12s'
             }}
             aria-label="Close modal"
-            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--color-text-primary)'}
-            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-text-muted)'}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-text-primary)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-muted)')}
           >
             <CloseIcon size={18} />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+        >
           {/* Spotify URL input */}
           <div style={{ position: 'relative' }}>
-            <div style={{
-              position: 'absolute',
-              left: '14px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: '#1DB954',
-              display: 'flex',
-              pointerEvents: 'none',
-            }}>
+            <div
+              style={{
+                position: 'absolute',
+                left: '14px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: '#1DB954',
+                display: 'flex',
+                pointerEvents: 'none'
+              }}
+            >
               <SpotifyIcon size={16} />
             </div>
             <input
@@ -431,19 +434,23 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
               }}
               placeholder="Spotify playlist or album URL"
               style={inputWithIconStyle}
-              onFocus={(e) => e.target.style.borderColor = 'rgba(232,200,122,0.35)'}
-              onBlur={(e) => e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border)'}
+              onFocus={(e) => (e.target.style.borderColor = 'rgba(232,200,122,0.35)')}
+              onBlur={(e) =>
+                (e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border)')
+              }
               autoComplete="off"
             />
             {isLoading && (
-              <div style={{
-                position: 'absolute',
-                right: '14px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--color-text-muted)',
-                display: 'flex',
-              }}>
+              <div
+                style={{
+                  position: 'absolute',
+                  right: '14px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--color-text-muted)',
+                  display: 'flex'
+                }}
+              >
                 <Spinner size={16} />
               </div>
             )}
@@ -451,11 +458,13 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
 
           {/* Error message */}
           {error && (
-            <p style={{
-              fontSize: '12px',
-              color: 'var(--color-danger)',
-              margin: 0,
-            }}>
+            <p
+              style={{
+                fontSize: '12px',
+                color: 'var(--color-danger)',
+                margin: 0
+              }}
+            >
               {error}
             </p>
           )}
@@ -469,19 +478,21 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
                 padding: '14px',
                 borderRadius: '10px',
                 background: 'var(--color-bg-elevated)',
-                border: '1px solid var(--color-border)',
+                border: '1px solid var(--color-border)'
               }}
               className="animate-fade-in"
             >
               {/* Cover image */}
-              <div style={{
-                width: '80px',
-                height: '80px',
-                borderRadius: '7px',
-                overflow: 'hidden',
-                background: 'var(--color-bg-surface3)',
-                flexShrink: 0,
-              }}>
+              <div
+                style={{
+                  width: '80px',
+                  height: '80px',
+                  borderRadius: '7px',
+                  overflow: 'hidden',
+                  background: 'var(--color-bg-surface3)',
+                  flexShrink: 0
+                }}
+              >
                 {coverImage ? (
                   <img
                     src={coverImage}
@@ -489,36 +500,50 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                 ) : (
-                  <div style={{
-                    width: '100%',
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
                     <AlbumIcon size={32} className="text-muted" />
                   </div>
                 )}
               </div>
 
               {/* Name input and info */}
-              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px' }}>
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
                 <input
                   type="text"
                   value={albumName}
                   onChange={(e) => setAlbumName(e.target.value)}
                   style={inputStyle}
-                  onFocus={(e) => e.target.style.borderColor = 'rgba(232,200,122,0.35)'}
-                  onBlur={(e) => e.target.style.borderColor = 'var(--color-border)'}
+                  onFocus={(e) => (e.target.style.borderColor = 'rgba(232,200,122,0.35)')}
+                  onBlur={(e) => (e.target.style.borderColor = 'var(--color-border)')}
                   maxLength={100}
                   placeholder="Playlist name"
                 />
-                <p style={{
-                  fontSize: '11px',
-                  color: 'var(--color-text-muted)',
-                  margin: 0,
-                }}>
-                  {trackCount} {trackCount === 1 ? 'track' : 'tracks'} &bull; {contentType === 'album' ? 'Album' : 'Playlist'}
+                <p
+                  style={{
+                    fontSize: '11px',
+                    color: 'var(--color-text-muted)',
+                    margin: 0
+                  }}
+                >
+                  {trackCount} {trackCount === 1 ? 'track' : 'tracks'} &bull;{' '}
+                  {contentType === 'album' ? 'Album' : 'Playlist'}
                 </p>
               </div>
             </div>
@@ -526,12 +551,7 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
 
           {/* Buttons row */}
           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              onClick={handleClose}
-              style={btnGhostStyle}
-              className="btn-ghost"
-            >
+            <button type="button" onClick={handleClose} style={btnGhostStyle} className="btn-ghost">
               Cancel
             </button>
             <button
@@ -539,8 +559,8 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
               disabled={!metadataLoaded || isLoading}
               style={{
                 ...btnAccentStyle,
-                opacity: (!metadataLoaded || isLoading) ? 0.5 : 1,
-                cursor: (!metadataLoaded || isLoading) ? 'not-allowed' : 'pointer',
+                opacity: !metadataLoaded || isLoading ? 0.5 : 1,
+                cursor: !metadataLoaded || isLoading ? 'not-allowed' : 'pointer'
               }}
               className="btn-accent"
             >

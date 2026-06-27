@@ -16,20 +16,15 @@ function formatDuration(ms) {
 export function PlaylistsView({
   albums = [],
   onCreateAlbum,
-  onLoadAlbum,
   selectedPlaylist,
   onSelectPlaylist,
   onAddToQueue,
-  onBack,
+  onBack
 }) {
   // If a playlist is selected, show the detail view
   if (selectedPlaylist) {
     return (
-      <PlaylistDetailView
-        playlist={selectedPlaylist}
-        onBack={onBack}
-        onAddToQueue={onAddToQueue}
-      />
+      <PlaylistDetailView playlist={selectedPlaylist} onBack={onBack} onAddToQueue={onAddToQueue} />
     );
   }
 
@@ -40,7 +35,7 @@ export function PlaylistsView({
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
         gap: '14px',
-        padding: '2px',
+        padding: '2px'
       }}
     >
       {/* New Playlist dashed card */}
@@ -60,7 +55,7 @@ export function PlaylistsView({
           gap: '8px',
           color: 'var(--color-text-muted)',
           minHeight: '140px',
-          fontFamily: 'var(--font-body)',
+          fontFamily: 'var(--font-body)'
         }}
         className="wave-pl-card-new"
         onMouseEnter={(e) => {
@@ -105,7 +100,7 @@ export function PlaylistsView({
             gap: '10px',
             textAlign: 'left',
             color: 'var(--color-text-primary)',
-            fontFamily: 'var(--font-body)',
+            fontFamily: 'var(--font-body)'
           }}
           className="wave-pl-card"
           onMouseEnter={(e) => {
@@ -129,7 +124,7 @@ export function PlaylistsView({
               justifyContent: 'center',
               fontSize: '32px',
               color: CHIP_COLORS[i % CHIP_COLORS.length],
-              overflow: 'hidden',
+              overflow: 'hidden'
             }}
           >
             {album.coverImage ? (
@@ -149,7 +144,7 @@ export function PlaylistsView({
               fontWeight: 500,
               whiteSpace: 'nowrap',
               overflow: 'hidden',
-              textOverflow: 'ellipsis',
+              textOverflow: 'ellipsis'
             }}
           >
             {album.name}
@@ -179,7 +174,10 @@ function PlaylistDetailView({ playlist, onBack, onAddToQueue }) {
 
     fetch(`/api/playlists/${playlist.id}/tracks`, { credentials: 'include' })
       .then((res) => {
-        if (!res.ok) return res.json().then((d) => { throw new Error(d.error || 'Failed to fetch tracks'); });
+        if (!res.ok)
+          return res.json().then((d) => {
+            throw new Error(d.error || 'Failed to fetch tracks');
+          });
         return res.json();
       })
       .then((data) => setTracks(data.tracks || []))
@@ -209,7 +207,7 @@ function PlaylistDetailView({ playlist, onBack, onAddToQueue }) {
     fontFamily: 'var(--font-body)',
     transition: 'background 0.12s',
     whiteSpace: 'nowrap',
-    flexShrink: 0,
+    flexShrink: 0
   };
 
   return (
@@ -229,12 +227,23 @@ function PlaylistDetailView({ playlist, onBack, onAddToQueue }) {
           fontSize: '13px',
           fontFamily: 'var(--font-body)',
           transition: 'color 0.12s',
-          alignSelf: 'flex-start',
+          alignSelf: 'flex-start'
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-accent)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-secondary)'; }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = 'var(--color-accent)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = 'var(--color-text-secondary)';
+        }}
       >
-        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <svg
+          width="16"
+          height="16"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
           <path d="M19 12H5M12 19l-7-7 7-7" />
         </svg>
         Playlists
@@ -242,18 +251,20 @@ function PlaylistDetailView({ playlist, onBack, onAddToQueue }) {
 
       {/* Playlist header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <div style={{
-          width: '80px',
-          height: '80px',
-          borderRadius: '8px',
-          overflow: 'hidden',
-          background: 'var(--color-bg-surface3)',
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '36px',
-        }}>
+        <div
+          style={{
+            width: '80px',
+            height: '80px',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            background: 'var(--color-bg-surface3)',
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '36px'
+          }}
+        >
           {playlist?.coverImage ? (
             <img
               src={playlist.coverImage}
@@ -265,24 +276,30 @@ function PlaylistDetailView({ playlist, onBack, onAddToQueue }) {
           )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h2 style={{
-            fontFamily: 'var(--font-heading)',
-            fontSize: '20px',
-            color: 'var(--color-text-primary)',
-            margin: 0,
-            lineHeight: 1.2,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}>
+          <h2
+            style={{
+              fontFamily: 'var(--font-heading)',
+              fontSize: '20px',
+              color: 'var(--color-text-primary)',
+              margin: 0,
+              lineHeight: 1.2,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}
+          >
             {playlist?.name || 'Playlist'}
           </h2>
-          <p style={{
-            fontSize: '12px',
-            color: 'var(--color-text-muted)',
-            margin: '6px 0 0',
-          }}>
-            {isLoading ? 'Loading...' : `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`}
+          <p
+            style={{
+              fontSize: '12px',
+              color: 'var(--color-text-muted)',
+              margin: '6px 0 0'
+            }}
+          >
+            {isLoading
+              ? 'Loading...'
+              : `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`}
           </p>
         </div>
         <button
@@ -296,14 +313,14 @@ function PlaylistDetailView({ playlist, onBack, onAddToQueue }) {
             borderRadius: '8px',
             fontSize: '13px',
             fontWeight: 500,
-            cursor: (isLoading || tracks.length === 0) ? 'not-allowed' : 'pointer',
+            cursor: isLoading || tracks.length === 0 ? 'not-allowed' : 'pointer',
             transition: 'all 0.12s',
             border: 'none',
             fontFamily: 'var(--font-body)',
             background: 'var(--color-accent)',
             color: '#0d0d0f',
-            opacity: (isLoading || tracks.length === 0) ? 0.5 : 1,
-            flexShrink: 0,
+            opacity: isLoading || tracks.length === 0 ? 0.5 : 1,
+            flexShrink: 0
           }}
         >
           Add All to Queue
@@ -312,31 +329,55 @@ function PlaylistDetailView({ playlist, onBack, onAddToQueue }) {
 
       {/* Track list */}
       {isLoading ? (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '40px 0',
-          gap: '10px',
-          color: 'var(--color-text-muted)',
-        }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '40px 0',
+            gap: '10px',
+            color: 'var(--color-text-muted)'
+          }}
+        >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="animate-spin">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="32" strokeDashoffset="16" />
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeDasharray="32"
+              strokeDashoffset="16"
+            />
           </svg>
           <span style={{ fontSize: '13px' }}>Loading tracks...</span>
         </div>
       ) : error ? (
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
-          <p style={{ color: 'var(--color-danger)', marginBottom: '12px', fontSize: '13px' }}>{error}</p>
+          <p style={{ color: 'var(--color-danger)', marginBottom: '12px', fontSize: '13px' }}>
+            {error}
+          </p>
         </div>
       ) : tracks.length === 0 ? (
-        <div style={{
-          textAlign: 'center',
-          padding: '40px 20px',
-          color: 'var(--color-text-muted)',
-          fontSize: '13px',
-        }}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <div
+          style={{
+            textAlign: 'center',
+            padding: '40px 20px',
+            color: 'var(--color-text-muted)',
+            fontSize: '13px'
+          }}
+        >
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M9 18V5l12-2v13" />
             <circle cx="6" cy="18" r="3" />
             <circle cx="18" cy="16" r="3" />
@@ -355,23 +396,25 @@ function PlaylistDetailView({ playlist, onBack, onAddToQueue }) {
                 padding: '9px 10px',
                 borderRadius: '9px',
                 cursor: 'default',
-                transition: 'background 0.1s',
+                transition: 'background 0.1s'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-elevated)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-elevated)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
               {/* Thumbnail */}
-              <div style={{
-                width: '48px',
-                height: '36px',
-                borderRadius: '5px',
-                flexShrink: 0,
-                overflow: 'hidden',
-                background: 'var(--color-bg-surface3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
+              <div
+                style={{
+                  width: '48px',
+                  height: '36px',
+                  borderRadius: '5px',
+                  flexShrink: 0,
+                  overflow: 'hidden',
+                  background: 'var(--color-bg-surface3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
                 {track.albumArt ? (
                   <img
                     src={track.albumArt}
@@ -380,7 +423,17 @@ function PlaylistDetailView({ playlist, onBack, onAddToQueue }) {
                     loading="lazy"
                   />
                 ) : (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-text-muted)' }}>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
                     <path d="M9 18V5l12-2v13" />
                     <circle cx="6" cy="18" r="3" />
                     <circle cx="18" cy="16" r="3" />
@@ -390,35 +443,41 @@ function PlaylistDetailView({ playlist, onBack, onAddToQueue }) {
 
               {/* Track info */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  color: 'var(--color-text-primary)',
-                  margin: 0,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}>
+                <p
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: 'var(--color-text-primary)',
+                    margin: 0,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}
+                >
                   {track.title}
                 </p>
-                <p style={{
-                  fontSize: '11px',
-                  color: 'var(--color-text-muted)',
-                  margin: '2px 0 0',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}>
+                <p
+                  style={{
+                    fontSize: '11px',
+                    color: 'var(--color-text-muted)',
+                    margin: '2px 0 0',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}
+                >
                   {track.artists?.join(', ') || 'Unknown artist'}
                 </p>
               </div>
 
               {/* Duration */}
-              <span style={{
-                fontSize: '11px',
-                color: 'var(--color-text-muted)',
-                flexShrink: 0,
-              }}>
+              <span
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--color-text-muted)',
+                  flexShrink: 0
+                }}
+              >
                 {formatDuration(track.durationMs || 0)}
               </span>
 
@@ -426,8 +485,10 @@ function PlaylistDetailView({ playlist, onBack, onAddToQueue }) {
               <button
                 onClick={() => handleAddTrack(track.spotifyUrl)}
                 style={resultAddStyle}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(232,200,122,0.18)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--color-accent-muted)'}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(232,200,122,0.18)')}
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = 'var(--color-accent-muted)')
+                }
                 aria-label={`Add ${track.title} to queue`}
                 title="Add to queue"
               >

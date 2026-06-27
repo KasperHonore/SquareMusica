@@ -6,6 +6,9 @@ export function useSocket() {
   const { user } = useAuth();
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
+  // Distinct connection status the UI can surface: 'connecting' | 'connected'
+  // | 'reconnecting' | 'disconnected'
+  const [status, setStatus] = useState('connecting');
   const [queue, setQueue] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentTrack, setCurrentTrack] = useState(null);
@@ -32,10 +35,20 @@ export function useSocket() {
 
     newSocket.on('connect', () => {
       setConnected(true);
+      setStatus('connected');
     });
 
     newSocket.on('disconnect', () => {
       setConnected(false);
+      setStatus('disconnected');
+    });
+
+    // Manager-level reconnection lifecycle (socket.io-client v4)
+    newSocket.io.on('reconnect_attempt', () => {
+      setStatus('reconnecting');
+    });
+    newSocket.io.on('reconnect', () => {
+      setStatus('connected');
     });
 
     newSocket.on('queue:update', (data) => {
@@ -57,20 +70,22 @@ export function useSocket() {
     });
 
     newSocket.on('track:progress', ({ position }) => {
-      setPlayerState(prev => ({ ...prev, position }));
+      setPlayerState((prev) => ({ ...prev, position }));
     });
 
     newSocket.on('initial:state', (state) => {
       setQueue(Array.isArray(state.queue) ? state.queue : []);
       setCurrentIndex(typeof state.currentIndex === 'number' ? state.currentIndex : 0);
       setCurrentTrack(state.currentTrack || null);
-      setPlayerState(state.playerState || {
-        playing: false,
-        paused: false,
-        loop: 'off',
-        position: 0,
-        connected: false
-      });
+      setPlayerState(
+        state.playerState || {
+          playing: false,
+          paused: false,
+          loop: 'off',
+          position: 0,
+          connected: false
+        }
+      );
       if (state.resolutionStats) {
         setResolutionStats(state.resolutionStats);
       }
@@ -97,9 +112,8 @@ export function useSocket() {
       setResolutionStats(stats);
     });
 
-    newSocket.on('history:cleared', (data) => {
-      console.log('[Socket] Received history:cleared event', data);
-      setHistoryVersion(v => v + 1);
+    newSocket.on('history:cleared', () => {
+      setHistoryVersion((v) => v + 1);
     });
 
     newSocket.on('error', (err) => {
@@ -113,21 +127,33 @@ export function useSocket() {
     };
   }, [user]);
 
-  const addToQueue = useCallback((query) => {
-    socket?.emit('queue:add', { query });
-  }, [socket]);
+  const addToQueue = useCallback(
+    (query) => {
+      socket?.emit('queue:add', { query });
+    },
+    [socket]
+  );
 
-  const removeFromQueue = useCallback((position) => {
-    socket?.emit('queue:remove', { position });
-  }, [socket]);
+  const removeFromQueue = useCallback(
+    (position) => {
+      socket?.emit('queue:remove', { position });
+    },
+    [socket]
+  );
 
-  const reorderQueue = useCallback((from, to) => {
-    socket?.emit('queue:reorder', { from, to });
-  }, [socket]);
+  const reorderQueue = useCallback(
+    (from, to) => {
+      socket?.emit('queue:reorder', { from, to });
+    },
+    [socket]
+  );
 
-  const playerControl = useCallback((action, value) => {
-    socket?.emit('player:control', { action, value });
-  }, [socket]);
+  const playerControl = useCallback(
+    (action, value) => {
+      socket?.emit('player:control', { action, value });
+    },
+    [socket]
+  );
 
   const voiceJoin = useCallback(() => {
     socket?.emit('voice:join');
@@ -137,13 +163,19 @@ export function useSocket() {
     socket?.emit('voice:leave');
   }, [socket]);
 
-  const createPlaylist = useCallback((name, spotifyUrl, coverImage) => {
-    socket?.emit('playlist:create', { name, spotifyUrl, coverImage });
-  }, [socket]);
+  const createPlaylist = useCallback(
+    (name, spotifyUrl, coverImage) => {
+      socket?.emit('playlist:create', { name, spotifyUrl, coverImage });
+    },
+    [socket]
+  );
 
-  const deletePlaylist = useCallback((id) => {
-    socket?.emit('playlist:delete', { id });
-  }, [socket]);
+  const deletePlaylist = useCallback(
+    (id) => {
+      socket?.emit('playlist:delete', { id });
+    },
+    [socket]
+  );
 
   const clearError = useCallback(() => {
     setError(null);
@@ -151,6 +183,7 @@ export function useSocket() {
 
   return {
     connected,
+    status,
     queue,
     currentIndex,
     currentTrack,

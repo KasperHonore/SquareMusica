@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useSocketContext } from '../../context/SocketContext';
 import { BrowseView } from './BrowseView';
 import { SearchResults } from './SearchResults';
 import { PlaylistsView } from './PlaylistsView';
@@ -41,19 +42,13 @@ function isUrl(str) {
 export function CenterPanel({
   activeView,
   onViewChange,
-  onAdd,
-  user,
-  playerState,
-  albums,
-  onCreateAlbum,
-  onLoadAlbum,
-  historyVersion,
   selectedPlaylist,
   onSelectPlaylist,
-  onAddToQueue,
-  onClearSelectedPlaylist,
+  onClearSelectedPlaylist
 }) {
-  const { token } = useAuth();
+  const { user, token } = useAuth();
+  const { addToQueue, playerState, albums, createPlaylist, loadAlbum, historyVersion } =
+    useSocketContext();
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -97,9 +92,9 @@ export function CenterPanel({
   // Handle adding a track
   const handleAdd = useCallback(
     (urlOrQuery) => {
-      onAdd?.(urlOrQuery);
+      addToQueue?.(urlOrQuery);
     },
-    [onAdd]
+    [addToQueue]
   );
 
   // Handle search input change
@@ -131,15 +126,11 @@ export function CenterPanel({
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setHighlightedIndex((prev) =>
-          prev < searchResults.length - 1 ? prev + 1 : 0
-        );
+        setHighlightedIndex((prev) => (prev < searchResults.length - 1 ? prev + 1 : 0));
         break;
       case 'ArrowUp':
         e.preventDefault();
-        setHighlightedIndex((prev) =>
-          prev > 0 ? prev - 1 : searchResults.length - 1
-        );
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : searchResults.length - 1));
         break;
       case 'Enter':
         e.preventDefault();
@@ -224,21 +215,20 @@ export function CenterPanel({
 
     switch (activeView) {
       case 'history':
-        return <History addToQueue={onAdd} historyVersion={historyVersion} />;
+        return <History addToQueue={addToQueue} historyVersion={historyVersion} />;
       case 'playlists':
         return (
           <PlaylistsView
             albums={albums}
-            onCreateAlbum={onCreateAlbum}
-            onLoadAlbum={onLoadAlbum}
+            onCreateAlbum={createPlaylist}
             selectedPlaylist={selectedPlaylist}
             onSelectPlaylist={onSelectPlaylist}
-            onAddToQueue={onAddToQueue}
+            onAddToQueue={addToQueue}
             onBack={onClearSelectedPlaylist}
           />
         );
       default:
-        return <BrowseView onViewChange={onViewChange} albums={albums} onLoadAlbum={onLoadAlbum} />;
+        return <BrowseView onViewChange={onViewChange} albums={albums} onLoadAlbum={loadAlbum} />;
     }
   };
 
@@ -252,7 +242,7 @@ export function CenterPanel({
         overflow: 'hidden',
         padding: '28px 32px 0',
         gap: '20px',
-        height: '100%',
+        height: '100%'
       }}
     >
       {/* Voice connection warning */}
@@ -265,7 +255,7 @@ export function CenterPanel({
             padding: '10px 16px',
             fontSize: '13px',
             color: 'var(--color-accent)',
-            flexShrink: 0,
+            flexShrink: 0
           }}
         >
           Bot is not connected to a voice channel. Use{' '}
@@ -274,7 +264,7 @@ export function CenterPanel({
               background: 'rgba(0,0,0,0.2)',
               padding: '1px 5px',
               borderRadius: '4px',
-              fontSize: '12px',
+              fontSize: '12px'
             }}
           >
             /join
@@ -290,7 +280,7 @@ export function CenterPanel({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '16px',
+            gap: '16px'
           }}
         >
           <h1
@@ -301,14 +291,12 @@ export function CenterPanel({
               letterSpacing: '-0.4px',
               color: 'var(--color-text-primary)',
               margin: 0,
-              fontWeight: 'normal',
+              fontWeight: 'normal'
             }}
           >
             {getGreeting()},
             <br />
-            <em style={{ fontStyle: 'italic', color: 'var(--color-accent)' }}>
-              {userName}.
-            </em>
+            <em style={{ fontStyle: 'italic', color: 'var(--color-accent)' }}>{userName}.</em>
           </h1>
         </div>
 
@@ -322,7 +310,7 @@ export function CenterPanel({
               top: '50%',
               transform: 'translateY(-50%)',
               color: 'var(--color-text-muted)',
-              pointerEvents: 'none',
+              pointerEvents: 'none'
             }}
             width="16"
             height="16"
@@ -355,7 +343,7 @@ export function CenterPanel({
               fontSize: '14px',
               color: 'var(--color-text-primary)',
               outline: 'none',
-              transition: 'border-color 0.2s',
+              transition: 'border-color 0.2s'
             }}
             onFocus={(e) => {
               e.target.style.borderColor = 'rgba(232,200,122,0.35)';
@@ -378,7 +366,7 @@ export function CenterPanel({
                 border: '2px solid var(--color-border)',
                 borderTopColor: 'var(--color-accent)',
                 borderRadius: '50%',
-                animation: 'wave-spin 0.7s linear infinite',
+                animation: 'wave-spin 0.7s linear infinite'
               }}
             />
           )}
@@ -397,7 +385,7 @@ export function CenterPanel({
           display: 'flex',
           flexDirection: 'column',
           minHeight: 0,
-          paddingBottom: '20px',
+          paddingBottom: '20px'
         }}
       >
         {/* Section header */}
@@ -407,7 +395,7 @@ export function CenterPanel({
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '4px 0 12px',
-            flexShrink: 0,
+            flexShrink: 0
           }}
         >
           <span
@@ -416,7 +404,7 @@ export function CenterPanel({
               fontWeight: 600,
               letterSpacing: '0.8px',
               textTransform: 'uppercase',
-              color: 'var(--color-text-secondary)',
+              color: 'var(--color-text-secondary)'
             }}
           >
             {getSectionTitle()}
@@ -429,7 +417,7 @@ export function CenterPanel({
             flex: 1,
             overflowY: 'auto',
             scrollbarWidth: 'thin',
-            scrollbarColor: 'var(--color-bg-elevated) transparent',
+            scrollbarColor: 'var(--color-bg-elevated) transparent'
           }}
         >
           {renderContent()}

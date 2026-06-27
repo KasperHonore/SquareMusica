@@ -5,23 +5,26 @@
 export function BrowseView({ onViewChange, albums = [], onLoadAlbum }) {
   const cards = [
     {
+      key: 'liked-songs',
       icon: '\u2764\uFE0F',
       label: 'Liked Songs',
       sub: 'Your favourites',
-      onClick: () => onViewChange?.('playlists'),
+      onClick: () => onViewChange?.('playlists')
     },
     {
+      key: 'recently-played',
       icon: '\uD83D\uDD50',
       label: 'Recently Played',
       sub: 'Play history',
-      onClick: () => onViewChange?.('history'),
+      onClick: () => onViewChange?.('history')
     },
     ...albums.map((al) => ({
+      key: `album-${al.id}`,
       icon: '\uD83C\uDFB5',
       label: al.name,
       sub: 'Playlist',
-      onClick: () => onLoadAlbum?.(al),
-    })),
+      onClick: () => onLoadAlbum?.(al)
+    }))
   ];
 
   return (
@@ -29,12 +32,12 @@ export function BrowseView({ onViewChange, albums = [], onLoadAlbum }) {
       style={{
         display: 'grid',
         gridTemplateColumns: '1fr 1fr',
-        gap: '10px',
+        gap: '10px'
       }}
     >
       {cards.map((card, i) => (
         <button
-          key={i}
+          key={card.key}
           onClick={card.onClick}
           style={{
             background: 'var(--color-bg-elevated)',
@@ -49,7 +52,7 @@ export function BrowseView({ onViewChange, albums = [], onLoadAlbum }) {
             textAlign: 'left',
             color: 'var(--color-text-primary)',
             fontFamily: 'var(--font-body)',
-            animationDelay: `${i * 50}ms`,
+            animationDelay: `${i * 50}ms`
           }}
           className="wave-default-card"
           onMouseEnter={(e) => {
@@ -68,7 +71,7 @@ export function BrowseView({ onViewChange, albums = [], onLoadAlbum }) {
               style={{
                 fontSize: '11px',
                 color: 'var(--color-text-muted)',
-                marginTop: '2px',
+                marginTop: '2px'
               }}
             >
               {card.sub}

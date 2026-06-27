@@ -11,40 +11,43 @@ export function History({ addToQueue, historyVersion }) {
   const [offset, setOffset] = useState(0);
   const LIMIT = 50;
 
-  const fetchHistory = useCallback(async (newOffset = 0, append = false) => {
-    if (!token) return;
+  const fetchHistory = useCallback(
+    async (newOffset = 0, append = false) => {
+      if (!token) return;
 
-    try {
-      setLoading(true);
-      setError(null);
+      try {
+        setLoading(true);
+        setError(null);
 
-      const response = await fetch(`/api/queue/history?limit=${LIMIT}&offset=${newOffset}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
+        const response = await fetch(`/api/queue/history?limit=${LIMIT}&offset=${newOffset}`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch history');
         }
-      });
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch history');
+        const data = await response.json();
+        const newHistory = data.history || [];
+
+        if (append) {
+          setHistory((prev) => [...prev, ...newHistory]);
+        } else {
+          setHistory(newHistory);
+        }
+
+        setHasMore(newHistory.length === LIMIT);
+        setOffset(newOffset);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
       }
-
-      const data = await response.json();
-      const newHistory = data.history || [];
-
-      if (append) {
-        setHistory(prev => [...prev, ...newHistory]);
-      } else {
-        setHistory(newHistory);
-      }
-
-      setHasMore(newHistory.length === LIMIT);
-      setOffset(newOffset);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+    },
+    [token]
+  );
 
   useEffect(() => {
     fetchHistory(0, false);
@@ -73,7 +76,7 @@ export function History({ addToQueue, historyVersion }) {
         display: 'flex',
         flexDirection: 'column',
         flex: 1,
-        minHeight: 0,
+        minHeight: 0
       }}
     >
       {/* Error state */}
@@ -83,7 +86,7 @@ export function History({ addToQueue, historyVersion }) {
             padding: '40px 20px',
             textAlign: 'center',
             color: 'var(--color-text-muted)',
-            fontSize: '13px',
+            fontSize: '13px'
           }}
         >
           <p style={{ color: 'var(--color-danger)', marginBottom: '16px' }}>{error}</p>
@@ -98,7 +101,7 @@ export function History({ addToQueue, historyVersion }) {
               fontSize: '13px',
               fontWeight: 500,
               cursor: 'pointer',
-              fontFamily: 'var(--font-body)',
+              fontFamily: 'var(--font-body)'
             }}
           >
             Retry
@@ -114,7 +117,7 @@ export function History({ addToQueue, historyVersion }) {
             textAlign: 'center',
             color: 'var(--color-text-muted)',
             fontSize: '13px',
-            lineHeight: 1.7,
+            lineHeight: 1.7
           }}
         >
           No listening history yet. Play some tracks and they will appear here.
@@ -129,7 +132,7 @@ export function History({ addToQueue, historyVersion }) {
             minHeight: 0,
             overflowY: 'auto',
             scrollbarWidth: 'thin',
-            scrollbarColor: 'var(--color-bg-elevated) transparent',
+            scrollbarColor: 'var(--color-bg-elevated) transparent'
           }}
         >
           {history.map((track, index) => (
@@ -155,7 +158,7 @@ export function History({ addToQueue, historyVersion }) {
                   color: 'var(--color-text-secondary)',
                   cursor: 'pointer',
                   fontFamily: 'var(--font-body)',
-                  transition: 'all 0.12s',
+                  transition: 'all 0.12s'
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.borderColor = 'var(--color-border-strong)';
@@ -178,7 +181,7 @@ export function History({ addToQueue, historyVersion }) {
         <div
           style={{
             padding: '40px 20px',
-            textAlign: 'center',
+            textAlign: 'center'
           }}
         >
           <div
@@ -190,7 +193,7 @@ export function History({ addToQueue, historyVersion }) {
               borderRadius: '50%',
               animation: 'wave-hist-spin 0.7s linear infinite',
               display: 'inline-block',
-              marginBottom: '8px',
+              marginBottom: '8px'
             }}
           />
           <p style={{ color: 'var(--color-text-muted)', fontSize: '13px' }}>Loading history...</p>

@@ -25,8 +25,8 @@ export function AuthProvider({ children }) {
     fetch('/api/auth/me', {
       credentials: 'include'
     })
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
         if (data?.user) {
           setUser(data.user);
         } else {

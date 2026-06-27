@@ -30,7 +30,7 @@ export function PlaybackControls({ playerState, onControl }) {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
+    position: 'relative'
   };
 
   const ctrlHoverClass = 'wave-ctrl-btn';
@@ -81,10 +81,7 @@ export function PlaybackControls({ playerState, onControl }) {
         }
       `}</style>
 
-      <div
-        className="flex items-center justify-center flex-shrink-0"
-        style={{ gap: '2px' }}
-      >
+      <div className="flex items-center justify-center flex-shrink-0" style={{ gap: '2px' }}>
         {/* Loop */}
         <button
           className={`${ctrlHoverClass} ${isLoopActive ? 'active' : ''}`}
@@ -95,9 +92,7 @@ export function PlaybackControls({ playerState, onControl }) {
           aria-pressed={isLoopActive}
         >
           <Loop size={15} mode={loopMode === 'track' ? 'track' : 'off'} />
-          {loopMode === 'track' && (
-            <span className="wave-loop-badge">1</span>
-          )}
+          {loopMode === 'track' && <span className="wave-loop-badge">1</span>}
         </button>
 
         {/* Previous */}
@@ -131,7 +126,6 @@ export function PlaybackControls({ playerState, onControl }) {
         >
           <SkipNext size={18} />
         </button>
-
       </div>
     </>
   );

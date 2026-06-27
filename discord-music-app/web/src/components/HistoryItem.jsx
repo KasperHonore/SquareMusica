@@ -40,7 +40,7 @@ export function HistoryItem({ track, index, onPlayAgain }) {
         cursor: 'pointer',
         transition: 'background 0.1s',
         background: index % 2 !== 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
-        animationDelay: `${index * 50}ms`,
+        animationDelay: `${index * 50}ms`
       }}
       className="wave-result-item"
       onMouseEnter={(e) => {
@@ -59,7 +59,7 @@ export function HistoryItem({ track, index, onPlayAgain }) {
           borderRadius: '5px',
           flexShrink: 0,
           overflow: 'hidden',
-          background: 'var(--color-bg-surface3)',
+          background: 'var(--color-bg-surface3)'
         }}
       >
         {track.thumbnail ? (
@@ -78,7 +78,7 @@ export function HistoryItem({ track, index, onPlayAgain }) {
               alignItems: 'center',
               justifyContent: 'center',
               color: 'var(--color-text-muted)',
-              fontSize: '14px',
+              fontSize: '14px'
             }}
           >
             &#9835;
@@ -95,7 +95,7 @@ export function HistoryItem({ track, index, onPlayAgain }) {
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            color: 'var(--color-text-primary)',
+            color: 'var(--color-text-primary)'
           }}
         >
           {track.title}
@@ -107,7 +107,7 @@ export function HistoryItem({ track, index, onPlayAgain }) {
             marginTop: '2px',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '6px'
           }}
         >
           {track.channel && <span>{track.channel}</span>}
@@ -125,7 +125,7 @@ export function HistoryItem({ track, index, onPlayAgain }) {
         style={{
           fontSize: '11px',
           color: 'var(--color-text-muted)',
-          flexShrink: 0,
+          flexShrink: 0
         }}
       >
         {formatTime(track.duration)}
@@ -149,7 +149,7 @@ export function HistoryItem({ track, index, onPlayAgain }) {
           fontFamily: 'var(--font-body)',
           transition: 'background 0.12s',
           whiteSpace: 'nowrap',
-          flexShrink: 0,
+          flexShrink: 0
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = 'rgba(232,200,122,0.18)';

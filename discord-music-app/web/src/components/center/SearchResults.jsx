@@ -4,13 +4,7 @@ import { formatTime } from '../../utils/formatTime';
  * SearchResults - Inline result rows replacing dropdown autocomplete
  * Matches new_ui/player.html `.result-item`
  */
-export function SearchResults({
-  results,
-  loading,
-  highlightedIndex,
-  onAdd,
-  onHighlight,
-}) {
+export function SearchResults({ results, loading, highlightedIndex, onAdd, onHighlight }) {
   if (loading) {
     return (
       <div style={{ padding: '40px 20px', textAlign: 'center' }}>
@@ -22,7 +16,7 @@ export function SearchResults({
             borderTopColor: 'var(--color-accent)',
             borderRadius: '50%',
             animation: 'spin 0.7s linear infinite',
-            display: 'inline-block',
+            display: 'inline-block'
           }}
         />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -38,7 +32,7 @@ export function SearchResults({
           textAlign: 'center',
           color: 'var(--color-text-muted)',
           fontSize: '13px',
-          lineHeight: 1.7,
+          lineHeight: 1.7
         }}
       >
         No results found. Try a different search term.
@@ -50,7 +44,9 @@ export function SearchResults({
     <div role="listbox" aria-label="Search results">
       {results.map((track, index) => (
         <div
-          key={track.url || index}
+          key={
+            track.url || track.id || `${track.title || 'result'}-${track.duration ?? ''}-${index}`
+          }
           role="option"
           aria-selected={index === highlightedIndex}
           style={{
@@ -61,11 +57,8 @@ export function SearchResults({
             borderRadius: '9px',
             cursor: 'pointer',
             transition: 'background 0.1s',
-            background:
-              index === highlightedIndex
-                ? 'var(--color-bg-elevated)'
-                : 'transparent',
-            animationDelay: `${index * 50}ms`,
+            background: index === highlightedIndex ? 'var(--color-bg-elevated)' : 'transparent',
+            animationDelay: `${index * 50}ms`
           }}
           className="wave-result-item"
           onMouseEnter={(e) => {
@@ -87,7 +80,7 @@ export function SearchResults({
               borderRadius: '5px',
               flexShrink: 0,
               overflow: 'hidden',
-              background: 'var(--color-bg-surface3)',
+              background: 'var(--color-bg-surface3)'
             }}
           >
             {track.thumbnail ? (
@@ -106,7 +99,7 @@ export function SearchResults({
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: 'var(--color-text-muted)',
-                  fontSize: '14px',
+                  fontSize: '14px'
                 }}
               >
                 &#9835;
@@ -123,7 +116,7 @@ export function SearchResults({
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
-                color: 'var(--color-text-primary)',
+                color: 'var(--color-text-primary)'
               }}
             >
               {track.title}
@@ -132,7 +125,7 @@ export function SearchResults({
               style={{
                 fontSize: '11px',
                 color: 'var(--color-text-muted)',
-                marginTop: '2px',
+                marginTop: '2px'
               }}
             >
               {track.artist || track.channel || ''}
@@ -144,7 +137,7 @@ export function SearchResults({
             style={{
               fontSize: '11px',
               color: 'var(--color-text-muted)',
-              flexShrink: 0,
+              flexShrink: 0
             }}
           >
             {formatTime(track.duration)}
@@ -167,7 +160,7 @@ export function SearchResults({
               cursor: 'pointer',
               fontFamily: 'var(--font-body)',
               transition: 'background 0.12s',
-              whiteSpace: 'nowrap',
+              whiteSpace: 'nowrap'
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'rgba(232,200,122,0.18)';

@@ -1,5 +1,9 @@
 # Local Claude config / artifacts
-.claude/
+.claude/*
+# ...but share the curated skills, agents, and slash commands
+!.claude/skills/
+!.claude/commands/
+!.claude/agents/
 
 # Devcontainer config (ignore if you don't want it versioned)
 .devcontainer/.env

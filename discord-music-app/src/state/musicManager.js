@@ -4,6 +4,7 @@ import { resolutionManager } from '../music/resolutionManager.js';
 import { tryPlayWithFallback } from '../music/trackResolver.js';
 import { getChannelInfo, isConnected } from '../bot/voiceManager.js';
 import { getBotInfo } from '../bot/client.js';
+import { logger } from '../utils/logger.js';
 
 class MusicManager extends EventEmitter {
   constructor() {
@@ -39,10 +40,10 @@ class MusicManager extends EventEmitter {
       resolutionManager.on('resolution:progress', (stats) => {
         this.emit('resolution:progress', stats);
       });
-      resolutionManager.on('resolution:complete', (track) => {
+      resolutionManager.on('resolution:complete', () => {
         this.emitQueueUpdate();
       });
-      resolutionManager.on('resolution:failed', (track) => {
+      resolutionManager.on('resolution:failed', () => {
         this.emitQueueUpdate();
       });
     }
@@ -133,8 +134,8 @@ class MusicManager extends EventEmitter {
     const { played } = await tryPlayWithFallback(this.player, this.queue, connection, true);
 
     if (played) {
-      resolutionManager.processLookahead(this.queue.currentIndex).catch(err => {
-        console.error('Lookahead resolution error:', err);
+      resolutionManager.processLookahead(this.queue.currentIndex).catch((err) => {
+        logger.error('Lookahead resolution error:', err);
       });
     } else {
       this.player.stop();
@@ -147,7 +148,6 @@ class MusicManager extends EventEmitter {
   }
 
   stop() {
-    console.log(`[MusicManager] stop() called`, new Error().stack.split('\n').slice(1, 4).join(' <- '));
     if (!this.player) return false;
     this.player.stop();
     if (this.queue) {
@@ -182,7 +182,7 @@ class MusicManager extends EventEmitter {
   getPlayerState() {
     const guildId = this.guildId || process.env.GUILD_ID;
     const connected = isConnected(guildId);
-    console.log(`[MusicManager] getPlayerState() guildId=${guildId}, connected=${connected}`);
+    logger.debug(`[MusicManager] getPlayerState() guildId=${guildId}, connected=${connected}`);
     return {
       playing: this.player?.isPlaying() || false,
       paused: this.player?.isPaused() || false,
@@ -194,7 +194,7 @@ class MusicManager extends EventEmitter {
 
   emitState() {
     const state = this.getPlayerState();
-    console.log(`[MusicManager] emitState() connected=${state.connected}`, new Error().stack.split('\n').slice(1, 4).join(' <- '));
+    logger.debug(`[MusicManager] emitState() connected=${state.connected}`);
     this.emit('player:state', state);
   }
 
@@ -216,7 +216,7 @@ class MusicManager extends EventEmitter {
   // Emit voice context update
   emitVoiceContext() {
     const ctx = this.getVoiceContext();
-    console.log(`[MusicManager] emitVoiceContext()`, ctx ? `channel=${ctx.channelName}` : 'null', new Error().stack.split('\n').slice(1, 4).join(' <- '));
+    logger.debug(`[MusicManager] emitVoiceContext()`, ctx ? `channel=${ctx.channelName}` : 'null');
     this.emit('voice:context', ctx);
   }
 

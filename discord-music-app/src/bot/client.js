@@ -4,6 +4,7 @@ import { db } from '../database/db.js';
 import { leaveChannel, setChannelCache, getChannelCache } from './voiceManager.js';
 import { startInactivityTimer, cancelInactivityTimer } from './inactivityManager.js';
 import { musicManager } from '../state/musicManager.js';
+import { logger } from '../utils/logger.js';
 
 // Event bus for cross-module communication
 export const botEvents = new EventEmitter();
@@ -17,21 +18,20 @@ const client = new Client({
 });
 
 client.once('ready', () => {
-  console.log(`Ready! Logged in as ${client.user.tag}`);
-  console.log(`Bot is in ${client.guilds.cache.size} guilds:`);
-  client.guilds.cache.forEach(g => console.log(`  - ${g.name} (${g.id})`));
+  logger.info(`Ready! Logged in as ${client.user.tag}`);
+  logger.info(`Bot is in ${client.guilds.cache.size} guilds:`);
+  client.guilds.cache.forEach((g) => logger.info(`  - ${g.name} (${g.id})`));
 });
 
 client.on(Events.GuildDelete, (guild) => {
-  console.log(`[Bot] *** GUILD DELETE EVENT *** Left guild: ${guild.name} (${guild.id})`);
+  logger.info(`[Bot] Left guild: ${guild.name} (${guild.id})`);
   const cleared = db.clearAllHistory();
-  console.log(`[Bot] Cleared ${cleared} history records`);
+  logger.info(`[Bot] Cleared ${cleared} history records`);
   botEvents.emit('historyCleared', guild.id);
-  console.log(`[Bot] Emitted historyCleared event`);
 });
 
 client.on('error', (error) => {
-  console.error('Discord client error:', error);
+  logger.error('Discord client error:', error);
 });
 
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
@@ -39,12 +39,14 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
   const member = newState.member || oldState.member;
   const isBot = member?.user?.bot || false;
   const isSelf = member?.user?.id === client.user?.id;
-  console.log(`[Bot] VoiceStateUpdate: user=${member?.user?.username} isBot=${isBot} isSelf=${isSelf} oldChannel=${oldState.channelId} newChannel=${newState.channelId}`);
+  logger.debug(
+    `[Bot] VoiceStateUpdate: user=${member?.user?.username} isBot=${isBot} isSelf=${isSelf} oldChannel=${oldState.channelId} newChannel=${newState.channelId}`
+  );
 
   const botChannel = getChannelCache(guildId);
 
   if (!botChannel) {
-    console.log(`[Bot] VoiceStateUpdate: no botChannel cached, ignoring`);
+    logger.debug(`[Bot] VoiceStateUpdate: no botChannel cached, ignoring`);
     return;
   }
 
@@ -55,37 +57,42 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
   if (!leftBotChannel && !joinedBotChannel) return;
 
   // Prefer cached channel membership to avoid REST calls on frequent voice events.
-  const humanMembers = botChannel.members?.filter(m => !m.user.bot).size;
+  const humanMembers = botChannel.members?.filter((m) => !m.user.bot).size;
 
   if (typeof humanMembers === 'number') {
-    console.log(`[Bot] VoiceStateUpdate: humanMembers=${humanMembers} in channel ${botChannel.name}`);
+    logger.debug(
+      `[Bot] VoiceStateUpdate: humanMembers=${humanMembers} in channel ${botChannel.name}`
+    );
 
-      if (humanMembers === 0) {
-        console.log(`[Bot] VoiceStateUpdate: no humans left, starting inactivity timer`);
-        startInactivityTimer(guildId, () => {
-          console.log(`[Bot] Inactivity timer fired, leaving channel`);
-          leaveChannel(guildId);
-          setChannelCache(guildId, null);
-          musicManager.stop();
-          musicManager.emitVoiceContext();
-          musicManager.emitState();
-        });
-      } else {
-        cancelInactivityTimer(guildId);
-      }
+    if (humanMembers === 0) {
+      logger.debug(`[Bot] VoiceStateUpdate: no humans left, starting inactivity timer`);
+      startInactivityTimer(guildId, () => {
+        logger.debug(`[Bot] Inactivity timer fired, leaving channel`);
+        leaveChannel(guildId);
+        setChannelCache(guildId, null);
+        musicManager.stop();
+        musicManager.emitVoiceContext();
+        musicManager.emitState();
+      });
+    } else {
+      cancelInactivityTimer(guildId);
+    }
     return;
   }
 
   // Fallback: if cache is missing (partial channel), do a single fetch and ignore errors.
-  botChannel.fetch()
-    .then(channel => {
-      const fetchedHumanMembers = channel.members.filter(m => !m.user.bot).size;
-      console.log(`[Bot] VoiceStateUpdate(fetch): humanMembers=${fetchedHumanMembers} in channel ${channel.name}`);
+  botChannel
+    .fetch()
+    .then((channel) => {
+      const fetchedHumanMembers = channel.members.filter((m) => !m.user.bot).size;
+      logger.debug(
+        `[Bot] VoiceStateUpdate(fetch): humanMembers=${fetchedHumanMembers} in channel ${channel.name}`
+      );
 
       if (fetchedHumanMembers === 0) {
-        console.log(`[Bot] VoiceStateUpdate(fetch): no humans left, starting inactivity timer`);
+        logger.debug(`[Bot] VoiceStateUpdate(fetch): no humans left, starting inactivity timer`);
         startInactivityTimer(guildId, () => {
-          console.log(`[Bot] Inactivity timer fired, leaving channel`);
+          logger.debug(`[Bot] Inactivity timer fired, leaving channel`);
           leaveChannel(guildId);
           setChannelCache(guildId, null);
           musicManager.stop();
@@ -97,12 +104,12 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
       }
     })
     .catch((error) => {
-      console.error('[Bot] VoiceStateUpdate: failed to fetch channel:', error);
+      logger.error('[Bot] VoiceStateUpdate: failed to fetch channel:', error);
     });
 });
 
 botEvents.on('voiceDisconnected', (guildId) => {
-  console.log(`[Bot] *** voiceDisconnected event *** guild=${guildId}`, new Error().stack.split('\n').slice(1, 5).join(' <- '));
+  logger.debug(`[Bot] voiceDisconnected event guild=${guildId}`);
   setChannelCache(guildId, null);
   cancelInactivityTimer(guildId);
   musicManager.stop();

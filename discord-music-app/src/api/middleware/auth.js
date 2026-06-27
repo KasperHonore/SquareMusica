@@ -25,7 +25,7 @@ export function verifyToken(token) {
     }
 
     return { user };
-  } catch (err) {
+  } catch {
     return { error: 'Invalid token' };
   }
 }

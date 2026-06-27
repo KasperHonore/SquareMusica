@@ -5,6 +5,7 @@ import { musicManager } from '../state/musicManager.js';
 import { botEvents } from '../bot/client.js';
 import { ServerEvents, ClientEvents } from './events.js';
 import { verifyToken } from '../api/middleware/auth.js';
+import { logger } from '../utils/logger.js';
 import {
   handleQueueAdd,
   handleQueueRemove,
@@ -55,8 +56,7 @@ export function setupSocketServer(httpServer) {
   // Authentication middleware
   io.use((socket, next) => {
     const token =
-      socket.handshake.auth?.token ||
-      getCookieTokenFromHeaders(socket.handshake.headers);
+      socket.handshake.auth?.token || getCookieTokenFromHeaders(socket.handshake.headers);
     const { user, error } = verifyToken(token);
 
     if (error) {
@@ -68,14 +68,16 @@ export function setupSocketServer(httpServer) {
   });
 
   io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.user.username}`);
+    logger.debug(`User connected: ${socket.user.username}`);
 
     // Send initial state (including playlists)
     const initialState = {
       ...musicManager.getFullState(),
       playlists: db.getPlaylists()
     };
-    console.log(`[Socket] Sending initial:state to ${socket.user.username}: connected=${initialState.playerState?.connected}, voiceContext=${initialState.voiceContext ? initialState.voiceContext.channelName : 'null'}`);
+    logger.debug(
+      `[Socket] Sending initial:state to ${socket.user.username}: connected=${initialState.playerState?.connected}, voiceContext=${initialState.voiceContext ? initialState.voiceContext.channelName : 'null'}`
+    );
     socket.emit(ServerEvents.INITIAL_STATE, initialState);
 
     // Register client event handlers
@@ -92,7 +94,7 @@ export function setupSocketServer(httpServer) {
       const createdBy = socket.user.username;
       const playlist = db.createPlaylist(id, name, spotifyUrl, coverImage, createdBy);
       if (playlist) {
-        console.log(`[Playlist] Created "${name}" by ${createdBy}`);
+        logger.info(`[Playlist] Created "${name}" by ${createdBy}`);
         broadcastPlaylistsUpdate();
       }
     });
@@ -100,13 +102,13 @@ export function setupSocketServer(httpServer) {
     socket.on(ClientEvents.PLAYLIST_DELETE, ({ id }) => {
       const deleted = db.deletePlaylist(id);
       if (deleted) {
-        console.log(`[Playlist] Deleted ${id} by ${socket.user.username}`);
+        logger.info(`[Playlist] Deleted ${id} by ${socket.user.username}`);
         broadcastPlaylistsUpdate();
       }
     });
 
     socket.on('disconnect', () => {
-      console.log(`User disconnected: ${socket.user.username}`);
+      logger.debug(`User disconnected: ${socket.user.username}`);
     });
   });
 
@@ -120,7 +122,9 @@ export function setupSocketServer(httpServer) {
   });
 
   musicManager.on('player:state', (state) => {
-    console.log(`[Socket] Broadcasting player:state connected=${state.connected} playing=${state.playing}`);
+    logger.debug(
+      `[Socket] Broadcasting player:state connected=${state.connected} playing=${state.playing}`
+    );
     io.emit(ServerEvents.PLAYER_STATE, state);
   });
 
@@ -129,7 +133,10 @@ export function setupSocketServer(httpServer) {
   });
 
   musicManager.on('voice:context', (context) => {
-    console.log(`[Socket] Broadcasting voice:context`, context ? `channel=${context.channelName}` : 'null');
+    logger.debug(
+      `[Socket] Broadcasting voice:context`,
+      context ? `channel=${context.channelName}` : 'null'
+    );
     io.emit(ServerEvents.VOICE_CONTEXT, context);
   });
 
@@ -148,11 +155,11 @@ export function setupSocketServer(httpServer) {
 
   // Listen for history cleared events from bot
   botEvents.on('historyCleared', (guildId) => {
-    console.log(`[Socket] Broadcasting history:cleared for guild ${guildId}`);
+    logger.debug(`[Socket] Broadcasting history:cleared for guild ${guildId}`);
     io.emit(ServerEvents.HISTORY_CLEARED, { guildId });
   });
 
-  console.log('Socket.io server initialized');
+  logger.info('Socket.io server initialized');
   return io;
 }
 

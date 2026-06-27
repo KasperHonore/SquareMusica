@@ -3,11 +3,74 @@ import { promisify } from 'util';
 import { PassThrough } from 'stream';
 import { existsSync } from 'fs';
 import { StreamType } from '@discordjs/voice';
+import { logger } from '../utils/logger.js';
 
 const execFileAsync = promisify(execFile);
 
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const searchCache = new Map(); // key -> { expiresAt, results }
+
+// Cap concurrent yt-dlp metadata processes (search / getInfo / getPlaylist) so a
+// burst of requests can't spawn unbounded child processes. Long-lived playback
+// streams (getStream) are intentionally excluded; they are guarded by a watchdog.
+const MAX_METADATA_CONCURRENCY = (() => {
+  const n = parseInt(process.env.YT_DLP_MAX_CONCURRENCY, 10);
+  return Number.isNaN(n) || n < 1 ? 4 : n;
+})();
+
+// Watchdog timeout: kill a getStream yt-dlp that produces no output and never exits.
+const STREAM_START_TIMEOUT_MS = (() => {
+  const n = parseInt(process.env.YT_DLP_STREAM_TIMEOUT_MS, 10);
+  return Number.isNaN(n) || n < 1 ? 15_000 : n;
+})();
+
+// Bound the queue of callers waiting for a metadata slot. Without this, a stall
+// in yt-dlp could let waiters (and their pending requests/file descriptors) grow
+// without limit. Past the cap, new acquires are rejected so the caller returns an
+// error instead of piling up.
+const MAX_METADATA_WAITERS = (() => {
+  const n = parseInt(process.env.YT_DLP_MAX_QUEUE, 10);
+  return Number.isNaN(n) || n < 1 ? 50 : n;
+})();
+
+let activeMetadata = 0;
+const metadataWaiters = [];
+
+function acquireMetadataSlot() {
+  if (activeMetadata < MAX_METADATA_CONCURRENCY) {
+    activeMetadata++;
+    return Promise.resolve();
+  }
+  if (metadataWaiters.length >= MAX_METADATA_WAITERS) {
+    return Promise.reject(new Error('yt-dlp metadata queue is full; try again later'));
+  }
+  return new Promise((resolve) => metadataWaiters.push(resolve));
+}
+
+function releaseMetadataSlot() {
+  const next = metadataWaiters.shift();
+  if (next) {
+    // Hand the in-use slot directly to the next waiter.
+    next();
+  } else {
+    activeMetadata--;
+  }
+}
+
+/**
+ * Run a yt-dlp metadata call while holding a concurrency slot.
+ * @param {() => Promise<T>} fn
+ * @returns {Promise<T>}
+ * @template T
+ */
+async function withMetadataSlot(fn) {
+  await acquireMetadataSlot();
+  try {
+    return await fn();
+  } finally {
+    releaseMetadataSlot();
+  }
+}
 
 function isDebugEnabled() {
   return process.env.DEBUG_YTDLP === '1' || process.env.DEBUG_YTDLP === 'true';
@@ -43,7 +106,7 @@ export function isValidUrl(url) {
       'm.youtube.com',
       'music.youtube.com'
     ];
-    return validHosts.some(host => urlObj.hostname === host);
+    return validHosts.some((host) => urlObj.hostname === host);
   } catch {
     return false;
   }
@@ -64,22 +127,30 @@ export async function search(query, limit = 5) {
     }
 
     if (isDebugEnabled()) {
-      console.log('Searching YouTube for:', query);
+      logger.debug('Searching YouTube for:', query);
     }
 
-    const { stdout } = await execFileAsync(YT_DLP_PATH, [
-      `ytsearch${limit}:${query}`,
-      '--dump-json',
-      '--flat-playlist',
-      '--no-warnings',
-      '--ignore-errors'
-    ], { maxBuffer: 10 * 1024 * 1024 });
+    const { stdout } = await withMetadataSlot(() =>
+      execFileAsync(
+        YT_DLP_PATH,
+        [
+          '--dump-json',
+          '--flat-playlist',
+          '--no-warnings',
+          '--ignore-errors',
+          // `--` ends option parsing so the search term can never be read as a flag.
+          '--',
+          `ytsearch${limit}:${query}`
+        ],
+        { maxBuffer: 10 * 1024 * 1024 }
+      )
+    );
 
     const results = stdout
       .trim()
       .split('\n')
-      .filter(line => line)
-      .map(line => {
+      .filter((line) => line)
+      .map((line) => {
         const data = JSON.parse(line);
         return {
           title: data.title || 'Unknown',
@@ -93,11 +164,11 @@ export async function search(query, limit = 5) {
     searchCache.set(cacheKey, { results, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
 
     if (isDebugEnabled()) {
-      console.log('Search results:', JSON.stringify(results, null, 2));
+      logger.debug('Search results:', JSON.stringify(results, null, 2));
     }
     return results;
   } catch (error) {
-    console.error('YouTube search error:', error);
+    logger.error('YouTube search error:', error);
     return [];
   }
 }
@@ -113,20 +184,19 @@ export async function getInfo(url) {
       return null;
     }
 
-    const args = [
-      url,
-      '--dump-json',
-      '--no-download',
-      '--no-warnings',
-      '--no-playlist'
-    ];
+    const args = ['--dump-json', '--no-download', '--no-warnings', '--no-playlist'];
 
     // Add cookies support if configured
     if (process.env.YT_DLP_COOKIES) {
       args.push('--cookies', process.env.YT_DLP_COOKIES);
     }
 
-    const { stdout } = await execFileAsync(YT_DLP_PATH, args, { maxBuffer: 10 * 1024 * 1024 });
+    // `--` ends option parsing so the URL can never be read as a flag.
+    args.push('--', url);
+
+    const { stdout } = await withMetadataSlot(() =>
+      execFileAsync(YT_DLP_PATH, args, { maxBuffer: 10 * 1024 * 1024 })
+    );
 
     const data = JSON.parse(stdout);
 
@@ -138,7 +208,7 @@ export async function getInfo(url) {
       channel: data.channel || data.uploader || 'Unknown'
     };
   } catch (error) {
-    console.error('YouTube info error:', error);
+    logger.error('YouTube info error:', error);
     return null;
   }
 }
@@ -149,12 +219,13 @@ export async function getInfo(url) {
  * @returns {Promise<Object>} Stream object for discord.js voice
  */
 export async function getStream(url) {
-  console.log('Getting stream for URL:', url);
+  logger.debug('Getting stream for URL:', url);
 
   const args = [
-    url,
-    '-f', 'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=webm]/bestaudio/best',
-    '-o', '-',
+    '-f',
+    'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=webm]/bestaudio/best',
+    '-o',
+    '-',
     '--no-warnings',
     '--no-playlist',
     '--quiet'
@@ -165,45 +236,72 @@ export async function getStream(url) {
     args.push('--cookies', process.env.YT_DLP_COOKIES);
   }
 
+  // `--` ends option parsing so the URL can never be read as a flag.
+  args.push('--', url);
+
   const ytdlp = spawn(YT_DLP_PATH, args);
 
   const stream = new PassThrough();
   stream.on('error', (err) => {
-    console.log('[Stream] PassThrough error (expected during cleanup):', err.message);
+    logger.debug('[Stream] PassThrough error (expected during cleanup):', err.message);
   });
+
+  // Startup watchdog: if yt-dlp emits no data and hasn't exited within the
+  // timeout, it is hung (e.g. waiting on a prompt) and would leak the process.
+  // Kill it and surface an error so playback can fall back to the next track.
+  let watchdog = setTimeout(() => {
+    watchdog = null;
+    logger.error(
+      `[Stream] yt-dlp produced no output within ${STREAM_START_TIMEOUT_MS}ms for ${url}; killing process`
+    );
+    if (!ytdlp.killed) ytdlp.kill('SIGKILL');
+    if (!stream.destroyed) stream.destroy(new Error('yt-dlp stream startup timed out'));
+  }, STREAM_START_TIMEOUT_MS);
+
+  const clearWatchdog = () => {
+    if (watchdog) {
+      clearTimeout(watchdog);
+      watchdog = null;
+    }
+  };
+
+  ytdlp.stdout.once('data', clearWatchdog);
 
   ytdlp.stdout.pipe(stream);
 
   // Debug: log stream lifecycle events
-  stream.on('end', () => console.log('[Stream] PassThrough ended'));
-  stream.on('close', () => console.log('[Stream] PassThrough closed'));
-  stream.on('finish', () => console.log('[Stream] PassThrough finished'));
-  ytdlp.stdout.on('end', () => console.log('[Stream] yt-dlp stdout ended'));
-  ytdlp.stdout.on('close', () => console.log('[Stream] yt-dlp stdout closed'));
+  stream.on('end', () => logger.debug('[Stream] PassThrough ended'));
+  stream.on('close', () => logger.debug('[Stream] PassThrough closed'));
+  stream.on('finish', () => logger.debug('[Stream] PassThrough finished'));
+  ytdlp.stdout.on('end', () => logger.debug('[Stream] yt-dlp stdout ended'));
+  ytdlp.stdout.on('close', () => logger.debug('[Stream] yt-dlp stdout closed'));
 
   ytdlp.stderr.on('data', (data) => {
-    console.error('yt-dlp stderr:', data.toString());
+    logger.error('yt-dlp stderr:', data.toString());
   });
 
   ytdlp.on('error', (error) => {
-    console.error('yt-dlp process error:', error);
+    clearWatchdog();
+    logger.error('yt-dlp process error:', error);
     stream.destroy(error);
   });
 
   ytdlp.on('close', (code) => {
+    clearWatchdog();
     if (code !== 0 && code !== null) {
-      console.error(`yt-dlp exited with code ${code}`);
+      logger.error(`yt-dlp exited with code ${code}`);
     }
   });
 
   const cleanup = () => {
+    clearWatchdog();
     if (!ytdlp.killed) {
       ytdlp.kill('SIGKILL');
-      console.log('[Stream] yt-dlp process killed via cleanup');
+      logger.debug('[Stream] yt-dlp process killed via cleanup');
     }
     if (!stream.destroyed) {
       stream.destroy();
-      console.log('[Stream] PassThrough destroyed via cleanup');
+      logger.debug('[Stream] PassThrough destroyed via cleanup');
     }
   };
 
@@ -237,12 +335,12 @@ export function isPlaylist(url) {
 export async function getPlaylist(url, limit = 50) {
   try {
     const args = [
-      url,
       '--dump-json',
       '--flat-playlist',
       '--no-warnings',
       '--ignore-errors',
-      '--playlist-end', String(limit)
+      '--playlist-end',
+      String(limit)
     ];
 
     // Add cookies support if configured
@@ -250,13 +348,18 @@ export async function getPlaylist(url, limit = 50) {
       args.push('--cookies', process.env.YT_DLP_COOKIES);
     }
 
-    const { stdout } = await execFileAsync(YT_DLP_PATH, args, { maxBuffer: 10 * 1024 * 1024 });
+    // `--` ends option parsing so the URL can never be read as a flag.
+    args.push('--', url);
+
+    const { stdout } = await withMetadataSlot(() =>
+      execFileAsync(YT_DLP_PATH, args, { maxBuffer: 10 * 1024 * 1024 })
+    );
 
     const results = stdout
       .trim()
       .split('\n')
-      .filter(line => line)
-      .map(line => {
+      .filter((line) => line)
+      .map((line) => {
         const data = JSON.parse(line);
         return {
           title: data.title || 'Unknown',
@@ -269,7 +372,7 @@ export async function getPlaylist(url, limit = 50) {
 
     return results;
   } catch (error) {
-    console.error('YouTube playlist error:', error);
+    logger.error('YouTube playlist error:', error);
     return [];
   }
 }

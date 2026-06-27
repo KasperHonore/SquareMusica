@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock YouTube search so resolveSpotifyTrack's scoring/threshold/caching can be
 // exercised deterministically without touching the network or yt-dlp.
-vi.mock('../../src/music/youtube.js', () => ({
+vi.mock('../../src/integrations/youtube.js', () => ({
   search: vi.fn()
 }));
 
-import { search } from '../../src/music/youtube.js';
-import { resolveSpotifyTrack } from '../../src/music/resolver.js';
+import { search } from '../../src/integrations/youtube.js';
+import { resolveSpotifyTrack } from '../../src/services/resolver.js';
 
 // scoreMatch is NOT exported, so it is characterized indirectly through
 // resolveSpotifyTrack: the function returns the best YouTube match only when the

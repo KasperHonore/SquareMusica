@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Queue } from '../../src/music/queue.js';
+import { Queue } from '../../src/core/queue.js';
 
 // Helper: build a track with a stable id we can assert on. Queue.add() spreads
 // the track into a new object (adding addedAt), so identity comparison won't

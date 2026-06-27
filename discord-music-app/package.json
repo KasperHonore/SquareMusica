@@ -11,7 +11,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node src/index.js",
-    "register": "node src/commands/register.js",
+    "register": "node src/transports/discord/commands/register.js",
     "setup": "node scripts/setup-ytdlp.js",
     "lint": "eslint .",
     "format": "prettier -w .",

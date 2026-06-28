@@ -5,6 +5,10 @@ import { isConnected } from '../../discord/voiceManager.js';
 
 const router = Router();
 
+// Known playback actions the controller can dispatch. Anything outside this set
+// is rejected with a 400 before we touch the music manager.
+const ALLOWED_ACTIONS = ['play', 'pause', 'skip', 'stop', 'loop'];
+
 /**
  * GET /api/player - Get player state
  */
@@ -25,6 +29,10 @@ router.post('/:action', authMiddleware, (req, res) => {
 
   const { action } = req.params;
   const { value } = req.body;
+
+  if (!action || !ALLOWED_ACTIONS.includes(action)) {
+    return res.status(400).json({ error: 'Unknown action' });
+  }
 
   let success = false;
 

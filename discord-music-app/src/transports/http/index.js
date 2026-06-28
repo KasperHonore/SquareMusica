@@ -76,8 +76,9 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Serve static frontend in production (when web/dist exists)
-const webDistPath = join(__dirname, '../../web/dist');
+// Serve static frontend in production (when web/dist exists).
+// This file lives at src/transports/http/, so web/dist is three levels up.
+const webDistPath = join(__dirname, '../../../web/dist');
 if (existsSync(webDistPath)) {
   app.use(express.static(webDistPath));
 

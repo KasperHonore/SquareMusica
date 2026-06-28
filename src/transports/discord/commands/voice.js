@@ -1,5 +1,6 @@
 import { joinChannel, leaveChannel, getConnection, setChannelCache } from '../voiceManager.js';
 import { musicManager } from '../../../core/musicManager.js';
+import { logger } from '../../../utils/logger.js';
 
 export async function handleJoin(interaction) {
   // Fetch the guild and member to get current voice state
@@ -23,7 +24,7 @@ export async function handleJoin(interaction) {
     musicManager.emitState();
     await interaction.editReply(`Joined **${voiceChannel.name}**`);
   } catch (error) {
-    console.error('Join error:', error);
+    logger.error('Join error:', error);
     await interaction.editReply('Failed to join voice channel.');
   }
 }

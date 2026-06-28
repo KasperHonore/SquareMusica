@@ -7,6 +7,7 @@ import {
 import { EventEmitter } from 'events';
 import { getStream } from '../integrations/youtube.js';
 import { resolutionManager, ResolutionManager } from '../services/resolutionManager.js';
+import { logger } from '../utils/logger.js';
 
 class MusicPlayer extends EventEmitter {
   constructor() {
@@ -28,7 +29,7 @@ class MusicPlayer extends EventEmitter {
   _setupListeners() {
     // Debug: log all AudioPlayer state transitions
     this.audioPlayer.on('stateChange', (oldState, newState) => {
-      console.log(
+      logger.info(
         `[Player] State: ${oldState.status} -> ${newState.status}`,
         `resource=${!!newState.resource}`,
         `missedFrames=${newState.missedFrames ?? 'n/a'}`
@@ -54,7 +55,7 @@ class MusicPlayer extends EventEmitter {
     });
 
     this.audioPlayer.on('error', (error) => {
-      console.error('Audio player error:', error);
+      logger.error('Audio player error:', error);
       this._cleanupCurrentStream();
       if (this._switching) return;
       this.emit('error', error);
@@ -66,7 +67,7 @@ class MusicPlayer extends EventEmitter {
       try {
         this._currentCleanup();
       } catch (err) {
-        console.error('[Player] Error during stream cleanup:', err);
+        logger.error('[Player] Error during stream cleanup:', err);
       }
       this._currentCleanup = null;
     }
@@ -80,7 +81,7 @@ class MusicPlayer extends EventEmitter {
    */
   async play(track, connection) {
     try {
-      console.log('Player.play() called with track:', track?.title);
+      logger.info('Player.play() called with track:', track?.title);
 
       // Stop player and clean up previous stream before switching tracks
       this._switching = true;
@@ -89,11 +90,11 @@ class MusicPlayer extends EventEmitter {
 
       // Check if track needs resolution
       if (!track.url || ResolutionManager.needsResolution(track)) {
-        console.log('Track needs resolution, resolving on-demand:', track.title);
+        logger.info('Track needs resolution, resolving on-demand:', track.title);
         const resolved = await resolutionManager.ensureResolved(track);
 
         if (!resolved) {
-          console.warn('Failed to resolve track, skipping:', track.title);
+          logger.warn('Failed to resolve track, skipping:', track.title);
           this.emit('trackFailed', track);
           return false;
         }
@@ -102,7 +103,7 @@ class MusicPlayer extends EventEmitter {
         track = resolved;
       }
 
-      console.log('Playing track URL:', track.url);
+      logger.info('Playing track URL:', track.url);
       const streamResult = await getStream(track.url);
       this._currentCleanup = streamResult.cleanup || null;
 
@@ -121,7 +122,7 @@ class MusicPlayer extends EventEmitter {
       this.emit('trackStart', track);
       return true;
     } catch (error) {
-      console.error('Play error:', error);
+      logger.error('Play error:', error);
       this._switching = false;
       this._cleanupCurrentStream();
       this.emit('error', error);

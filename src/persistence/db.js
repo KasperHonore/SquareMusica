@@ -4,6 +4,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { mkdirSync, existsSync } from 'fs';
 import { randomUUID, createHash } from 'crypto';
+import { logger } from '../utils/logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -25,7 +26,7 @@ class DatabaseManager {
     this.migrate();
     const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf8');
     this.db.exec(schema);
-    console.log('[Database] Schema initialized successfully');
+    logger.info('[Database] Schema initialized successfully');
   }
 
   migrate() {
@@ -43,7 +44,7 @@ class DatabaseManager {
     if (!hasGuildId) {
       this.db.exec('ALTER TABLE history ADD COLUMN guild_id TEXT');
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_history_guild_id ON history(guild_id)');
-      console.log('[Database] Migrated: added guild_id to history table');
+      logger.info('[Database] Migrated: added guild_id to history table');
     }
   }
 
@@ -110,7 +111,7 @@ class DatabaseManager {
   addToHistory(track, guildId = null) {
     try {
       if (!track?.title || !track?.url) {
-        console.warn('[Database] addToHistory: Missing required track fields', {
+        logger.warn('[Database] addToHistory: Missing required track fields', {
           title: track?.title,
           url: track?.url
         });
@@ -128,7 +129,7 @@ class DatabaseManager {
         track.requestedBy || 'Unknown'
       );
     } catch (error) {
-      console.error('[Database] addToHistory failed:', error.message, { track: track?.title });
+      logger.error('[Database] addToHistory failed:', error.message, { track: track?.title });
     }
   }
 
@@ -142,10 +143,10 @@ class DatabaseManager {
       // Clear history for this guild, including old records with NULL guild_id
       const stmt = this.db.prepare('DELETE FROM history WHERE guild_id = ? OR guild_id IS NULL');
       const result = stmt.run(guildId);
-      console.log(`[Database] Cleared ${result.changes} history entries for guild ${guildId}`);
+      logger.info(`[Database] Cleared ${result.changes} history entries for guild ${guildId}`);
       return result.changes;
     } catch (error) {
-      console.error('[Database] clearHistoryByGuild failed:', error.message);
+      logger.error('[Database] clearHistoryByGuild failed:', error.message);
       return 0;
     }
   }
@@ -154,10 +155,10 @@ class DatabaseManager {
     try {
       const stmt = this.db.prepare('DELETE FROM history');
       const result = stmt.run();
-      console.log(`[Database] Cleared all ${result.changes} history entries`);
+      logger.info(`[Database] Cleared all ${result.changes} history entries`);
       return result.changes;
     } catch (error) {
-      console.error('[Database] clearAllHistory failed:', error.message);
+      logger.error('[Database] clearAllHistory failed:', error.message);
       return 0;
     }
   }
@@ -176,7 +177,7 @@ class DatabaseManager {
       stmt.run(id, name, spotifyUrl, coverImage || null, createdBy || null);
       return this.getPlaylistById(id);
     } catch (error) {
-      console.error('[Database] createPlaylist failed:', error.message);
+      logger.error('[Database] createPlaylist failed:', error.message);
       return null;
     }
   }
@@ -192,7 +193,7 @@ class DatabaseManager {
       const result = stmt.run(id);
       return result.changes > 0;
     } catch (error) {
-      console.error('[Database] deletePlaylist failed:', error.message);
+      logger.error('[Database] deletePlaylist failed:', error.message);
       return false;
     }
   }

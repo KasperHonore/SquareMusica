@@ -6,6 +6,9 @@ export function useSocket() {
   const { user } = useAuth();
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
+  // Distinct connection status the UI can surface: 'connecting' | 'connected'
+  // | 'reconnecting' | 'disconnected'
+  const [status, setStatus] = useState('connecting');
   const [queue, setQueue] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentTrack, setCurrentTrack] = useState(null);
@@ -32,10 +35,20 @@ export function useSocket() {
 
     newSocket.on('connect', () => {
       setConnected(true);
+      setStatus('connected');
     });
 
     newSocket.on('disconnect', () => {
       setConnected(false);
+      setStatus('disconnected');
+    });
+
+    // Manager-level reconnection lifecycle (socket.io-client v4)
+    newSocket.io.on('reconnect_attempt', () => {
+      setStatus('reconnecting');
+    });
+    newSocket.io.on('reconnect', () => {
+      setStatus('connected');
     });
 
     newSocket.on('queue:update', (data) => {
@@ -99,8 +112,7 @@ export function useSocket() {
       setResolutionStats(stats);
     });
 
-    newSocket.on('history:cleared', (data) => {
-      console.log('[Socket] Received history:cleared event', data);
+    newSocket.on('history:cleared', () => {
       setHistoryVersion((v) => v + 1);
     });
 
@@ -171,6 +183,7 @@ export function useSocket() {
 
   return {
     connected,
+    status,
     queue,
     currentIndex,
     currentTrack,

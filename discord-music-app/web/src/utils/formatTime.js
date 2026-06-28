@@ -1,1 +1,1 @@
-export { formatTime } from '../../../shared/formatTime.js';
+export { formatTime } from '../../../src/shared/formatTime.js';

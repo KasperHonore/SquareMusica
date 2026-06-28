@@ -115,17 +115,7 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
 
   const modalRef = useRef(null);
 
-  // Fetch tracks when modal opens
-  useEffect(() => {
-    if (isOpen && playlist?.id) {
-      setIsClosing(false);
-      setError('');
-      setTracks([]);
-      fetchTracks();
-    }
-  }, [isOpen, playlist?.id]);
-
-  const fetchTracks = async () => {
+  const fetchTracks = useCallback(async () => {
     if (!playlist?.id) return;
 
     setIsLoading(true);
@@ -148,7 +138,17 @@ export function PlaylistDetailModal({ isOpen, onClose, playlist, onAddTrack, onA
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [playlist?.id]);
+
+  // Fetch tracks when modal opens
+  useEffect(() => {
+    if (isOpen && playlist?.id) {
+      setIsClosing(false);
+      setError('');
+      setTracks([]);
+      fetchTracks();
+    }
+  }, [isOpen, playlist?.id, fetchTracks]);
 
   // Handle close with animation
   const handleClose = useCallback(() => {

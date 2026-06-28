@@ -1,12 +1,31 @@
 import 'dotenv/config';
-import { createServer } from 'http';
-import { app } from './api/index.js';
-import { client } from './bot/client.js';
-import { setupCommandHandler } from './bot/commandHandler.js';
-import { registerAllCommands } from './commands/index.js';
-import { setupSocketServer, shutdownSocketServer } from './realtime/socketServer.js';
-import { db } from './database/db.js';
-import { getPlayer, getQueue } from './commands/playback.js';
+import { validateEnv } from './config/env.js';
+
+// Fail fast with one aggregated error if any required config is missing.
+// This runs BEFORE the rest of the app is imported (those modules open the
+// database, build the Discord client, etc. as import-time side effects), so a
+// misconfiguration surfaces as a clear message instead of an unrelated crash.
+validateEnv([
+  'DISCORD_TOKEN',
+  'APP_ID',
+  'GUILD_ID',
+  'DISCORD_CLIENT_SECRET',
+  'JWT_SECRET',
+  'OAUTH_REDIRECT_URI'
+]);
+
+// Loaded dynamically (after validation) so their side effects don't run on a
+// misconfigured environment. Static imports would be hoisted above the check.
+const { createServer } = await import('http');
+const { app } = await import('./transports/http/index.js');
+const { client } = await import('./transports/discord/client.js');
+const { setupCommandHandler } = await import('./transports/discord/commandHandler.js');
+const { registerAllCommands } = await import('./transports/discord/commands/index.js');
+const { setupSocketServer, shutdownSocketServer } =
+  await import('./transports/realtime/socketServer.js');
+const { db } = await import('./persistence/db.js');
+const { getPlayer, getQueue } = await import('./services/playback.js');
+const { logger } = await import('./utils/logger.js');
 
 const PORT = process.env.PORT || 3000;
 
@@ -32,44 +51,44 @@ async function start() {
 
     // Start HTTP server
     httpServer.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Web UI available at ${process.env.WEB_URL || 'http://localhost:5173'}`);
+      logger.info(`Server running on port ${PORT}`);
+      logger.info(`Web UI available at ${process.env.WEB_URL || 'http://localhost:5173'}`);
     });
   } catch (error) {
-    console.error('Failed to start:', error);
+    logger.error('Failed to start:', error);
     process.exit(1);
   }
 }
 
 // Graceful shutdown handling
 process.on('SIGINT', () => {
-  console.log('Shutting down...');
+  logger.info('Shutting down...');
   shutdownSocketServer();
   db.close();
   client.destroy();
   httpServer.close(() => {
-    console.log('Server closed');
+    logger.info('Server closed');
     process.exit(0);
   });
 });
 
 process.on('SIGTERM', () => {
-  console.log('Received SIGTERM, shutting down...');
+  logger.info('Received SIGTERM, shutting down...');
   shutdownSocketServer();
   db.close();
   client.destroy();
   httpServer.close(() => {
-    console.log('Server closed');
+    logger.info('Server closed');
     process.exit(0);
   });
 });
 
 process.on('unhandledRejection', (error) => {
-  console.error('Unhandled rejection:', error);
+  logger.error('Unhandled rejection:', error);
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught exception:', error);
+  logger.error('Uncaught exception:', error);
   process.exit(1);
 });
 

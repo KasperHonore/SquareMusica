@@ -1,5 +1,6 @@
 import { NowPlayingCompact } from './NowPlayingCompact';
 import { Queue } from '../Queue';
+import { useSocketContext } from '../../context/SocketContext';
 
 /**
  * RightPanel - Container for Now Playing and Queue
@@ -7,17 +8,17 @@ import { Queue } from '../Queue';
  * Always visible in the right column. Never changes based on center panel nav.
  * Playback controls live in the bottom bar (MiniPlayer).
  */
-export function RightPanel({
-  currentTrack,
-  playerState,
-  onControl,
-  queue,
-  onReorder,
-  onRemove,
-  onShuffle,
-  onClear,
-  resolutionStats
-}) {
+export function RightPanel() {
+  const {
+    currentTrack,
+    playerState,
+    playerControl,
+    upcomingTracks,
+    reorderUpcoming,
+    removeUpcoming,
+    resolutionStats
+  } = useSocketContext();
+
   return (
     <div
       className="flex flex-col h-full overflow-hidden"
@@ -27,7 +28,7 @@ export function RightPanel({
       <NowPlayingCompact
         currentTrack={currentTrack}
         playerState={playerState}
-        onControl={onControl}
+        onControl={playerControl}
       />
 
       {/* Queue section - fills remaining space */}
@@ -39,11 +40,11 @@ export function RightPanel({
         }}
       >
         <Queue
-          tracks={queue}
-          onReorder={onReorder}
-          onRemove={onRemove}
-          onShuffle={onShuffle}
-          onClear={onClear}
+          tracks={upcomingTracks}
+          onReorder={reorderUpcoming}
+          onRemove={removeUpcoming}
+          onShuffle={() => playerControl('shuffle')}
+          onClear={() => playerControl('clear')}
           resolutionStats={resolutionStats}
           isRightPanel
         />

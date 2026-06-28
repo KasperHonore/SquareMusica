@@ -1,8 +1,8 @@
-import {
-  enrichWithUserInfo,
-  triggerLookaheadIfNeeded,
-  tryPlayWithFallback
-} from '../music/trackResolver.js';
+import { enrichWithUserInfo, triggerLookaheadIfNeeded } from '../services/trackResolver.js';
+
+// Upper bound on a user-supplied search/URL query. Anything longer is rejected
+// before it reaches yt-dlp, since legitimate queries and URLs are well under this.
+export const MAX_QUERY_LENGTH = 500;
 
 const RESOLVE_QUERY_ERROR_MESSAGES = {
   SPOTIFY_PLAYLIST_EMPTY: 'Spotify playlist not found or empty',
@@ -39,10 +39,4 @@ export function addTracksToQueue({
   const lazyResolution = triggerLookaheadIfNeeded(tracks, resolutionManager, queue, currentIndex);
 
   return { tracks, lazyResolution };
-}
-
-export async function autoplayIfIdle({ player, queue, connection, skipCurrent = false }) {
-  if (!player || !queue || !connection) return { played: false, track: null };
-  if (player.isPlaying?.() || player.isPaused?.()) return { played: false, track: null };
-  return await tryPlayWithFallback(player, queue, connection, skipCurrent);
 }

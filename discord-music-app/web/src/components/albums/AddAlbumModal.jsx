@@ -126,6 +126,8 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
 
   // Fetch Spotify metadata when URL changes
   useEffect(() => {
+    const controller = new AbortController();
+
     const fetchMetadata = async () => {
       // Check if it looks like a Spotify URL
       if (!spotifyUrl.includes('spotify.com') && !spotifyUrl.startsWith('spotify:')) {
@@ -146,7 +148,8 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
 
       try {
         const response = await fetch(`/api/spotify/info?url=${encodeURIComponent(spotifyUrl)}`, {
-          credentials: 'include'
+          credentials: 'include',
+          signal: controller.signal
         });
 
         if (!response.ok) {
@@ -161,19 +164,27 @@ export function AddAlbumModal({ isOpen, onClose, onCreate }) {
         setContentType(data.type);
         setMetadataLoaded(true);
       } catch (err) {
+        // A newer keystroke aborted this request — ignore it so the stale
+        // response can't overwrite fresher state.
+        if (err.name === 'AbortError') return;
         setError(err.message);
         setAlbumName('');
         setCoverImage('');
         setTrackCount(0);
         setContentType('');
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
       }
     };
 
     // Debounce the fetch
     const timer = setTimeout(fetchMetadata, 500);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [spotifyUrl]);
 
   // Handle close with animation

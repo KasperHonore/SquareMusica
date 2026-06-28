@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useSocketContext } from '../../context/SocketContext';
 import { BrowseView } from './BrowseView';
 import { SearchResults } from './SearchResults';
 import { PlaylistsView } from './PlaylistsView';
@@ -41,19 +42,13 @@ function isUrl(str) {
 export function CenterPanel({
   activeView,
   onViewChange,
-  onAdd,
-  user,
-  playerState,
-  albums,
-  onCreateAlbum,
-  onLoadAlbum,
-  historyVersion,
   selectedPlaylist,
   onSelectPlaylist,
-  onAddToQueue,
   onClearSelectedPlaylist
 }) {
-  const { token } = useAuth();
+  const { user, token } = useAuth();
+  const { addToQueue, playerState, albums, createPlaylist, loadAlbum, historyVersion } =
+    useSocketContext();
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -97,9 +92,9 @@ export function CenterPanel({
   // Handle adding a track
   const handleAdd = useCallback(
     (urlOrQuery) => {
-      onAdd?.(urlOrQuery);
+      addToQueue?.(urlOrQuery);
     },
-    [onAdd]
+    [addToQueue]
   );
 
   // Handle search input change
@@ -220,21 +215,20 @@ export function CenterPanel({
 
     switch (activeView) {
       case 'history':
-        return <History addToQueue={onAdd} historyVersion={historyVersion} />;
+        return <History addToQueue={addToQueue} historyVersion={historyVersion} />;
       case 'playlists':
         return (
           <PlaylistsView
             albums={albums}
-            onCreateAlbum={onCreateAlbum}
-            onLoadAlbum={onLoadAlbum}
+            onCreateAlbum={createPlaylist}
             selectedPlaylist={selectedPlaylist}
             onSelectPlaylist={onSelectPlaylist}
-            onAddToQueue={onAddToQueue}
+            onAddToQueue={addToQueue}
             onBack={onClearSelectedPlaylist}
           />
         );
       default:
-        return <BrowseView onViewChange={onViewChange} albums={albums} onLoadAlbum={onLoadAlbum} />;
+        return <BrowseView onViewChange={onViewChange} albums={albums} onLoadAlbum={loadAlbum} />;
     }
   };
 

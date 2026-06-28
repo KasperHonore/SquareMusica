@@ -11,12 +11,15 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy package files and scripts needed for postinstall
+# Copy package files and scripts needed for setup
 COPY package*.json ./
 COPY scripts ./scripts
 
-# Install dependencies (postinstall runs setup-ytdlp.js)
+# Install dependencies
 RUN npm ci
+
+# Download yt-dlp binary into ./bin (previously a postinstall hook)
+RUN node scripts/setup-ytdlp.js
 
 # Copy remaining source code
 COPY . .

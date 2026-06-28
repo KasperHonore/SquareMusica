@@ -1,10 +1,31 @@
 import jwt from 'jsonwebtoken';
 import { db } from '../../../persistence/db.js';
+import { logger } from '../../../utils/logger.js';
+
+// Guard so the production misconfiguration warning is logged at most once per
+// process instead of on every request.
+let warnedDevModeIgnored = false;
 
 function isDeveloperModeEnabled() {
   const raw = process.env.developerMode ?? process.env.DEVELOPER_MODE;
   if (raw == null) return false;
-  return String(raw).trim().toLowerCase() === 'true';
+  const requested = String(raw).trim().toLowerCase() === 'true';
+  if (!requested) return false;
+
+  // Never honour the auth bypass in production, even if the flag leaks into the
+  // image. This keeps the entire REST + Socket.io surface authenticated.
+  if (process.env.NODE_ENV === 'production') {
+    if (!warnedDevModeIgnored) {
+      warnedDevModeIgnored = true;
+      logger.warn(
+        '[auth] DEVELOPER_MODE is set but ignored because NODE_ENV=production; ' +
+          'authentication is enforced. Unset DEVELOPER_MODE to silence this warning.'
+      );
+    }
+    return false;
+  }
+
+  return true;
 }
 
 function getDeveloperUser() {

@@ -4,7 +4,6 @@ on:
   pull_request:
   push:
     branches:
-      - main
       - master
 
 jobs:
@@ -49,4 +48,59 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: discord-music-bot:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test (boot HTTP server, probe /api/health)
+        run: |
+          # The production entrypoint (src/index.js) only calls
+          # httpServer.listen() AFTER a successful client.login(DISCORD_TOKEN).
+          # With dummy creds login throws and the process exits BEFORE the server
+          # listens, so a health poll against `node src/index.js` can never pass.
+          # Instead we boot the SAME production Express app module directly
+          # (bypassing only the Discord login) and prove it serves /api/health.
+          # This still validates the built image end-to-end: native modules
+          # (better-sqlite3, opus, sodium) load, every route module resolves, the
+          # SQLite DB initialises in /app/data, and the HTTP server responds 200.
+          docker run -d --name smoke -p 3000:3000 \
+            -e DISCORD_TOKEN=dummy \
+            -e APP_ID=dummy \
+            -e GUILD_ID=dummy \
+            -e DISCORD_CLIENT_SECRET=dummy \
+            -e JWT_SECRET=dummy \
+            -e OAUTH_REDIRECT_URI=http://localhost:3000/callback \
+            discord-music-bot:ci \
+            node --input-type=module -e "import('http').then(async (h) => { const { app } = await import('/app/src/transports/http/index.js'); h.createServer(app).listen(3000, () => console.log('SMOKE_SERVER_LISTENING')); })"
+
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/api/health | grep -q '"status":"ok"'; then
+              echo "Smoke test passed: /api/health returned 200 ok"
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$ok" -ne 1 ]; then
+            echo "Smoke test FAILED: /api/health did not respond in time"
+            echo "----- container logs -----"
+            docker logs smoke || true
+            docker rm -f smoke || true
+            exit 1
+          fi
+
+          docker rm -f smoke || true
 

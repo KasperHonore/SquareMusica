@@ -154,6 +154,14 @@ npm run dev
 npm run register
 ```
 
+### Developer mode (skip Discord OAuth)
+
+For local UI development without configuring Discord OAuth redirect URLs, set:
+
+- `developerMode=true`
+
+When enabled, the API bypasses login and treats you as an authenticated **Developer** user.
+
 ## Devcontainers / Codespaces
 
 No port forwarding is needed. `peon-ping` auto-detects `REMOTE_CONTAINERS` and `CODESPACES` environment variables and routes audio to `host.docker.internal:19998`.

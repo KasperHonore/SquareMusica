@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PlaybackControls } from '../right/PlaybackControls';
 import { MusicNote } from '../icons';
+import { useSocketContext } from '../../context/SocketContext';
 
 /**
  * MiniPlayer - Transport strip (72px bottom bar)
@@ -10,14 +11,10 @@ import { MusicNote } from '../icons';
  * │ [Art] Title / Artist   🔁 ⏮ ▶ ⏭ ⏹  [progress]   Voice btn   │
  * └──────────────────────────────────────────────────────────────────┘
  */
-export function MiniPlayer({
-  currentTrack,
-  playerState,
-  onControl,
-  voiceContext,
-  onJoinChannel,
-  onLeaveChannel
-}) {
+export function MiniPlayer() {
+  const { currentTrack, playerState, playerControl, voiceContext, voiceJoin, voiceLeave } =
+    useSocketContext();
+
   const duration = currentTrack?.duration || 0;
   const position = playerState?.position || 0;
   const progress = duration > 0 ? (position / duration) * 100 : 0;
@@ -93,7 +90,7 @@ export function MiniPlayer({
 
         {/* Center: PlaybackControls + progress */}
         <div className="flex-1 flex flex-col items-center" style={{ gap: '5px' }}>
-          <PlaybackControls playerState={playerState} onControl={onControl} />
+          <PlaybackControls playerState={playerState} onControl={playerControl} />
 
           {/* Progress bar (visual only, no seek) */}
           <div
@@ -163,7 +160,7 @@ export function MiniPlayer({
 
           {/* Right: action button */}
           <button
-            onClick={isVoiceConnected ? onLeaveChannel : onJoinChannel}
+            onClick={isVoiceConnected ? voiceLeave : voiceJoin}
             onMouseEnter={() => setActionHovered(true)}
             onMouseLeave={() => setActionHovered(false)}
             style={{

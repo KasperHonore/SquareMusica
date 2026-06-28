@@ -44,7 +44,9 @@ export function SearchResults({ results, loading, highlightedIndex, onAdd, onHig
     <div role="listbox" aria-label="Search results">
       {results.map((track, index) => (
         <div
-          key={track.url || index}
+          key={
+            track.url || track.id || `${track.title || 'result'}-${track.duration ?? ''}-${index}`
+          }
           role="option"
           aria-selected={index === highlightedIndex}
           style={{

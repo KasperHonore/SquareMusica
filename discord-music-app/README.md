@@ -30,7 +30,7 @@ src/
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 22+
 - A Discord application with bot token
 - FFmpeg (for audio processing)
 - yt-dlp (for YouTube streaming)
@@ -74,8 +74,14 @@ Required variables:
 - `GUILD_ID` - Your Discord server ID (restricts web UI to this server's members)
 - `DISCORD_CLIENT_SECRET` - OAuth client secret (for web UI)
 - `JWT_SECRET` - Random string for JWT signing
-- `OAUTH_REDIRECT_URI` - OAuth callback URL
-- `WEB_URL` - Frontend URL (for CORS)
+- `OAUTH_REDIRECT_URI` - OAuth callback URL (Discord redirects here after login)
+- `WEB_URL` - Frontend URL; used for CORS and as the destination the server redirects back to after the OAuth flow completes
+
+Optional variables:
+
+- `TRUST_PROXY` - Reverse-proxy hop count. Leave unset for direct local runs; set to `1` when running behind a single reverse proxy / Docker so the rate limiter sees the real client IP. It is a hop count, not a boolean — do not set it to `true`.
+- `LOG_LEVEL` - `error` | `warn` | `info` | `debug` (default `info`).
+- `YT_DLP_MAX_CONCURRENCY` (default 4), `YT_DLP_MAX_QUEUE` (default 50), `YT_DLP_STREAM_TIMEOUT_MS` (default 15000) - yt-dlp resource limits.
 
 ### 3. Register Commands
 
@@ -134,9 +140,9 @@ Features:
 - `PATCH /api/queue/reorder` - Reorder tracks
 - `POST /api/queue/shuffle` - Shuffle queue
 - `GET /api/queue/search` - Search YouTube
+- `GET /api/queue/history` - Get play history
 - `GET /api/player` - Get player state
 - `POST /api/player/:action` - Control playback
-- `GET /api/player/history` - Get play history
 
 ## Development
 

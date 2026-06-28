@@ -1,36 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useSocket } from '../hooks/useSocket';
+import { useSocketContext } from '../context/SocketContext';
 import { useBrowserMeta } from '../hooks/useBrowserMeta';
-import { useAuth } from '../context/AuthContext';
 import { AppLayout } from '../components/layout/AppLayout';
 import { MiniPlayer } from '../components/layout/MiniPlayer';
 import { RightPanel } from '../components/right/RightPanel';
 import { CenterPanel } from '../components/center/CenterPanel';
 
 export function Dashboard() {
-  const { user, logout } = useAuth();
-  const {
-    connected,
-    queue,
-    currentIndex,
-    currentTrack,
-    playerState,
-    resolutionStats,
-    voiceContext,
-    botInfo,
-    playlists,
-    error,
-    addToQueue,
-    removeFromQueue,
-    reorderQueue,
-    playerControl,
-    voiceJoin,
-    voiceLeave,
-    createPlaylist,
-    deletePlaylist,
-    clearError,
-    historyVersion
-  } = useSocket();
+  const { currentTrack, botInfo, error, clearError, status } = useSocketContext();
 
   useBrowserMeta(botInfo, currentTrack);
 
@@ -42,16 +19,6 @@ export function Dashboard() {
     setActiveView('playlists');
   }, []);
 
-  // Transform playlists from server format to component format (albums)
-  const albums = playlists.map((p) => ({
-    id: p.id,
-    name: p.name,
-    spotifyUrl: p.spotify_url,
-    coverImage: p.cover_image,
-    createdBy: p.created_by,
-    createdAt: p.created_at
-  }));
-
   // Auto-dismiss error after 5 seconds
   useEffect(() => {
     if (error) {
@@ -60,88 +27,46 @@ export function Dashboard() {
     }
   }, [error, clearError]);
 
-  // Filter queue to show only upcoming tracks (not the currently playing one)
-  const upcomingTracks = currentTrack && currentIndex >= 0 ? queue.slice(currentIndex + 1) : [];
-
-  // Handlers that adjust indices to account for filtered display
-  const handleReorder = (from, to) => {
-    const offset = currentTrack ? currentIndex + 1 : 0;
-    reorderQueue(offset + from, offset + to);
-  };
-
-  const handleRemove = (position) => {
-    const offset = currentTrack ? currentIndex + 1 : 0;
-    removeFromQueue(offset + position);
-  };
-
-  const handleShuffle = () => {
-    playerControl('shuffle');
-  };
-
-  const handleClearQueue = () => {
-    playerControl('clear');
-  };
-
-  const handleJoinChannel = () => {
-    voiceJoin();
-  };
-
-  const handleLeaveChannel = () => {
-    voiceLeave();
-  };
-
-  // Album handlers
-  const handleLoadAlbum = useCallback(
-    async (album) => {
-      if (!album.spotifyUrl) {
-        if (album.tracks && album.tracks.length > 0) {
-          album.tracks.forEach((track) => {
-            if (track.url) {
-              addToQueue(track.url);
-            }
-          });
-        }
-        return;
-      }
-
-      playerControl('stop');
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      addToQueue(album.spotifyUrl);
-    },
-    [addToQueue, playerControl]
-  );
-
-  const handleDeleteAlbum = useCallback(
-    (albumId) => {
-      deletePlaylist(albumId);
-    },
-    [deletePlaylist]
-  );
-
-  const handleCreateAlbum = useCallback(
-    (name, spotifyUrl, coverImage) => {
-      createPlaylist(name, spotifyUrl, coverImage);
-    },
-    [createPlaylist]
-  );
-
-  // Right panel: Now Playing + Controls + Queue
-  const rightPanel = (
-    <RightPanel
-      currentTrack={currentTrack}
-      playerState={playerState}
-      onControl={playerControl}
-      queue={upcomingTracks}
-      onReorder={handleReorder}
-      onRemove={handleRemove}
-      onShuffle={handleShuffle}
-      onClear={handleClearQueue}
-      resolutionStats={resolutionStats}
-    />
-  );
+  const isReconnecting = status === 'reconnecting' || status === 'disconnected';
 
   return (
     <>
+      {/* Reconnecting indicator — socket dropped, data may be stale */}
+      {isReconnecting && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 100,
+            background: 'var(--color-bg-surface3)',
+            border: '1px solid var(--color-border-strong)',
+            borderRadius: '8px',
+            padding: '8px 14px',
+            fontSize: '12px',
+            color: 'var(--color-text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            className="animate-pulse"
+            style={{
+              width: '7px',
+              height: '7px',
+              borderRadius: '50%',
+              backgroundColor: 'var(--color-accent)',
+              flexShrink: 0
+            }}
+          />
+          Reconnecting&hellip;
+        </div>
+      )}
+
       {/* Error Toast - Wave styling */}
       {error && (
         <div
@@ -181,52 +106,22 @@ export function Dashboard() {
       )}
 
       <AppLayout
-        rightPanel={rightPanel}
-        voiceContext={voiceContext}
-        playerState={playerState}
-        currentTrack={currentTrack}
-        user={user}
+        rightPanel={<RightPanel />}
         activeView={activeView}
         onViewChange={setActiveView}
-        onJoinChannel={handleJoinChannel}
-        onLeaveChannel={handleLeaveChannel}
-        onLogout={logout}
-        onAdd={addToQueue}
-        connected={connected}
-        botInfo={botInfo}
-        albums={albums}
-        onLoadAlbum={handleLoadAlbum}
-        onDeleteAlbum={handleDeleteAlbum}
-        onCreateAlbum={handleCreateAlbum}
-        onAddToQueue={addToQueue}
         onSelectPlaylist={handleSelectPlaylist}
       >
         <CenterPanel
           activeView={activeView}
           onViewChange={setActiveView}
-          onAdd={addToQueue}
-          user={user}
-          playerState={playerState}
-          albums={albums}
-          onCreateAlbum={handleCreateAlbum}
-          onLoadAlbum={handleLoadAlbum}
-          historyVersion={historyVersion}
           selectedPlaylist={selectedPlaylist}
           onSelectPlaylist={handleSelectPlaylist}
-          onAddToQueue={addToQueue}
           onClearSelectedPlaylist={() => setSelectedPlaylist(null)}
         />
       </AppLayout>
 
       {/* MiniPlayer - Bottom bar transport strip */}
-      <MiniPlayer
-        currentTrack={currentTrack}
-        playerState={playerState}
-        onControl={playerControl}
-        voiceContext={voiceContext}
-        onJoinChannel={handleJoinChannel}
-        onLeaveChannel={handleLeaveChannel}
-      />
+      <MiniPlayer />
 
       <style>{`
         @keyframes toastIn {

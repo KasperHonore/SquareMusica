@@ -15,7 +15,6 @@ export function AlbumSection({
   onLoadAlbum,
   onDeleteAlbum,
   onCreateAlbum,
-  onAddToQueue,
   onSelectPlaylist
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);

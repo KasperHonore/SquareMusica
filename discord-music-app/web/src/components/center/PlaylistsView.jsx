@@ -16,7 +16,6 @@ function formatDuration(ms) {
 export function PlaylistsView({
   albums = [],
   onCreateAlbum,
-  onLoadAlbum,
   selectedPlaylist,
   onSelectPlaylist,
   onAddToQueue,

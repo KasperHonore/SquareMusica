@@ -5,18 +5,21 @@
 export function BrowseView({ onViewChange, albums = [], onLoadAlbum }) {
   const cards = [
     {
+      key: 'liked-songs',
       icon: '\u2764\uFE0F',
       label: 'Liked Songs',
       sub: 'Your favourites',
       onClick: () => onViewChange?.('playlists')
     },
     {
+      key: 'recently-played',
       icon: '\uD83D\uDD50',
       label: 'Recently Played',
       sub: 'Play history',
       onClick: () => onViewChange?.('history')
     },
     ...albums.map((al) => ({
+      key: `album-${al.id}`,
       icon: '\uD83C\uDFB5',
       label: al.name,
       sub: 'Playlist',
@@ -34,7 +37,7 @@ export function BrowseView({ onViewChange, albums = [], onLoadAlbum }) {
     >
       {cards.map((card, i) => (
         <button
-          key={i}
+          key={card.key}
           onClick={card.onClick}
           style={{
             background: 'var(--color-bg-elevated)',

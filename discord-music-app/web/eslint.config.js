@@ -10,6 +10,11 @@ export default [
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
+      parserOptions: {
+        ecmaFeatures: {
+          jsx: true
+        }
+      },
       globals: {
         ...globals.browser
       }
@@ -26,6 +31,10 @@ export default [
     rules: {
       ...reactHooksPlugin.configs.recommended.rules,
       'react/react-in-jsx-scope': 'off',
+      // Mark identifiers referenced only in JSX as used so no-unused-vars
+      // does not flag component imports.
+      'react/jsx-uses-vars': 'warn',
+      'react/jsx-uses-react': 'warn',
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }]
     }
   },

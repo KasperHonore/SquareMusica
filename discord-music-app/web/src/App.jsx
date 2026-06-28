@@ -1,6 +1,7 @@
 import { Component } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { SocketProvider } from './context/SocketContext';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 
@@ -80,7 +81,9 @@ export default function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <AuthProvider>
-          <AppContent />
+          <SocketProvider>
+            <AppContent />
+          </SocketProvider>
         </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>

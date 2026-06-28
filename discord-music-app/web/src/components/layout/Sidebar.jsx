@@ -1,4 +1,6 @@
 import { AlbumSection } from '../albums';
+import { useAuth } from '../../context/AuthContext';
+import { useSocketContext } from '../../context/SocketContext';
 
 /**
  * Sidebar — Wave design
@@ -75,24 +77,10 @@ const NAV_ITEMS = [
   }
 ];
 
-export function Sidebar({
-  activeView = 'search',
-  onViewChange,
-  // Voice props passed through but NOT rendered here (moved to bottom bar)
-  voiceContext,
-  onJoinChannel,
-  onLeaveChannel,
-  onLogout,
-  botInfo,
-  user,
-  // Album props
-  albums = [],
-  onLoadAlbum,
-  onDeleteAlbum,
-  onCreateAlbum,
-  onAddToQueue,
-  onSelectPlaylist
-}) {
+export function Sidebar({ activeView = 'search', onViewChange, onSelectPlaylist }) {
+  const { user, logout } = useAuth();
+  const { botInfo, albums, loadAlbum, deletePlaylist, createPlaylist } = useSocketContext();
+
   // Map old view IDs to new ones for backwards compat
   const resolvedView =
     activeView === 'nowplaying' ? 'search' : activeView === 'queue' ? 'playlists' : activeView;
@@ -220,10 +208,9 @@ export function Sidebar({
       >
         <AlbumSection
           albums={albums}
-          onLoadAlbum={onLoadAlbum}
-          onDeleteAlbum={onDeleteAlbum}
-          onCreateAlbum={onCreateAlbum}
-          onAddToQueue={onAddToQueue}
+          onLoadAlbum={loadAlbum}
+          onDeleteAlbum={deletePlaylist}
+          onCreateAlbum={createPlaylist}
           onSelectPlaylist={onSelectPlaylist}
         />
       </div>
@@ -294,7 +281,7 @@ export function Sidebar({
 
         {/* Logout button */}
         <button
-          onClick={onLogout}
+          onClick={logout}
           title="Sign out"
           style={{
             background: 'none',

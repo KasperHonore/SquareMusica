@@ -22,24 +22,10 @@ import { MusicNote } from '../icons';
 export function AppLayout({
   children,
   rightPanel,
-  voiceContext,
-  playerState,
-  currentTrack,
-  user,
+  // UI navigation state (everything else is read from SocketContext/AuthContext
+  // by the components that need it).
   activeView,
   onViewChange,
-  onJoinChannel,
-  onLeaveChannel,
-  onLogout,
-  onAdd,
-  connected,
-  botInfo,
-  // Album props
-  albums = [],
-  onLoadAlbum,
-  onDeleteAlbum,
-  onCreateAlbum,
-  onAddToQueue,
   onSelectPlaylist
 }) {
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
@@ -60,17 +46,6 @@ export function AppLayout({
           <Sidebar
             activeView={activeView}
             onViewChange={onViewChange}
-            voiceContext={voiceContext}
-            onJoinChannel={onJoinChannel}
-            onLeaveChannel={onLeaveChannel}
-            onLogout={onLogout}
-            botInfo={botInfo}
-            user={user}
-            albums={albums}
-            onLoadAlbum={onLoadAlbum}
-            onDeleteAlbum={onDeleteAlbum}
-            onCreateAlbum={onCreateAlbum}
-            onAddToQueue={onAddToQueue}
             onSelectPlaylist={onSelectPlaylist}
           />
         </aside>
@@ -161,17 +136,6 @@ export function AppLayout({
             onViewChange?.(view);
             setSidebarOpen(false);
           }}
-          voiceContext={voiceContext}
-          onJoinChannel={onJoinChannel}
-          onLeaveChannel={onLeaveChannel}
-          onLogout={onLogout}
-          botInfo={botInfo}
-          user={user}
-          albums={albums}
-          onLoadAlbum={onLoadAlbum}
-          onDeleteAlbum={onDeleteAlbum}
-          onCreateAlbum={onCreateAlbum}
-          onAddToQueue={onAddToQueue}
           onSelectPlaylist={(album) => {
             onSelectPlaylist?.(album);
             setSidebarOpen(false);

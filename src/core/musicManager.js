@@ -4,8 +4,7 @@ import { resolutionManager } from '../services/resolutionManager.js';
 import { tryPlayWithFallback } from '../services/trackResolver.js';
 import { advanceAndPlay } from '../services/playback.js';
 import { addTracksToQueue } from '../shared/queueHelpers.js';
-import { getChannelInfo, isConnected } from '../transports/discord/voiceManager.js';
-import { getBotInfo, botEvents } from '../transports/discord/client.js';
+import { botEvents } from '../events/bus.js';
 import { logger } from '../utils/logger.js';
 
 class MusicManager extends EventEmitter {
@@ -14,7 +13,13 @@ class MusicManager extends EventEmitter {
     this.player = null;
     this.queue = null;
     this.guildId = null;
-    this.getConnection = null; // Will be set by playback.js
+    // Transport-layer getters injected at startup so core/ never imports from
+    // transports/. getConnection is wired by playback.js; the rest by client.js
+    // (all mirror playback.js's setGetConnection pattern).
+    this.getConnection = null;
+    this.getBotInfo = null;
+    this.getChannelInfo = null;
+    this.isConnected = null;
     this._resolutionListenersSetup = false;
   }
 
@@ -57,6 +62,18 @@ class MusicManager extends EventEmitter {
 
   setGetConnection(fn) {
     this.getConnection = fn;
+  }
+
+  setGetBotInfo(fn) {
+    this.getBotInfo = fn;
+  }
+
+  setGetChannelInfo(fn) {
+    this.getChannelInfo = fn;
+  }
+
+  setIsConnected(fn) {
+    this.isConnected = fn;
   }
 
   // Helper to emit queue updates with currentIndex
@@ -226,7 +243,7 @@ class MusicManager extends EventEmitter {
 
   getPlayerState() {
     const guildId = this.guildId || process.env.GUILD_ID;
-    const connected = isConnected(guildId);
+    const connected = this.isConnected?.(guildId) || false;
     logger.debug(`[MusicManager] getPlayerState() guildId=${guildId}, connected=${connected}`);
     return {
       playing: this.player?.isPlaying() || false,
@@ -255,7 +272,7 @@ class MusicManager extends EventEmitter {
   // Get voice context
   getVoiceContext() {
     const guildId = this.guildId || process.env.GUILD_ID;
-    return getChannelInfo(guildId);
+    return this.getChannelInfo?.(guildId) || null;
   }
 
   // Emit voice context update
@@ -274,7 +291,7 @@ class MusicManager extends EventEmitter {
       playerState: this.getPlayerState(),
       resolutionStats: this.queue?.getResolutionStats() || null,
       voiceContext: this.getVoiceContext(),
-      botInfo: getBotInfo()
+      botInfo: this.getBotInfo?.() || null
     };
   }
 }

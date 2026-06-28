@@ -1,0 +1,10 @@
+node_modules/
+web/
+data/
+bin/
+dist/
+.claude/
+.github/
+docs/
+*.md
+package-lock.json

@@ -9,3 +9,6 @@ data/
 .gitignore
 *.md
 .DS_Store
+.claude/
+.github/
+docs/

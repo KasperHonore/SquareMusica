@@ -37,7 +37,6 @@ function isUrl(str) {
 
 /**
  * CenterPanel - Hero greeting, search bar, and content area
- * Matches new_ui/player.html center / discovery layout
  */
 export function CenterPanel({
   activeView,

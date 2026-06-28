@@ -1,6 +1,5 @@
 /**
  * BrowseView - Default home screen with 2-column card grid
- * Matches new_ui/player.html `.default-grid`, `.default-card`
  */
 export function BrowseView({ onViewChange, albums = [], onLoadAlbum }) {
   const cards = [

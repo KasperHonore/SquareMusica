@@ -1,9 +1,0 @@
-node_modules/
-.env
-data/
-web/node_modules/
-web/dist/
-*.log
-.DS_Store
-bin/
-ngrok

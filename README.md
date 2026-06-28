@@ -16,16 +16,18 @@ A feature-rich Discord music bot with a web control panel. Stream music from You
 
 ```
 src/
-  api/           # Express REST API
-    middleware/  # Auth middleware
-    routes/      # API endpoints
-  bot/           # Discord.js client & voice
-  commands/      # Slash command handlers
-  database/      # SQLite with better-sqlite3
-  music/         # YouTube search, queue, player
-  realtime/      # Socket.io server
-  state/         # MusicManager (central state)
-  index.js       # Entry point
+  config/              # Environment config
+  core/                # musicManager, player, queue (central state)
+  integrations/        # Spotify & YouTube integrations
+  persistence/         # SQLite db.js + schema.sql
+  services/            # playback, resolver, trackResolver, resolutionManager
+  shared/              # formatTime, queueHelpers
+  transports/
+    discord/           # Discord.js client, voice, commands
+    http/              # Express REST API (middleware, routes)
+    realtime/          # Socket.io server
+  utils/               # logger
+  index.js             # Entry point
 ```
 
 ## Requirements
@@ -162,9 +164,9 @@ For local UI development without configuring Discord OAuth redirect URLs, set:
 
 When enabled, the API bypasses login and treats you as an authenticated **Developer** user.
 
-## Devcontainers / Codespaces
+## Remote / Container Sessions
 
-No port forwarding is needed. `peon-ping` auto-detects `REMOTE_CONTAINERS` and `CODESPACES` environment variables and routes audio to `host.docker.internal:19998`.
+When running inside a remote SSH or container session, `peon-ping` auto-detects `REMOTE_CONTAINERS` and `CODESPACES` environment variables and routes audio to `host.docker.internal:19998` — no port forwarding is needed.
 
 Run the relay on your host machine:
 

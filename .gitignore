@@ -5,15 +5,22 @@
 !.claude/commands/
 !.claude/agents/
 
-# Devcontainer config (ignore if you don't want it versioned)
-.devcontainer/.env
-
 # Node / JS
 node_modules/
+web/node_modules/
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
+*.log
+
+# App runtime
+.env
+.env.*
+!.env.sample
+data/
+web/dist/
+bin/
+ngrok
 
 # OS / editor
 .DS_Store

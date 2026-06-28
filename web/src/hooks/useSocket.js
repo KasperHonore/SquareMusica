@@ -13,6 +13,7 @@ export function useSocket() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentTrack, setCurrentTrack] = useState(null);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [playerState, setPlayerState] = useState({
     playing: false,
     paused: false,
@@ -120,6 +121,10 @@ export function useSocket() {
       setError(err.message || 'An error occurred');
     });
 
+    newSocket.on('notice', (n) => {
+      setNotice(n?.message || null);
+    });
+
     setSocket(newSocket);
 
     return () => {
@@ -181,6 +186,10 @@ export function useSocket() {
     setError(null);
   }, []);
 
+  const clearNotice = useCallback(() => {
+    setNotice(null);
+  }, []);
+
   return {
     connected,
     status,
@@ -194,6 +203,7 @@ export function useSocket() {
     botInfo,
     playlists,
     error,
+    notice,
     addToQueue,
     removeFromQueue,
     reorderQueue,
@@ -202,6 +212,7 @@ export function useSocket() {
     voiceLeave,
     createPlaylist,
     deletePlaylist,
-    clearError
+    clearError,
+    clearNotice
   };
 }

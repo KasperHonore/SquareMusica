@@ -7,7 +7,8 @@ import { RightPanel } from '../components/right/RightPanel';
 import { CenterPanel } from '../components/center/CenterPanel';
 
 export function Dashboard() {
-  const { currentTrack, botInfo, error, clearError, status } = useSocketContext();
+  const { currentTrack, botInfo, error, clearError, notice, clearNotice, status } =
+    useSocketContext();
 
   useBrowserMeta(botInfo, currentTrack);
 
@@ -26,6 +27,14 @@ export function Dashboard() {
       return () => clearTimeout(timer);
     }
   }, [error, clearError]);
+
+  // Auto-dismiss notice after 5 seconds
+  useEffect(() => {
+    if (notice) {
+      const timer = setTimeout(() => clearNotice(), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notice, clearNotice]);
 
   const isReconnecting = status === 'reconnecting' || status === 'disconnected';
 
@@ -94,6 +103,44 @@ export function Dashboard() {
               background: 'none',
               border: 'none',
               color: 'var(--color-danger)',
+              cursor: 'pointer',
+              fontSize: '18px',
+              lineHeight: 1,
+              padding: '0 2px'
+            }}
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
+      {/* Notice Toast - neutral informational message (e.g. playlist capped) */}
+      {notice && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '16px',
+            right: '16px',
+            zIndex: 100,
+            background: 'var(--color-bg-surface3)',
+            border: '1px solid var(--color-border-strong)',
+            borderRadius: '8px',
+            padding: '10px 16px',
+            fontSize: '13px',
+            color: 'var(--color-text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            animation: 'toastIn 0.2s ease'
+          }}
+        >
+          <span>{notice}</span>
+          <button
+            onClick={clearNotice}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--color-text-secondary)',
               cursor: 'pointer',
               fontSize: '18px',
               lineHeight: 1,

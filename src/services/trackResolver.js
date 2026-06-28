@@ -3,9 +3,12 @@ import {
   parseSpotifyUrl,
   getPublicTrack,
   getPublicPlaylistTracks,
-  getPublicAlbumTracks
+  getPublicAlbumTracks,
+  MAX_PLAYLIST_TRACKS,
+  MAX_ALBUM_TRACKS
 } from '../integrations/spotify.js';
 import { ResolutionManager } from './resolutionManager.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Parse a query string and return tracks.
@@ -13,60 +16,68 @@ import { ResolutionManager } from './resolutionManager.js';
  *
  * @param {string} query - URL or search string
  * @param {{ username: string, id: string|null, avatar: string|null }} userInfo - Requesting user
- * @returns {Promise<{ tracks: Object[], error: string|null }>}
+ * @returns {Promise<{ tracks: Object[], error: string|null, truncation: { total: number, returned: number, cap: number }|null }>}
  */
 export async function resolveQuery(query, userInfo) {
   const spotifyParsed = parseSpotifyUrl(query);
 
   if (spotifyParsed.type === 'playlist') {
-    const spotifyTracks = await getPublicPlaylistTracks(spotifyParsed.id);
+    const {
+      tracks: spotifyTracks,
+      total,
+      truncated
+    } = await getPublicPlaylistTracks(spotifyParsed.id);
     if (spotifyTracks.length === 0) {
-      return { tracks: [], error: 'SPOTIFY_PLAYLIST_EMPTY' };
+      return { tracks: [], error: 'SPOTIFY_PLAYLIST_EMPTY', truncation: null };
     }
     const tracks = spotifyTracks.map((st) => ResolutionManager.createUnresolvedTrack(st, userInfo));
-    return { tracks, error: null };
+    const truncation = truncated
+      ? { total, returned: tracks.length, cap: MAX_PLAYLIST_TRACKS }
+      : null;
+    return { tracks, error: null, truncation };
   }
 
   if (spotifyParsed.type === 'track') {
     const spotifyTrack = await getPublicTrack(spotifyParsed.id);
     if (!spotifyTrack) {
-      return { tracks: [], error: 'SPOTIFY_TRACK_NOT_FOUND' };
+      return { tracks: [], error: 'SPOTIFY_TRACK_NOT_FOUND', truncation: null };
     }
     const tracks = [ResolutionManager.createUnresolvedTrack(spotifyTrack, userInfo)];
-    return { tracks, error: null };
+    return { tracks, error: null, truncation: null };
   }
 
   if (spotifyParsed.type === 'album') {
-    const albumTracks = await getPublicAlbumTracks(spotifyParsed.id);
+    const { tracks: albumTracks, total, truncated } = await getPublicAlbumTracks(spotifyParsed.id);
     if (albumTracks.length === 0) {
-      return { tracks: [], error: 'SPOTIFY_ALBUM_EMPTY' };
+      return { tracks: [], error: 'SPOTIFY_ALBUM_EMPTY', truncation: null };
     }
     const tracks = albumTracks.map((st) => ResolutionManager.createUnresolvedTrack(st, userInfo));
-    return { tracks, error: null };
+    const truncation = truncated ? { total, returned: tracks.length, cap: MAX_ALBUM_TRACKS } : null;
+    return { tracks, error: null, truncation };
   }
 
   if (isPlaylist(query)) {
     const tracks = await getPlaylist(query);
     if (tracks.length === 0) {
-      return { tracks: [], error: 'PLAYLIST_EMPTY' };
+      return { tracks: [], error: 'PLAYLIST_EMPTY', truncation: null };
     }
-    return { tracks, error: null };
+    return { tracks, error: null, truncation: null };
   }
 
   if (isValidUrl(query)) {
     const track = await getInfo(query);
     if (!track) {
-      return { tracks: [], error: 'VIDEO_NOT_FOUND' };
+      return { tracks: [], error: 'VIDEO_NOT_FOUND', truncation: null };
     }
-    return { tracks: [track], error: null };
+    return { tracks: [track], error: null, truncation: null };
   }
 
   // Search YouTube
   const results = await search(query, 1);
   if (results.length === 0) {
-    return { tracks: [], error: 'NO_RESULTS' };
+    return { tracks: [], error: 'NO_RESULTS', truncation: null };
   }
-  return { tracks: [results[0]], error: null };
+  return { tracks: [results[0]], error: null, truncation: null };
 }
 
 /**
@@ -97,7 +108,7 @@ export function triggerLookaheadIfNeeded(tracks, resMgr, queue, currentIndex) {
     resMgr.setQueue(queue);
     resMgr.start();
     resMgr.processLookahead(currentIndex).catch((err) => {
-      console.error('Lookahead resolution error:', err);
+      logger.error('Lookahead resolution error:', err);
     });
   }
   return hasUnresolved;

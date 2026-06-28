@@ -1,5 +1,68 @@
-import { describe, it, expect } from 'vitest';
-import { parseSpotifyUrl } from '../../src/integrations/spotify.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Mock the Spotify SDK so getClient() builds a fake client whose paged endpoints
+// we drive from the tests. withClientCredentials is only consulted once (the
+// client is cached), so we keep its implementation and reset the endpoint mocks.
+const getPlaylistItems = vi.fn();
+const albumsGet = vi.fn();
+
+vi.mock('@spotify/web-api-ts-sdk', () => ({
+  SpotifyApi: {
+    withClientCredentials: vi.fn(() => ({
+      playlists: { getPlaylistItems },
+      albums: { get: albumsGet }
+    }))
+  }
+}));
+
+// Credentials must be present before the module is imported so getClient()
+// constructs the (mocked) client instead of returning null.
+process.env.SPOTIFY_CLIENT_ID = 'test-id';
+process.env.SPOTIFY_CLIENT_SECRET = 'test-secret';
+
+const {
+  parseSpotifyUrl,
+  getPublicPlaylistTracks,
+  getPublicAlbumTracks,
+  MAX_PLAYLIST_TRACKS,
+  MAX_ALBUM_TRACKS
+} = await import('../../src/integrations/spotify.js');
+
+function makeTrack(i) {
+  return {
+    track: {
+      id: `t${i}`,
+      name: `Track ${i}`,
+      artists: [{ name: 'Artist' }],
+      duration_ms: 1000,
+      external_urls: { spotify: `https://open.spotify.com/track/t${i}` },
+      is_local: false
+    }
+  };
+}
+
+function makePlaylistPage(count, { total, next }) {
+  return {
+    total,
+    next,
+    items: Array.from({ length: count }, (_, i) => makeTrack(i))
+  };
+}
+
+function makeAlbum(itemCount, totalTracks) {
+  return {
+    total_tracks: totalTracks,
+    tracks: {
+      items: Array.from({ length: itemCount }, (_, i) => ({
+        id: `a${i}`,
+        name: `Album Track ${i}`,
+        artists: [{ name: 'Artist' }],
+        duration_ms: 1000,
+        external_urls: { spotify: `https://open.spotify.com/track/a${i}` }
+      }))
+    }
+  };
+}
 
 describe('parseSpotifyUrl', () => {
   describe('spotify: URI format', () => {
@@ -119,5 +182,87 @@ describe('parseSpotifyUrl', () => {
     it('returns nulls for non-string input (object)', () => {
       expect(parseSpotifyUrl({})).toEqual({ type: null, id: null });
     });
+  });
+});
+
+describe('getPublicPlaylistTracks', () => {
+  beforeEach(() => {
+    getPlaylistItems.mockReset();
+  });
+
+  it('returns { tracks, total, truncated } for a small playlist (not truncated)', async () => {
+    getPlaylistItems.mockResolvedValueOnce(makePlaylistPage(50, { total: 50, next: null }));
+
+    const result = await getPublicPlaylistTracks('pl-small');
+
+    expect(result.tracks).toHaveLength(50);
+    expect(result.total).toBe(50);
+    expect(result.truncated).toBe(false);
+    expect(result.tracks[0]).toEqual({
+      spotifyId: 't0',
+      title: 'Track 0',
+      artists: ['Artist'],
+      durationMs: 1000,
+      spotifyUrl: 'https://open.spotify.com/track/t0'
+    });
+  });
+
+  it('truncates and reports the true total when the playlist exceeds the cap', async () => {
+    // Each page returns 100 items and signals more pages via `next`, with a
+    // total well above the cap.
+    getPlaylistItems.mockResolvedValue(
+      makePlaylistPage(100, { total: 650, next: 'https://api.spotify.com/next' })
+    );
+
+    const result = await getPublicPlaylistTracks('pl-huge');
+
+    expect(result.tracks).toHaveLength(MAX_PLAYLIST_TRACKS);
+    expect(result.total).toBe(650);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('does not flag truncation for a playlist exactly at the cap', async () => {
+    getPlaylistItems.mockResolvedValue(
+      makePlaylistPage(100, { total: MAX_PLAYLIST_TRACKS, next: 'https://api.spotify.com/next' })
+    );
+
+    const result = await getPublicPlaylistTracks('pl-exact');
+
+    expect(result.tracks).toHaveLength(MAX_PLAYLIST_TRACKS);
+    expect(result.total).toBe(MAX_PLAYLIST_TRACKS);
+    expect(result.truncated).toBe(false);
+  });
+});
+
+describe('getPublicAlbumTracks', () => {
+  beforeEach(() => {
+    albumsGet.mockReset();
+  });
+
+  it('returns { tracks, total, truncated } for a small album (not truncated)', async () => {
+    albumsGet.mockResolvedValueOnce(makeAlbum(10, 10));
+
+    const result = await getPublicAlbumTracks('al-small');
+
+    expect(result.tracks).toHaveLength(10);
+    expect(result.total).toBe(10);
+    expect(result.truncated).toBe(false);
+    expect(result.tracks[0]).toEqual({
+      spotifyId: 'a0',
+      title: 'Album Track 0',
+      artists: ['Artist'],
+      durationMs: 1000,
+      spotifyUrl: 'https://open.spotify.com/track/a0'
+    });
+  });
+
+  it('truncates and reports the true total when the album exceeds the embed limit', async () => {
+    albumsGet.mockResolvedValueOnce(makeAlbum(MAX_ALBUM_TRACKS, 72));
+
+    const result = await getPublicAlbumTracks('al-huge');
+
+    expect(result.tracks).toHaveLength(MAX_ALBUM_TRACKS);
+    expect(result.total).toBe(72);
+    expect(result.truncated).toBe(true);
   });
 });

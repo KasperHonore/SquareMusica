@@ -17,6 +17,11 @@ import {
 
 let io;
 let progressInterval;
+// Track the exact listeners we subscribe so shutdown can remove precisely the
+// ones setup added (other modules may register their own listeners on these
+// emitters, so removeAllListeners is not safe). Each entry is [event, handler].
+let managerListeners = [];
+let botEventsListeners = [];
 
 function getCookieTokenFromHeaders(headers) {
   const cookieHeader = headers?.cookie;
@@ -46,6 +51,17 @@ function broadcastPlaylistsUpdate() {
  * @returns {Server} Socket.io server instance
  */
 export function setupSocketServer(httpServer) {
+  // Idempotency guard: if a previous instance is still live, fully tear it down
+  // first so we never end up with duplicate intervals or listeners. Choosing
+  // teardown-and-rebuild (over a no-op return) keeps it correct even when called
+  // with a different httpServer, while reusing the single shutdown code path.
+  if (io) {
+    logger.warn(
+      'setupSocketServer called while already initialized; tearing down previous instance'
+    );
+    shutdownSocketServer();
+  }
+
   io = new Server(httpServer, {
     cors: {
       origin: process.env.WEB_URL || 'http://localhost:5173',
@@ -112,34 +128,56 @@ export function setupSocketServer(httpServer) {
     });
   });
 
-  // Subscribe to MusicManager events and broadcast to all clients
-  musicManager.on('queue:update', (queue) => {
-    io.emit(ServerEvents.QUEUE_UPDATE, queue);
-  });
+  // Subscribe to MusicManager events and broadcast to all clients. References
+  // are tracked in managerListeners so shutdown can remove exactly these.
+  managerListeners = [
+    [
+      'queue:update',
+      (queue) => {
+        io.emit(ServerEvents.QUEUE_UPDATE, queue);
+      }
+    ],
+    [
+      'track:change',
+      (track) => {
+        io.emit(ServerEvents.TRACK_CHANGE, track);
+      }
+    ],
+    [
+      'player:state',
+      (state) => {
+        logger.debug(
+          `[Socket] Broadcasting player:state connected=${state.connected} playing=${state.playing}`
+        );
+        io.emit(ServerEvents.PLAYER_STATE, state);
+      }
+    ],
+    [
+      'resolution:progress',
+      (stats) => {
+        io.emit(ServerEvents.RESOLUTION_PROGRESS, stats);
+      }
+    ],
+    [
+      'voice:context',
+      (context) => {
+        logger.debug(
+          `[Socket] Broadcasting voice:context`,
+          context ? `channel=${context.channelName}` : 'null'
+        );
+        io.emit(ServerEvents.VOICE_CONTEXT, context);
+      }
+    ]
+  ];
+  for (const [event, handler] of managerListeners) {
+    musicManager.on(event, handler);
+  }
 
-  musicManager.on('track:change', (track) => {
-    io.emit(ServerEvents.TRACK_CHANGE, track);
-  });
-
-  musicManager.on('player:state', (state) => {
-    logger.debug(
-      `[Socket] Broadcasting player:state connected=${state.connected} playing=${state.playing}`
-    );
-    io.emit(ServerEvents.PLAYER_STATE, state);
-  });
-
-  musicManager.on('resolution:progress', (stats) => {
-    io.emit(ServerEvents.RESOLUTION_PROGRESS, stats);
-  });
-
-  musicManager.on('voice:context', (context) => {
-    logger.debug(
-      `[Socket] Broadcasting voice:context`,
-      context ? `channel=${context.channelName}` : 'null'
-    );
-    io.emit(ServerEvents.VOICE_CONTEXT, context);
-  });
-
+  // Defensively clear any existing interval before creating a new one so a
+  // stray timer can never outlive setup.
+  if (progressInterval) {
+    clearInterval(progressInterval);
+  }
   // Periodically emit track progress
   progressInterval = setInterval(() => {
     const track = musicManager.getCurrentTrack();
@@ -153,11 +191,19 @@ export function setupSocketServer(httpServer) {
     }
   }, 1000);
 
-  // Listen for history cleared events from bot
-  botEvents.on('historyCleared', (guildId) => {
-    logger.debug(`[Socket] Broadcasting history:cleared for guild ${guildId}`);
-    io.emit(ServerEvents.HISTORY_CLEARED, { guildId });
-  });
+  // Listen for history cleared events from bot (tracked for precise teardown).
+  botEventsListeners = [
+    [
+      'historyCleared',
+      (guildId) => {
+        logger.debug(`[Socket] Broadcasting history:cleared for guild ${guildId}`);
+        io.emit(ServerEvents.HISTORY_CLEARED, { guildId });
+      }
+    ]
+  ];
+  for (const [event, handler] of botEventsListeners) {
+    botEvents.on(event, handler);
+  }
 
   logger.info('Socket.io server initialized');
   return io;
@@ -169,8 +215,23 @@ export function setupSocketServer(httpServer) {
 export function shutdownSocketServer() {
   if (progressInterval) {
     clearInterval(progressInterval);
+    progressInterval = null;
   }
+
+  // Remove exactly the listeners setup registered (not removeAllListeners,
+  // which would clobber listeners owned by other modules).
+  for (const [event, handler] of managerListeners) {
+    musicManager.off(event, handler);
+  }
+  managerListeners = [];
+
+  for (const [event, handler] of botEventsListeners) {
+    botEvents.off(event, handler);
+  }
+  botEventsListeners = [];
+
   if (io) {
     io.close();
+    io = null;
   }
 }

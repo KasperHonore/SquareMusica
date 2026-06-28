@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { HistoryItem } from '../components/HistoryItem';
 
 export function History({ addToQueue, historyVersion }) {
-  const { token } = useAuth();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -11,43 +9,36 @@ export function History({ addToQueue, historyVersion }) {
   const [offset, setOffset] = useState(0);
   const LIMIT = 50;
 
-  const fetchHistory = useCallback(
-    async (newOffset = 0, append = false) => {
-      if (!token) return;
+  const fetchHistory = useCallback(async (newOffset = 0, append = false) => {
+    try {
+      setLoading(true);
+      setError(null);
 
-      try {
-        setLoading(true);
-        setError(null);
+      const response = await fetch(`/api/queue/history?limit=${LIMIT}&offset=${newOffset}`, {
+        credentials: 'include'
+      });
 
-        const response = await fetch(`/api/queue/history?limit=${LIMIT}&offset=${newOffset}`, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch history');
-        }
-
-        const data = await response.json();
-        const newHistory = data.history || [];
-
-        if (append) {
-          setHistory((prev) => [...prev, ...newHistory]);
-        } else {
-          setHistory(newHistory);
-        }
-
-        setHasMore(newHistory.length === LIMIT);
-        setOffset(newOffset);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
+      if (!response.ok) {
+        throw new Error('Failed to fetch history');
       }
-    },
-    [token]
-  );
+
+      const data = await response.json();
+      const newHistory = data.history || [];
+
+      if (append) {
+        setHistory((prev) => [...prev, ...newHistory]);
+      } else {
+        setHistory(newHistory);
+      }
+
+      setHasMore(newHistory.length === LIMIT);
+      setOffset(newOffset);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchHistory(0, false);

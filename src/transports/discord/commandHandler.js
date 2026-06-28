@@ -1,4 +1,5 @@
 import { client } from './client.js';
+import { logger } from '../../utils/logger.js';
 
 const commandHandlers = new Map();
 
@@ -12,14 +13,14 @@ export function setupCommandHandler() {
 
     const handler = commandHandlers.get(interaction.commandName);
     if (!handler) {
-      console.warn(`No handler for command: ${interaction.commandName}`);
+      logger.warn(`No handler for command: ${interaction.commandName}`);
       return;
     }
 
     try {
       await handler(interaction);
     } catch (error) {
-      console.error(`Error handling command ${interaction.commandName}:`, error);
+      logger.error(`Error handling command ${interaction.commandName}:`, error);
       const reply = {
         content: 'There was an error executing this command.',
         ephemeral: true

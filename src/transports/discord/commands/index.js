@@ -1,4 +1,5 @@
 import { registerCommand } from '../commandHandler.js';
+import { logger } from '../../../utils/logger.js';
 import { handleJoin, handleLeave } from './voice.js';
 import { handlePlay, handlePause, handleResume, handleSkip, handleStop } from './playback.js';
 import {
@@ -36,5 +37,5 @@ export function registerAllCommands() {
   // Utility
   registerCommand('webui', handleWebUI);
 
-  console.log('All commands registered');
+  logger.info('All commands registered');
 }

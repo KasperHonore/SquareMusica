@@ -1,4 +1,5 @@
 import { SpotifyApi } from '@spotify/web-api-ts-sdk';
+import { logger } from '../utils/logger.js';
 
 // Spotify API client (initialized lazily)
 let spotifyClient = null;
@@ -16,7 +17,7 @@ function getClient() {
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    console.warn('Spotify credentials not configured - Spotify features disabled');
+    logger.warn('Spotify credentials not configured - Spotify features disabled');
     return null;
   }
 
@@ -45,7 +46,7 @@ async function withRetry(fn, maxRetries = 3) {
           error.headers?.get?.('retry-after') || error.retryAfter || Math.pow(2, attempt + 1);
         const waitMs = (parseInt(retryAfter, 10) || Math.pow(2, attempt + 1)) * 1000;
 
-        console.warn(
+        logger.warn(
           `Spotify rate limited, waiting ${waitMs}ms before retry ${attempt + 1}/${maxRetries}`
         );
         await new Promise((resolve) => setTimeout(resolve, waitMs));
@@ -55,7 +56,7 @@ async function withRetry(fn, maxRetries = 3) {
       // For other errors, use exponential backoff
       if (attempt < maxRetries - 1) {
         const waitMs = Math.pow(2, attempt + 1) * 1000;
-        console.warn(`Spotify API error, retrying in ${waitMs}ms: ${error.message}`);
+        logger.warn(`Spotify API error, retrying in ${waitMs}ms: ${error.message}`);
         await new Promise((resolve) => setTimeout(resolve, waitMs));
         continue;
       }
@@ -148,7 +149,7 @@ export async function getPublicAlbum(albumId) {
       totalTracks: album.total_tracks
     };
   } catch (error) {
-    console.error('Failed to get Spotify album:', error.message);
+    logger.error('Failed to get Spotify album:', error.message);
     return null;
   }
 }
@@ -176,7 +177,7 @@ export async function getPublicPlaylist(playlistId) {
       totalTracks: playlist.tracks?.total || 0
     };
   } catch (error) {
-    console.error('Failed to get Spotify playlist:', error.message);
+    logger.error('Failed to get Spotify playlist:', error.message);
     return null;
   }
 }
@@ -184,25 +185,39 @@ export async function getPublicPlaylist(playlistId) {
 // Upper bound on how many tracks we import from a single Spotify playlist.
 // Huge playlists would otherwise flood the queue and the background resolver;
 // this mirrors the 50-track cap on YouTube playlist imports.
-const MAX_PLAYLIST_TRACKS = 500;
+export const MAX_PLAYLIST_TRACKS = 500;
+
+// Spotify's album endpoint only embeds the first 50 tracks. Albums with more
+// than 50 tracks are rare, but we surface the cap the same way as playlists.
+export const MAX_ALBUM_TRACKS = 50;
+
+/**
+ * @typedef {Object} SpotifyTrackResult
+ * @property {Array} tracks - Normalized tracks actually imported (at most the cap).
+ * @property {number} total - True number of tracks the source contains.
+ * @property {boolean} truncated - Whether the source was larger than the cap and
+ *   was therefore truncated.
+ */
 
 /**
  * Get tracks from a public playlist with pagination, capped at
  * MAX_PLAYLIST_TRACKS. When a playlist is larger than the cap, only the first
- * MAX_PLAYLIST_TRACKS are returned and the truncation is logged.
+ * MAX_PLAYLIST_TRACKS are returned, the truncation is logged, and the result
+ * reports the true total so callers can tell the user.
  * @param {string} playlistId - Spotify playlist ID
- * @returns {Promise<Array>} Array of normalized tracks (at most MAX_PLAYLIST_TRACKS)
+ * @returns {Promise<SpotifyTrackResult>}
  */
 export async function getPublicPlaylistTracks(playlistId) {
   const client = getClient();
   if (!client) {
-    return [];
+    return { tracks: [], total: 0, truncated: false };
   }
 
   const tracks = [];
   let offset = 0;
   const limit = 100;
-  let truncated = false;
+  let capReached = false;
+  let total = 0;
 
   try {
     while (true) {
@@ -210,11 +225,14 @@ export async function getPublicPlaylistTracks(playlistId) {
         client.playlists.getPlaylistItems(
           playlistId,
           undefined,
-          'items(track(id,name,artists,duration_ms,external_urls,is_local)),next',
+          'items(track(id,name,artists,duration_ms,external_urls,is_local)),next,total',
           limit,
           offset
         )
       );
+
+      // `total` is the playlist's full item count and is constant across pages.
+      total = response.total ?? total;
 
       for (const item of response.items) {
         // Skip null tracks and local files
@@ -226,46 +244,54 @@ export async function getPublicPlaylistTracks(playlistId) {
 
         // Stop collecting once the cap is reached.
         if (tracks.length >= MAX_PLAYLIST_TRACKS) {
-          truncated = true;
+          capReached = true;
           break;
         }
       }
 
       // Stop once the cap is hit or there are no more pages.
-      if (truncated || !response.next) {
+      if (capReached || !response.next) {
         break;
       }
 
       offset += limit;
     }
 
+    // Only flag truncation when the cap was hit AND there were genuinely more
+    // tracks than we imported (avoids a false positive on an exactly-cap-sized
+    // playlist).
+    if (total < tracks.length) {
+      total = tracks.length;
+    }
+    const truncated = capReached && total > tracks.length;
+
     if (truncated) {
-      console.warn(
-        `Spotify playlist has more than ${MAX_PLAYLIST_TRACKS} tracks; importing only the first ${MAX_PLAYLIST_TRACKS}.`
+      logger.warn(
+        `Spotify playlist has ${total} tracks; importing only the first ${MAX_PLAYLIST_TRACKS}.`
       );
     }
 
-    return tracks;
+    return { tracks, total, truncated };
   } catch (error) {
-    console.error('Failed to get Spotify playlist tracks:', error.message);
-    return [];
+    logger.error('Failed to get Spotify playlist tracks:', error.message);
+    return { tracks: [], total: 0, truncated: false };
   }
 }
 
 /**
- * Get all tracks from a public album
- * Note: Returns up to 50 tracks. Most albums have fewer than 50 tracks.
+ * Get tracks from a public album. Spotify embeds up to MAX_ALBUM_TRACKS tracks;
+ * larger albums are truncated and the result reports the true total.
  * @param {string} albumId - Spotify album ID
- * @returns {Promise<Array>} Array of normalized tracks
+ * @returns {Promise<SpotifyTrackResult>}
  */
 export async function getPublicAlbumTracks(albumId) {
   const client = getClient();
   if (!client) {
-    return [];
+    return { tracks: [], total: 0, truncated: false };
   }
 
   try {
-    // Get album with tracks (API returns up to 50 tracks embedded)
+    // Get album with tracks (API returns up to MAX_ALBUM_TRACKS tracks embedded)
     const response = await withRetry(() => client.albums.get(albumId));
 
     const tracks = response.tracks.items.map((track) => ({
@@ -276,10 +302,19 @@ export async function getPublicAlbumTracks(albumId) {
       spotifyUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`
     }));
 
-    return tracks;
+    const total = response.total_tracks ?? tracks.length;
+    const truncated = total > tracks.length;
+
+    if (truncated) {
+      logger.warn(
+        `Spotify album has ${total} tracks; importing only the first ${MAX_ALBUM_TRACKS}.`
+      );
+    }
+
+    return { tracks, total, truncated };
   } catch (error) {
-    console.error('Failed to get Spotify album tracks:', error.message);
-    return [];
+    logger.error('Failed to get Spotify album tracks:', error.message);
+    return { tracks: [], total: 0, truncated: false };
   }
 }
 
@@ -298,7 +333,7 @@ export async function getPublicTrack(trackId) {
     const track = await withRetry(() => client.tracks.get(trackId));
     return normalizeTrack(track);
   } catch (error) {
-    console.error('Failed to get Spotify track:', error.message);
+    logger.error('Failed to get Spotify track:', error.message);
     return null;
   }
 }

@@ -1,13 +1,20 @@
 import { Client, GatewayIntentBits, Events } from 'discord.js';
-import { EventEmitter } from 'events';
 import { db } from '../../persistence/db.js';
-import { leaveChannel, setChannelCache, getChannelCache } from './voiceManager.js';
+import {
+  leaveChannel,
+  setChannelCache,
+  getChannelCache,
+  getChannelInfo,
+  isConnected
+} from './voiceManager.js';
 import { startInactivityTimer, cancelInactivityTimer } from './inactivityManager.js';
 import { musicManager } from '../../core/musicManager.js';
+import { botEvents } from '../../events/bus.js';
 import { logger } from '../../utils/logger.js';
 
-// Event bus for cross-module communication
-export const botEvents = new EventEmitter();
+// Re-export the shared event bus so existing importers of `botEvents` from this
+// module keep working. The single instance lives in src/events/bus.js.
+export { botEvents };
 
 const client = new Client({
   intents: [
@@ -128,5 +135,11 @@ export function getBotInfo() {
     avatarUrl: client.user.displayAvatarURL({ size: 64 })
   };
 }
+
+// Inject transport-layer getters into the core mediator so it never has to
+// reach back into this transport. Mirrors playback.js's setGetConnection(...).
+musicManager.setGetBotInfo(getBotInfo);
+musicManager.setGetChannelInfo(getChannelInfo);
+musicManager.setIsConnected(isConnected);
 
 export { client };

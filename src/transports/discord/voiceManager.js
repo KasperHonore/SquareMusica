@@ -4,7 +4,7 @@ import {
   VoiceConnectionStatus,
   entersState
 } from '@discordjs/voice';
-import { botEvents } from './client.js';
+import { botEvents } from '../../events/bus.js';
 import { logger } from '../../utils/logger.js';
 
 const connections = new Map();

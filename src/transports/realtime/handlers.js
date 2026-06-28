@@ -10,6 +10,7 @@ import { client } from '../discord/client.js';
 import {
   ensureVoiceConnected,
   resolveQueryErrorToMessage,
+  formatTruncationNotice,
   MAX_QUERY_LENGTH
 } from '../../shared/queueHelpers.js';
 import { logger } from '../../utils/logger.js';
@@ -23,8 +24,48 @@ const THROTTLE_INTERVALS_MS = {
   'voice:join': 3000
 };
 
-// `${userId}:${event}` -> last-accepted timestamp. Bounded by (users x events).
+// Longest throttle window. An entry older than this can never trigger a denial,
+// so it is meaningless and safe to drop.
+const MAX_THROTTLE_INTERVAL_MS = Math.max(...Object.values(THROTTLE_INTERVALS_MS));
+
+// Hard backstop on distinct keys so a flood of one-off users (each producing a
+// `${userId}:${event}` key) can't grow the map without bound between sweeps.
+const THROTTLE_MAX_ENTRIES = 5000;
+
+// `${userId}:${event}` -> last-accepted timestamp. Bounded by the stale sweep in
+// recordAccepted() plus the THROTTLE_MAX_ENTRIES cap below.
 const lastEventAt = new Map();
+
+/**
+ * Record an accepted event timestamp and opportunistically bound the map.
+ *
+ * Map keeps insertion order and we re-insert on every accept, so the oldest
+ * entries are the least-recently-accepted. Any entry older than the longest
+ * throttle window cannot cause a future denial, so sweeping those from the front
+ * never changes allow/deny decisions for active users. A size cap evicts the
+ * least-recently-used keys as a final guard against pathological bursts.
+ * @param {string} mapKey
+ * @param {number} now
+ */
+function recordAccepted(mapKey, now) {
+  // Move the key to the most-recently-used end.
+  lastEventAt.delete(mapKey);
+  lastEventAt.set(mapKey, now);
+
+  // Drop stale entries from the LRU front. Deleting visited keys mid-iteration
+  // is safe for a Map iterator.
+  for (const [k, ts] of lastEventAt) {
+    if (now - ts <= MAX_THROTTLE_INTERVAL_MS) break;
+    lastEventAt.delete(k);
+  }
+
+  // Backstop: enforce the hard cap by evicting least-recently-used keys.
+  while (lastEventAt.size > THROTTLE_MAX_ENTRIES) {
+    const lruKey = lastEventAt.keys().next().value;
+    if (lruKey === undefined) break;
+    lastEventAt.delete(lruKey);
+  }
+}
 
 function isThrottled(socket, key) {
   const intervalMs = THROTTLE_INTERVALS_MS[key];
@@ -38,7 +79,7 @@ function isThrottled(socket, key) {
     return true;
   }
 
-  lastEventAt.set(mapKey, now);
+  recordAccepted(mapKey, now);
   return false;
 }
 
@@ -89,7 +130,7 @@ export function handleQueueAdd(socket) {
       };
 
       // Resolve query to tracks
-      const { tracks: rawTracks, error } = await resolveQuery(query, userInfo);
+      const { tracks: rawTracks, error, truncation } = await resolveQuery(query, userInfo);
 
       if (error) {
         socket.emit('error', { message: resolveQueryErrorToMessage(error) });
@@ -97,6 +138,12 @@ export function handleQueueAdd(socket) {
       }
 
       musicManager.addTracks(rawTracks, userInfo);
+
+      // Tell the user when a large Spotify source was capped.
+      const truncationNotice = formatTruncationNotice(truncation);
+      if (truncationNotice) {
+        socket.emit('notice', { message: truncationNotice });
+      }
 
       // Auto-play if nothing is currently playing.
       await musicManager.ensurePlaying();

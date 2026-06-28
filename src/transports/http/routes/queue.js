@@ -9,6 +9,7 @@ import { db } from '../../../persistence/db.js';
 import {
   ensureVoiceConnected,
   resolveQueryErrorToMessage,
+  formatTruncationNotice,
   MAX_QUERY_LENGTH
 } from '../../../shared/queueHelpers.js';
 import { logger } from '../../../utils/logger.js';
@@ -74,7 +75,7 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
     };
 
     // Resolve query to tracks
-    const { tracks: rawTracks, error } = await resolveQuery(query, userInfo);
+    const { tracks: rawTracks, error, truncation } = await resolveQuery(query, userInfo);
 
     if (error) {
       return res.status(404).json({ error: resolveQueryErrorToMessage(error) });
@@ -82,11 +83,19 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
 
     const { tracks, lazyResolution } = musicManager.addTracks(rawTracks, userInfo);
 
+    const truncationNotice = formatTruncationNotice(truncation);
+
     res.json({
       success: true,
       added: tracks.length,
       tracks,
-      lazyResolution
+      lazyResolution,
+      truncated: !!truncation,
+      ...(truncation && {
+        total: truncation.total,
+        cap: truncation.cap,
+        message: truncationNotice
+      })
     });
   } catch (error) {
     logger.error('Add to queue error:', error);
@@ -98,9 +107,10 @@ router.post('/', authMiddleware, requireVoiceConnection, async (req, res) => {
  * DELETE /api/queue/:position - Remove track from queue
  */
 router.delete('/:position', authMiddleware, requireVoiceConnection, (req, res) => {
-  const position = parseInt(req.params.position);
+  const position = parseInt(req.params.position, 10);
+  const queueLength = musicManager.getQueue().length;
 
-  if (isNaN(position) || position < 0) {
+  if (!Number.isInteger(position) || position < 0 || position >= queueLength) {
     return res.status(400).json({ error: 'Invalid position' });
   }
 
@@ -121,6 +131,19 @@ router.patch('/reorder', authMiddleware, requireVoiceConnection, (req, res) => {
 
   if (typeof from !== 'number' || typeof to !== 'number') {
     return res.status(400).json({ error: 'from and to are required' });
+  }
+
+  const queueLength = musicManager.getQueue().length;
+
+  if (
+    !Number.isInteger(from) ||
+    !Number.isInteger(to) ||
+    from < 0 ||
+    from >= queueLength ||
+    to < 0 ||
+    to >= queueLength
+  ) {
+    return res.status(400).json({ error: 'Invalid positions' });
   }
 
   const success = musicManager.reorderQueue(from, to);

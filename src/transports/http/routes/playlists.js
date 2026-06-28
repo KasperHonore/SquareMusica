@@ -7,6 +7,7 @@ import {
   getPublicPlaylistTracks,
   getPublicAlbumTracks
 } from '../../../integrations/spotify.js';
+import { logger } from '../../../utils/logger.js';
 
 const router = Router();
 
@@ -19,7 +20,7 @@ router.get('/', (req, res) => {
     const playlists = db.getPlaylists();
     res.json(playlists);
   } catch (error) {
-    console.error('[Playlists API] Get failed:', error);
+    logger.error('[Playlists API] Get failed:', error);
     res.status(500).json({ error: 'Failed to fetch playlists' });
   }
 });
@@ -43,7 +44,7 @@ router.post('/', (req, res) => {
 
     res.status(201).json(playlist);
   } catch (error) {
-    console.error('[Playlists API] Create failed:', error);
+    logger.error('[Playlists API] Create failed:', error);
     res.status(500).json({ error: 'Failed to create playlist' });
   }
 });
@@ -65,21 +66,21 @@ router.get('/:id/tracks', async (req, res) => {
     }
 
     // Get tracks based on type (playlist or album)
-    let tracks;
-    if (type === 'playlist') {
-      tracks = await getPublicPlaylistTracks(spotifyId);
-    } else {
-      tracks = await getPublicAlbumTracks(spotifyId);
-    }
+    const result =
+      type === 'playlist'
+        ? await getPublicPlaylistTracks(spotifyId)
+        : await getPublicAlbumTracks(spotifyId);
 
     res.json({
       playlistId: id,
       name: playlist.name,
       coverImage: playlist.cover_image,
-      tracks
+      tracks: result.tracks,
+      total: result.total,
+      truncated: result.truncated
     });
   } catch (error) {
-    console.error('[Playlists API] Get tracks failed:', error);
+    logger.error('[Playlists API] Get tracks failed:', error);
     res.status(500).json({ error: 'Failed to fetch playlist tracks' });
   }
 });
@@ -96,7 +97,7 @@ router.delete('/:id', (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('[Playlists API] Delete failed:', error);
+    logger.error('[Playlists API] Delete failed:', error);
     res.status(500).json({ error: 'Failed to delete playlist' });
   }
 });

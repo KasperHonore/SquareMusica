@@ -2,6 +2,7 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { db } from '../../../persistence/db.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { logger } from '../../../utils/logger.js';
 
 const router = Router();
 
@@ -65,7 +66,7 @@ router.get('/callback', async (req, res) => {
     });
 
     if (!tokenResponse.ok) {
-      console.error('Token exchange failed:', await tokenResponse.text());
+      logger.error('Token exchange failed:', await tokenResponse.text());
       return res.redirect(`${getWebUrl()}?error=token_exchange`);
     }
 
@@ -79,7 +80,7 @@ router.get('/callback', async (req, res) => {
     });
 
     if (!userResponse.ok) {
-      console.error('User fetch failed:', await userResponse.text());
+      logger.error('User fetch failed:', await userResponse.text());
       return res.redirect(`${getWebUrl()}?error=user_fetch`);
     }
 
@@ -93,7 +94,7 @@ router.get('/callback', async (req, res) => {
     });
 
     if (!guildsResponse.ok) {
-      console.error('Guild fetch failed:', await guildsResponse.text());
+      logger.error('Guild fetch failed:', await guildsResponse.text());
       return res.redirect(`${getWebUrl()}?error=guild_fetch`);
     }
 
@@ -129,7 +130,7 @@ router.get('/callback', async (req, res) => {
     // Cookie-based auth: do not put tokens in URLs.
     res.redirect(`${getWebUrl()}?auth=success`);
   } catch (error) {
-    console.error('OAuth callback error:', error);
+    logger.error('OAuth callback error:', error);
     res.redirect(`${getWebUrl()}?error=server_error`);
   }
 });

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { resolveSpotifyTrack } from './resolver.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Track resolution status
@@ -99,20 +100,20 @@ class ResolutionManager extends EventEmitter {
 
     // No Spotify data to resolve from
     if (!track.spotifyData) {
-      console.error('Track has no URL and no Spotify data:', track.title);
+      logger.error('Track has no URL and no Spotify data:', track.title);
       track.status = 'failed';
       return null;
     }
 
     // Resolve synchronously
-    console.log(`Resolving track on-demand: ${track.title}`);
-    console.log(`Spotify data:`, JSON.stringify(track.spotifyData, null, 2));
+    logger.info(`Resolving track on-demand: ${track.title}`);
+    logger.info(`Spotify data:`, JSON.stringify(track.spotifyData, null, 2));
     track.status = 'resolving';
     this.emit('resolution:progress', this._getResolutionStats());
 
     try {
       const resolved = await resolveSpotifyTrack(track.spotifyData);
-      console.log(`Resolution result for ${track.title}:`, resolved ? 'SUCCESS' : 'FAILED');
+      logger.info(`Resolution result for ${track.title}:`, resolved ? 'SUCCESS' : 'FAILED');
 
       if (resolved) {
         // Update track with resolved data
@@ -129,7 +130,7 @@ class ResolutionManager extends EventEmitter {
         return null;
       }
     } catch (error) {
-      console.error('Error resolving track on-demand:', error);
+      logger.error('Error resolving track on-demand:', error);
       track.status = 'failed';
       this.emit('resolution:failed', track);
       return null;
@@ -166,14 +167,14 @@ class ResolutionManager extends EventEmitter {
         track.status = 'resolved';
 
         this.emit('resolution:complete', track);
-        console.log(`Resolved track: ${track.title} -> ${track.url}`);
+        logger.info(`Resolved track: ${track.title} -> ${track.url}`);
       } else {
         track.status = 'failed';
         this.emit('resolution:failed', track);
-        console.warn(`Failed to resolve track: ${track.title}`);
+        logger.warn(`Failed to resolve track: ${track.title}`);
       }
     } catch (error) {
-      console.error(`Error resolving track ${track.title}:`, error);
+      logger.error(`Error resolving track ${track.title}:`, error);
       track.status = 'failed';
       this.emit('resolution:failed', track);
     } finally {

@@ -17,6 +17,18 @@ export function resolveQueryErrorToMessage(errorCode, fallback = 'Failed to proc
   return RESOLVE_QUERY_ERROR_MESSAGES[errorCode] || fallback;
 }
 
+/**
+ * Build a user-facing notice when a Spotify source was truncated at the cap.
+ * @param {{ total: number, returned: number, cap: number }|null} truncation
+ * @returns {string|null} Message, or null when nothing was truncated.
+ */
+export function formatTruncationNotice(truncation) {
+  if (!truncation) {
+    return null;
+  }
+  return `Added ${truncation.returned} of ${truncation.total} tracks (playlist capped at ${truncation.cap}).`;
+}
+
 export function ensureVoiceConnected({ guildId, isConnected, onNotConnected }) {
   if (!isConnected(guildId)) {
     onNotConnected?.();

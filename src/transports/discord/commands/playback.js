@@ -4,7 +4,12 @@ import { musicManager } from '../../../core/musicManager.js';
 import { resolveQuery, tryPlayWithFallback } from '../../../services/trackResolver.js';
 import { resolutionManager } from '../../../services/resolutionManager.js';
 import { advanceAndPlay, getPlayer, getQueue } from '../../../services/playback.js';
-import { addTracksToQueue, resolveQueryErrorToMessage } from '../../../shared/queueHelpers.js';
+import { logger } from '../../../utils/logger.js';
+import {
+  addTracksToQueue,
+  resolveQueryErrorToMessage,
+  formatTruncationNotice
+} from '../../../shared/queueHelpers.js';
 
 export async function handlePlay(interaction) {
   const member = interaction.member;
@@ -31,7 +36,7 @@ export async function handlePlay(interaction) {
     };
 
     // Resolve query to tracks
-    const { tracks: rawTracks, error } = await resolveQuery(query, userInfo);
+    const { tracks: rawTracks, error, truncation } = await resolveQuery(query, userInfo);
 
     if (error) {
       return interaction.editReply(resolveQueryErrorToMessage(error, 'Failed to process query.'));
@@ -74,14 +79,15 @@ export async function handlePlay(interaction) {
         await interaction.editReply(`Now playing: **${tracks[0].title}**`);
       }
     } else {
-      let message = `Added ${tracks.length} tracks to queue`;
+      const truncationNotice = formatTruncationNotice(truncation);
+      let message = truncationNotice || `Added ${tracks.length} tracks to queue`;
       if (lazyResolution) {
         message += ' (resolving YouTube URLs in background...)';
       }
       await interaction.editReply(message);
     }
   } catch (error) {
-    console.error('Play error:', error);
+    logger.error('Play error:', error);
     await interaction.editReply('Failed to play track.');
   }
 }

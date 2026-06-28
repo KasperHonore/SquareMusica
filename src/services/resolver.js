@@ -3,16 +3,102 @@ import { logger } from '../utils/logger.js';
 
 // Cache configuration
 const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+// Hard cap on resolved/negative match entries. A few thousand keys keeps hot
+// playlists fully cached while bounding memory in a long-lived process.
 const CACHE_MAX_ENTRIES = 5000;
-
-// In-memory cache with TTL
-const cache = new Map();
 
 // Sentinels so getCached() can distinguish a true cache miss from a cached
 // negative ("we searched and found nothing") result. Storing plain null for a
 // negative result is ambiguous with a miss, which defeats the negative cache.
 const MISS = Symbol('cache-miss');
 const NEGATIVE = Symbol('cache-negative');
+
+/**
+ * Fixed-size, TTL-aware LRU cache backed by a single Map.
+ *
+ * Map preserves insertion order, so we use that ordering as the recency list:
+ * the first key is the least-recently-used and the last is the most-recently-
+ * used. On a hit we delete+re-insert to move the key to the MRU end; on an
+ * insert beyond capacity we evict from the LRU front. Expired entries are
+ * dropped lazily on access. `get()` returns the stored value or the MISS
+ * sentinel so callers can cache negatives unambiguously.
+ */
+export class LruCache {
+  /**
+   * @param {Object} options
+   * @param {number} options.maxEntries - Hard cap on retained entries.
+   * @param {number} options.ttlMs - Time-to-live per entry in milliseconds.
+   */
+  constructor({ maxEntries, ttlMs }) {
+    this.maxEntries = maxEntries;
+    this.ttlMs = ttlMs;
+    this.map = new Map();
+  }
+
+  /** @returns {number} Current number of live (un-evicted) entries. */
+  get size() {
+    return this.map.size;
+  }
+
+  /**
+   * Presence check that respects TTL but does NOT touch recency ordering.
+   * Intended for inspection/tests; the hot path uses get()/set().
+   * @param {string} key
+   * @returns {boolean}
+   */
+  has(key) {
+    const entry = this.map.get(key);
+    if (!entry) return false;
+    if (Date.now() > entry.expiresAt) {
+      this.map.delete(key);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * @param {string} key
+   * @returns {*} The cached value, or the MISS sentinel when absent/expired.
+   */
+  get(key) {
+    const entry = this.map.get(key);
+    if (!entry) return MISS;
+
+    if (Date.now() > entry.expiresAt) {
+      this.map.delete(key);
+      return MISS;
+    }
+
+    // Refresh recency: move the key to the MRU end.
+    this.map.delete(key);
+    this.map.set(key, entry);
+
+    return entry.value;
+  }
+
+  /**
+   * @param {string} key
+   * @param {*} value
+   */
+  set(key, value) {
+    // Re-inserting moves the key to the MRU end; for a fresh key, evict the
+    // least-recently-used entries first so we never exceed the cap.
+    if (this.map.has(key)) {
+      this.map.delete(key);
+    } else {
+      while (this.map.size >= this.maxEntries) {
+        const lruKey = this.map.keys().next().value;
+        if (lruKey === undefined) break;
+        this.map.delete(lruKey);
+      }
+    }
+
+    this.map.set(key, { value, expiresAt: Date.now() + this.ttlMs });
+  }
+}
+
+// In-memory cache of resolved (and negative) YouTube matches, bounded by LRU.
+const cache = new LruCache({ maxEntries: CACHE_MAX_ENTRIES, ttlMs: CACHE_TTL_MS });
 
 /**
  * Generate cache key for a Spotify track
@@ -32,40 +118,16 @@ function getCacheKey(spotifyTrack) {
  *   a cached not-found), or the MISS sentinel when there is no valid entry.
  */
 function getCached(key) {
-  const entry = cache.get(key);
-  if (!entry) return MISS;
-
-  if (Date.now() > entry.expiresAt) {
-    cache.delete(key);
-    return MISS;
-  }
-
-  // Refresh recency (LRU-ish) without a separate tracking structure
-  cache.delete(key);
-  cache.set(key, entry);
-
-  return entry.value;
+  return cache.get(key);
 }
 
 /**
- * Set cache entry with FIFO eviction
+ * Set cache entry with LRU eviction.
  * @param {string} key - Cache key
  * @param {Object} value - Value to cache
  */
 function setCache(key, value) {
-  // Evict oldest entries if at capacity
-  while (cache.size >= CACHE_MAX_ENTRIES) {
-    const oldestKey = cache.keys().next().value;
-    if (oldestKey === undefined) break;
-    cache.delete(oldestKey);
-  }
-
-  // Ensure insertion order reflects recency
-  if (cache.has(key)) cache.delete(key);
-  cache.set(key, {
-    value,
-    expiresAt: Date.now() + CACHE_TTL_MS
-  });
+  cache.set(key, value);
 }
 
 /**

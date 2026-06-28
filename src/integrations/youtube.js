@@ -8,7 +8,46 @@ import { logger } from '../utils/logger.js';
 const execFileAsync = promisify(execFile);
 
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+// Hard cap on cached search queries. The cache is a plain Map used as a simple
+// LRU (insertion order = recency): a hit deletes + re-inserts the key to mark it
+// most-recently-used, and inserts past the cap evict the oldest key. This bounds
+// memory regardless of how many distinct queries are issued.
+const SEARCH_CACHE_MAX_ENTRIES = 200;
 const searchCache = new Map(); // key -> { expiresAt, results }
+
+/**
+ * Read a still-valid entry from the search cache, applying LRU recency and TTL.
+ * Expired or missing entries are removed and reported as a miss.
+ * @param {string} key
+ * @returns {Array|null} cached results, or null on miss
+ */
+function getCachedSearch(key) {
+  const cached = searchCache.get(key);
+  if (!cached) return null;
+  if (Date.now() >= cached.expiresAt) {
+    searchCache.delete(key);
+    return null;
+  }
+  // Move to most-recently-used position.
+  searchCache.delete(key);
+  searchCache.set(key, cached);
+  return cached.results;
+}
+
+/**
+ * Store search results, enforcing the LRU cap. Re-inserting an existing key
+ * refreshes its recency; overflow evicts the oldest entries.
+ * @param {string} key
+ * @param {Array} results
+ */
+function setCachedSearch(key, results) {
+  if (searchCache.has(key)) searchCache.delete(key);
+  searchCache.set(key, { results, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
+  while (searchCache.size > SEARCH_CACHE_MAX_ENTRIES) {
+    const oldest = searchCache.keys().next().value;
+    searchCache.delete(oldest);
+  }
+}
 
 // Cap concurrent yt-dlp metadata processes (search / getInfo / getPlaylist) so a
 // burst of requests can't spawn unbounded child processes. Long-lived playback
@@ -121,9 +160,9 @@ export function isValidUrl(url) {
 export async function search(query, limit = 5) {
   try {
     const cacheKey = `${String(query)}::${Number(limit)}`;
-    const cached = searchCache.get(cacheKey);
-    if (cached && Date.now() < cached.expiresAt) {
-      return cached.results;
+    const cached = getCachedSearch(cacheKey);
+    if (cached) {
+      return cached;
     }
 
     if (isDebugEnabled()) {
@@ -161,7 +200,7 @@ export async function search(query, limit = 5) {
         };
       });
 
-    searchCache.set(cacheKey, { results, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
+    setCachedSearch(cacheKey, results);
 
     if (isDebugEnabled()) {
       logger.debug('Search results:', JSON.stringify(results, null, 2));
@@ -245,70 +284,121 @@ export async function getStream(url) {
   args.push('--', url);
 
   const ytdlp = spawn(YT_DLP_PATH, args);
-
   const stream = new PassThrough();
-  stream.on('error', (err) => {
-    logger.debug('[Stream] PassThrough error (expected during cleanup):', err.message);
-  });
 
-  // Startup watchdog: if yt-dlp emits no data and hasn't exited within the
-  // timeout, it is hung (e.g. waiting on a prompt) and would leak the process.
-  // Kill it and surface an error so playback can fall back to the next track.
-  let watchdog = setTimeout(() => {
-    watchdog = null;
-    logger.error(
-      `[Stream] yt-dlp produced no output within ${STREAM_START_TIMEOUT_MS}ms for ${url}; killing process`
-    );
-    if (!ytdlp.killed) ytdlp.kill('SIGKILL');
-    if (!stream.destroyed) stream.destroy(new Error('yt-dlp stream startup timed out'));
-  }, STREAM_START_TIMEOUT_MS);
+  // Single idempotent teardown. Safe to call any number of times and from any
+  // terminal path (watchdog, process error, stream error, consumer
+  // close/abort, setup throw, or external cleanup). It clears the watchdog,
+  // detaches the terminal listeners so they can't re-enter, kills the child if
+  // it is still running, and destroys the stream if it is still open.
+  let watchdog = null;
+  let cleanedUp = false;
 
-  const clearWatchdog = () => {
+  const cleanup = (err) => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+
     if (watchdog) {
       clearTimeout(watchdog);
       watchdog = null;
     }
-  };
 
-  ytdlp.stdout.once('data', clearWatchdog);
+    // Detach terminal listeners first so a destroy()/kill() side effect below
+    // can't re-trigger cleanup before the guard above takes effect.
+    ytdlp.removeListener('error', onProcessError);
+    ytdlp.removeListener('close', onProcessClose);
+    stream.removeListener('error', onStreamError);
+    stream.removeListener('close', onStreamClose);
 
-  ytdlp.stdout.pipe(stream);
-
-  // Debug: log stream lifecycle events
-  stream.on('end', () => logger.debug('[Stream] PassThrough ended'));
-  stream.on('close', () => logger.debug('[Stream] PassThrough closed'));
-  stream.on('finish', () => logger.debug('[Stream] PassThrough finished'));
-  ytdlp.stdout.on('end', () => logger.debug('[Stream] yt-dlp stdout ended'));
-  ytdlp.stdout.on('close', () => logger.debug('[Stream] yt-dlp stdout closed'));
-
-  ytdlp.stderr.on('data', (data) => {
-    logger.error('yt-dlp stderr:', data.toString());
-  });
-
-  ytdlp.on('error', (error) => {
-    clearWatchdog();
-    logger.error('yt-dlp process error:', error);
-    stream.destroy(error);
-  });
-
-  ytdlp.on('close', (code) => {
-    clearWatchdog();
-    if (code !== 0 && code !== null) {
-      logger.error(`yt-dlp exited with code ${code}`);
-    }
-  });
-
-  const cleanup = () => {
-    clearWatchdog();
     if (!ytdlp.killed) {
-      ytdlp.kill('SIGKILL');
-      logger.debug('[Stream] yt-dlp process killed via cleanup');
+      try {
+        ytdlp.kill('SIGKILL');
+        logger.debug('[Stream] yt-dlp process killed via cleanup');
+      } catch (killErr) {
+        logger.debug('[Stream] yt-dlp kill skipped (already exited):', killErr.message);
+      }
     }
+
     if (!stream.destroyed) {
-      stream.destroy();
+      stream.destroy(err || undefined);
       logger.debug('[Stream] PassThrough destroyed via cleanup');
     }
   };
+
+  function onProcessError(error) {
+    logger.error('yt-dlp process error:', error);
+    cleanup(error);
+  }
+
+  function onProcessClose(code) {
+    if (watchdog) {
+      clearTimeout(watchdog);
+      watchdog = null;
+    }
+    if (code !== 0 && code !== null) {
+      logger.error(`yt-dlp exited with code ${code}`);
+    }
+    // Normal exit: do NOT destroy the stream here — let buffered audio drain so
+    // the consumer reads the final bytes. The process has already exited, so the
+    // child is reaped. The stream's own 'close' (after drain) runs cleanup to
+    // remove listeners and is a no-op kill on the already-exited child.
+  }
+
+  function onStreamError(err) {
+    logger.debug('[Stream] PassThrough error (expected during cleanup):', err.message);
+    cleanup(err);
+  }
+
+  function onStreamClose() {
+    logger.debug('[Stream] PassThrough closed');
+    // Fires on natural drain AND on consumer destroy/abort. In the abort case
+    // yt-dlp may still be running, so this guarantees the child is killed.
+    cleanup();
+  }
+
+  try {
+    // Startup watchdog: if yt-dlp emits no data and hasn't exited within the
+    // timeout, it is hung (e.g. waiting on a prompt) and would leak the process.
+    // Kill it and surface an error so playback can fall back to the next track.
+    watchdog = setTimeout(() => {
+      watchdog = null;
+      logger.error(
+        `[Stream] yt-dlp produced no output within ${STREAM_START_TIMEOUT_MS}ms for ${url}; killing process`
+      );
+      cleanup(new Error('yt-dlp stream startup timed out'));
+    }, STREAM_START_TIMEOUT_MS);
+
+    // First byte means yt-dlp is healthy; stand the watchdog down.
+    ytdlp.stdout.once('data', () => {
+      if (watchdog) {
+        clearTimeout(watchdog);
+        watchdog = null;
+      }
+    });
+
+    ytdlp.stdout.pipe(stream);
+
+    // Debug: log remaining stream lifecycle events (close is handled above).
+    stream.on('end', () => logger.debug('[Stream] PassThrough ended'));
+    stream.on('finish', () => logger.debug('[Stream] PassThrough finished'));
+    ytdlp.stdout.on('end', () => logger.debug('[Stream] yt-dlp stdout ended'));
+    ytdlp.stdout.on('close', () => logger.debug('[Stream] yt-dlp stdout closed'));
+
+    ytdlp.stderr.on('data', (data) => {
+      logger.error('yt-dlp stderr:', data.toString());
+    });
+
+    ytdlp.on('error', onProcessError);
+    ytdlp.on('close', onProcessClose);
+    stream.on('error', onStreamError);
+    stream.on('close', onStreamClose);
+  } catch (setupError) {
+    // Any synchronous failure while wiring up the pipeline must not leak the
+    // spawned child.
+    logger.error('[Stream] setup failed; tearing down yt-dlp:', setupError);
+    cleanup(setupError);
+    throw setupError;
+  }
 
   return {
     stream,

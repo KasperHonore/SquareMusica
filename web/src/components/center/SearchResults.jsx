@@ -2,7 +2,6 @@ import { formatTime } from '../../utils/formatTime';
 
 /**
  * SearchResults - Inline result rows replacing dropdown autocomplete
- * Matches new_ui/player.html `.result-item`
  */
 export function SearchResults({ results, loading, highlightedIndex, onAdd, onHighlight }) {
   if (loading) {

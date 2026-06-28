@@ -15,7 +15,6 @@ project's `.claude/agents/` sub-agents over any global/built-in agents.
 # Docker
 
 ```bash
-cd discord-music-app
-docker build -t kasperhonore/discord-music .   # Build image
+docker build -t kasperhonore/discord-music .   # Build image (run from repo root)
 docker push kasperhonore/discord-music         # Push to Docker Hub
 ```

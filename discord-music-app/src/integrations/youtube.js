@@ -221,9 +221,14 @@ export async function getInfo(url) {
 export async function getStream(url) {
   logger.debug('Getting stream for URL:', url);
 
+  // Prefer Opus (smallest download) but accept any container/codec. The stream is
+  // transcoded by ffmpeg below (StreamType.Arbitrary), so we are no longer tied to
+  // the webm/opus container — this avoids the "Did not find the EBML tag" demuxer
+  // error that occurred when YouTube served a non-webm format (e.g. m4a/AAC) but we
+  // hardcoded StreamType.WebmOpus.
   const args = [
     '-f',
-    'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=webm]/bestaudio/best',
+    'bestaudio[acodec=opus]/bestaudio/best',
     '-o',
     '-',
     '--no-warnings',
@@ -307,7 +312,10 @@ export async function getStream(url) {
 
   return {
     stream,
-    type: StreamType.WebmOpus,
+    // Arbitrary => @discordjs/voice pipes the stream through ffmpeg and re-encodes
+    // to Opus, normalizing whatever container yt-dlp produced. Do not switch this
+    // back to WebmOpus without restricting the format selector to webm/opus only.
+    type: StreamType.Arbitrary,
     cleanup
   };
 }

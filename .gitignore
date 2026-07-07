@@ -1,9 +1,5 @@
-# Local Claude config / artifacts
-.claude/*
-# ...but share the curated skills, agents, and slash commands
-!.claude/skills/
-!.claude/commands/
-!.claude/agents/
+# Local Claude config / artifacts (kept private; not shared publicly)
+.claude/
 
 # Node / JS
 node_modules/

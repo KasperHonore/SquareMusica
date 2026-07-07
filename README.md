@@ -1,6 +1,13 @@
-# Discord Music Bot
+<h1 align="center">SquareMusica</h1>
 
-A feature-rich Discord music bot with a web control panel. Stream music from YouTube with real-time queue management through both Discord slash commands and a web interface.
+<p align="center">
+  A feature-rich Discord music bot with a web control panel — stream from YouTube with real-time
+  queue management through both Discord slash commands and a browser interface.
+</p>
+
+<p align="center">
+  <a href="docs/demo.mp4"><img src="docs/demo.gif" alt="SquareMusica demo — Discord slash commands and the web control panel" width="900"></a>
+</p>
 
 ## Features
 

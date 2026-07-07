@@ -164,31 +164,6 @@ For local UI development without configuring Discord OAuth redirect URLs, set:
 
 When enabled, the API bypasses login and treats you as an authenticated **Developer** user.
 
-## Remote / Container Sessions
-
-When running inside a remote SSH or container session, `peon-ping` auto-detects `REMOTE_CONTAINERS` and `CODESPACES` environment variables and routes audio to `host.docker.internal:19998` — no port forwarding is needed.
-
-Run the relay on your host machine:
-
-```bash
-peon relay --daemon
-```
-
-### Relay Commands
-
-```bash
-peon relay                # Start relay in foreground
-peon relay --daemon       # Start in background
-peon relay --stop         # Stop background relay
-peon relay --status       # Check if relay is running
-peon relay --port=12345   # Custom port (default: 19998)
-peon relay --bind=0.0.0.0 # Listen on all interfaces (less secure)
-```
-
-Relay environment variables: `PEON_RELAY_PORT`, `PEON_RELAY_HOST`, `PEON_RELAY_BIND`.
-
-If `peon-ping` detects an SSH or container session but cannot reach the relay, it prints setup instructions on `SessionStart`.
-
 ## yt-dlp Maintenance
 
 YouTube frequently changes their systems. Keep yt-dlp updated to avoid streaming issues:

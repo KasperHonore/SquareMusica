@@ -17,6 +17,16 @@ export default [
     }
   },
   {
-    ignores: ['node_modules/**', 'data/**', 'bin/**', 'dist/**', 'web/**', '.claude/**', 'docs/**']
+    ignores: [
+      'node_modules/**',
+      'data/**',
+      'bin/**',
+      'dist/**',
+      'web/**',
+      'demo/**',
+      '.claude/**',
+      '.agents/**',
+      'docs/**'
+    ]
   }
 ];

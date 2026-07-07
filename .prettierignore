@@ -1,9 +1,11 @@
 node_modules/
 web/
+demo/
 data/
 bin/
 dist/
 .claude/
+.agents/
 .github/
 docs/
 *.md

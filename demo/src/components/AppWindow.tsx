@@ -10,7 +10,9 @@ export const AppWindow: React.FC<{
   height: number;
   children: React.ReactNode;
   urlLabel?: string;
-}> = ({ width, height, children, urlLabel = 'squaremusica.app' }) => (
+  /** 0..1 — flares the URL pill gold (receives the /webui hand-off). */
+  urlGlow?: number;
+}> = ({ width, height, children, urlLabel = 'squaremusica.app', urlGlow = 0 }) => (
   <div
     style={{
       width,
@@ -44,9 +46,12 @@ export const AppWindow: React.FC<{
           padding: '3px 16px',
           borderRadius: 9999,
           background: colors.bg,
-          color: colors.textMuted,
+          border: `1px solid rgba(232, 200, 122, ${urlGlow * 0.7})`,
+          color: urlGlow > 0.35 ? colors.accent : colors.textMuted,
           fontSize: 12,
           letterSpacing: 0.2,
+          boxShadow: urlGlow > 0.02 ? `0 0 ${urlGlow * 22}px rgba(232, 200, 122, ${urlGlow * 0.6})` : 'none',
+          scale: `${1 + urlGlow * 0.08}`,
         }}
       >
         {urlLabel}
@@ -68,11 +73,12 @@ export const AppMock: React.FC<{
   nowPlaying?: Track;
   center: React.ReactNode;
   voiceConnected?: boolean;
-}> = ({ width, view = 'search', activePlaylist = -1, player, nowPlaying, center, voiceConnected = true }) => {
+  urlGlow?: number;
+}> = ({ width, view = 'search', activePlaylist = -1, player, nowPlaying, center, voiceConnected = true, urlGlow = 0 }) => {
   const height = Math.round((width * 720) / 1280);
   const scale = width / 1280;
   return (
-    <AppWindow width={width} height={height}>
+    <AppWindow width={width} height={height} urlGlow={urlGlow}>
       <div style={{ width: 1280, height: 720, position: 'relative', transform: `scale(${scale})`, transformOrigin: 'top left' }}>
         <Dashboard
           center={center}

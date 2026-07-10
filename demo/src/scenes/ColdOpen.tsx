@@ -5,6 +5,7 @@ import { fontHeading, fontBody } from '../fonts';
 import { SceneFrame } from '../components/SceneFrame';
 import { Waveform } from '../components/Waveform';
 import { BeatGlow } from '../components/Overlays';
+import { Fringe, WarmFlash } from '../components/Finishing';
 import { ease, enter } from '../motion';
 
 export const COLD_OPEN = 90;
@@ -16,8 +17,7 @@ export const ColdOpen: React.FC = () => {
   const slam = enter(frame, 30, 12, ease.bigPop);
   const wordScale = interpolate(slam, [0, 1], [1.4, 1]);
   const wordOpacity = enter(frame, 30, 7, ease.crisp);
-  const tag = enter(frame, 46, 15);
-  const flash = interpolate(frame, [30, 34, 46], [0, 0.55, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+  const tag = enter(frame, 40, 15);
   const push = interpolate(frame, [30, COLD_OPEN], [1, 1.04]);
 
   return (
@@ -33,20 +33,22 @@ export const ColdOpen: React.FC = () => {
 
       {/* Wordmark lockup */}
       <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column', scale: push }}>
-        <div
-          style={{
-            fontFamily: fontHeading,
-            fontSize: 120,
-            color: colors.textPrimary,
-            letterSpacing: '-2px',
-            lineHeight: 1,
-            opacity: wordOpacity,
-            scale: wordScale,
-            textShadow: '0 8px 60px rgba(0,0,0,0.6)',
-          }}
-        >
-          SquareMusica<span style={{ color: colors.accent }}>.</span>
-        </div>
+        <Fringe at={30} amp={4}>
+          <div
+            style={{
+              fontFamily: fontHeading,
+              fontSize: 120,
+              color: colors.textPrimary,
+              letterSpacing: '-2px',
+              lineHeight: 1,
+              opacity: wordOpacity,
+              scale: wordScale,
+              textShadow: '0 8px 60px rgba(0,0,0,0.6)',
+            }}
+          >
+            SquareMusica<span style={{ color: colors.accent }}>.</span>
+          </div>
+        </Fringe>
         <div
           style={{
             marginTop: 20,
@@ -62,7 +64,7 @@ export const ColdOpen: React.FC = () => {
       </AbsoluteFill>
 
       {/* Slam flash */}
-      <AbsoluteFill style={{ background: '#fff', opacity: flash, mixBlendMode: 'screen', pointerEvents: 'none' }} />
+      <WarmFlash at={30} peak={0.55} />
     </SceneFrame>
   );
 };

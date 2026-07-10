@@ -37,3 +37,16 @@ export const PLAYLISTS: Playlist[] = [
 ];
 
 export const NOW_PLAYING: Track = QUEUE[0];
+
+/** Tracks that cascade in during the playlist-import scene. */
+export const IMPORT_TRACKS: Track[] = [
+  { title: 'Night Swim', artist: 'Velvet Coast', duration: '3:12', seed: 29 },
+  { title: 'Rooftop Rain', artist: 'Kyoto Club', duration: '4:05', seed: 83 },
+  { title: 'Afterglow', artist: 'Nova Era', duration: '3:47', seed: 51 },
+  { title: 'Slow Motion', artist: 'Delta Wave', duration: '2:59', seed: 17 },
+];
+
+export const IMPORT_PLAYLIST = {
+  url: 'open.spotify.com/playlist/late-night-drive',
+  total: 24,
+} as const;

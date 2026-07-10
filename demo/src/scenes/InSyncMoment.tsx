@@ -1,11 +1,13 @@
 import React from 'react';
-import { AbsoluteFill, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, Sequence, useCurrentFrame } from 'remotion';
+import { LightLeak } from '@remotion/light-leaks';
 import { colors, discord, radius } from '../theme';
 import { fontHeading, fontBody } from '../fonts';
 import { SceneFrame } from '../components/SceneFrame';
 import { AlbumArt } from '../components/AlbumArt';
 import { Eq } from '../components/Eq';
 import { Kicker, RiseIn } from '../components/Kinetic';
+import { ExitRamp } from '../components/Finishing';
 import { BEAT, beatPulse, ease, enter } from '../motion';
 import { NOW_PLAYING } from '../data';
 
@@ -52,6 +54,7 @@ export const InSyncMoment: React.FC = () => {
 
   return (
     <SceneFrame>
+      <ExitRamp from={IN_SYNC - 8}>
       <AbsoluteFill style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 52, paddingBottom: 40 }}>
         <div style={{ textAlign: 'center' }}>
           <RiseIn frame={frame} start={0}>
@@ -73,6 +76,12 @@ export const InSyncMoment: React.FC = () => {
           <Chip label="Web panel" pulse={pulse} />
         </div>
       </AbsoluteFill>
+      </ExitRamp>
+      <Sequence durationInFrames={26}>
+        <AbsoluteFill style={{ opacity: 0.3, mixBlendMode: 'screen', pointerEvents: 'none' }}>
+          <LightLeak durationInFrames={26} seed={7} />
+        </AbsoluteFill>
+      </Sequence>
     </SceneFrame>
   );
 };

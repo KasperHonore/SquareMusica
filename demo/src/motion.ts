@@ -20,6 +20,7 @@ export const ease = {
   bigPop: Easing.bezier(0.3, 1.9, 0.5, 1), // aggressive overshoot for beat hits
   inOut: Easing.bezier(0.45, 0, 0.55, 1), // balanced, for slow camera moves
   whip: Easing.bezier(0.75, 0, 0.2, 1), // fast in, fast out — snappy slide
+  rampIn: Easing.bezier(0.6, 0, 0.95, 0.4), // accelerates into a cut, never settles
 } as const;
 
 /** 0→1 over [start, start+dur] with easing, clamped. */

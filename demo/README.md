@@ -19,9 +19,12 @@ Scrub the timeline, tweak a scene, and see changes instantly.
 ## Re-render the video
 
 ```bash
-npm run render      # -> out/demo.mp4   (full ~23s cut, 1280x720)
+npm run render      # -> out/demo.mp4   (full ~45s marketing cut, 1920x1080)
 npm run render:gif  # -> out/demo.gif   (condensed cut for the README)
 ```
+
+Scenes are authored at 1280x720 and raster-scaled 1.5x by the `DesignScale`
+wrapper in `Demo.tsx`, so text stays vector-crisp at 1080p.
 
 The optimized GIF committed to `../docs/demo.gif` is produced from the `DemoGif`
 render with ffmpeg's two-pass palette + gifsicle. Floyd–Steinberg dithering keeps
@@ -60,15 +63,25 @@ src/
   fonts.ts            # Instrument Serif + DM Sans via @remotion/google-fonts
   data.ts             # demo tracks / playlists (fictional, copyright-clean)
   components/         # SceneFrame, AppWindow, Waveform, Overlays, Kinetic,
-                      # Dashboard shell, DiscordCard, QueueCard, ...
-  scenes/
-    ColdOpen          # beat-drop wordmark + waveform
+                      # Finishing (shine/fringe/flash/ramp), Dashboard shell,
+                      # DiscordCard, QueueCard, SearchCard, TransportCard, ...
+  scenes/             # three acts: Discord -> web -> trust
+    ColdOpen          # beat-drop wordmark + waveform (warm flash + RGB fringe)
     DiscordMoment     # "Just type /play" + bot embed
-    WebPanelMoment    # "Control it from anywhere" — app window push-in
-    ReorderMoment     # "Drag to reorder" — queue snaps on the beat
+    CommandsMoment    # 14-command wall over a ghost "14"; /webui flies into the lens
+    WebAct            # ONE continuous camera: browser reveal -> a gold dot swallows
+                      # the frame -> whip-pans between Search, Queue and Transport
+                      # stations (giant PAUSE/SKIP/LOOP type behind the transport)
+    PlaylistMoment    # asymmetric: message rail left, cascade card bleeding off right
     InSyncMoment      # "Everyone stays in sync" — Discord + web pulse together
-    Outro             # wordmark lockup, features, waveform collapses to the dot
+    AuthMoment        # Discord OAuth gate — locked to your server
+    QuietBeat         # one bar of silence: just the gold dot breathing
+    Outro             # wordmark slam, feature chips, waveform collapses to the dot
 ```
+
+Finishing pass: warm-black vignette + gold grade in `SceneFrame`, card shines on
+landing, chromatic fringe on slams, `@remotion/light-leaks` at act changes, and
+speed-ramped exits into hard cuts.
 
 Requires Node 22+. Remotion downloads a headless Chrome on first render.
 `out/` is git-ignored; the shipped assets live in `../docs/`.

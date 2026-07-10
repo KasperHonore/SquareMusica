@@ -53,9 +53,18 @@ export const discord = {
   mention: 'rgba(88, 101, 242, 0.3)',
 } as const;
 
-// Video canvas geometry.
+// Video canvas geometry. Scenes are authored in DESIGN space (1280x720) and a
+// single scale wrapper in Demo.tsx raster-scales them to the render resolution
+// — transforms rasterize at output res, so text/SVG stay vector-crisp.
 export const VIDEO = {
-  width: 1280,
-  height: 720,
+  width: 1920,
+  height: 1080,
   fps: 30,
 } as const;
+
+export const DESIGN = {
+  width: 1280,
+  height: 720,
+} as const;
+
+export const DESIGN_SCALE = VIDEO.width / DESIGN.width;

@@ -5,11 +5,19 @@ import { fontHeading, fontBody } from '../fonts';
 import { SceneFrame } from '../components/SceneFrame';
 import { Waveform } from '../components/Waveform';
 import { BeatGlow } from '../components/Overlays';
+import { Fringe, WarmFlash } from '../components/Finishing';
 import { ease, enter } from '../motion';
 
-export const OUTRO = 105;
+export const OUTRO = 120;
 
-const FEATURES = ['YouTube', 'Playlists', 'Drag & drop queue', 'Real-time', 'Web + Discord'];
+const FEATURES = [
+  'YouTube + Spotify',
+  '14 slash commands',
+  'Drag & drop queue',
+  'Loop · shuffle · history',
+  'Real-time sync',
+  'Discord OAuth',
+];
 
 export const Outro: React.FC = () => {
   const frame = useCurrentFrame();
@@ -18,8 +26,7 @@ export const Outro: React.FC = () => {
   const wordScale = interpolate(slam, [0, 1], [1.28, 1]);
   const wordOpacity = enter(frame, 14, 7);
   const tag = enter(frame, 30, 14);
-  const cta = enter(frame, 64, 16);
-  const flash = interpolate(frame, [14, 18, 30], [0, 0.45, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+  const cta = enter(frame, 70, 16);
 
   // Waveform collapses toward a single gold dot.
   const collapse = enter(frame, 60, 22, ease.inOut);
@@ -52,19 +59,21 @@ export const Outro: React.FC = () => {
 
       {/* Lockup */}
       <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-        <div
-          style={{
-            fontFamily: fontHeading,
-            fontSize: 108,
-            color: colors.textPrimary,
-            letterSpacing: '-2px',
-            lineHeight: 1,
-            opacity: wordOpacity,
-            scale: wordScale,
-          }}
-        >
-          SquareMusica<span style={{ color: colors.accent }}>.</span>
-        </div>
+        <Fringe at={14} amp={4}>
+          <div
+            style={{
+              fontFamily: fontHeading,
+              fontSize: 108,
+              color: colors.textPrimary,
+              letterSpacing: '-2px',
+              lineHeight: 1,
+              opacity: wordOpacity,
+              scale: wordScale,
+            }}
+          >
+            SquareMusica<span style={{ color: colors.accent }}>.</span>
+          </div>
+        </Fringe>
         <div style={{ marginTop: 18, fontFamily: fontBody, fontSize: 24, color: colors.textSecondary, opacity: tag, translate: `0px ${(1 - tag) * 10}px` }}>
           A Discord music bot you can actually see.
         </div>
@@ -99,7 +108,7 @@ export const Outro: React.FC = () => {
         </div>
       </AbsoluteFill>
 
-      <AbsoluteFill style={{ background: '#fff', opacity: flash, mixBlendMode: 'screen', pointerEvents: 'none' }} />
+      <WarmFlash at={14} peak={0.45} />
     </SceneFrame>
   );
 };

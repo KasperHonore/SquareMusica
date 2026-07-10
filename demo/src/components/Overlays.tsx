@@ -25,11 +25,11 @@ export const Grain: React.FC<{ opacity?: number }> = ({ opacity = 0.06 }) => {
   );
 };
 
-/** Cinematic edge darkening to focus the center. */
+/** Cinematic edge darkening — warm blacks, so the grade never goes cold. */
 export const Vignette: React.FC<{ strength?: number }> = ({ strength = 0.5 }) => (
   <AbsoluteFill
     style={{
-      background: `radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,${strength}) 100%)`,
+      background: `radial-gradient(ellipse at center, transparent 52%, rgba(14, 9, 3, ${strength}) 100%)`,
       pointerEvents: 'none',
     }}
   />

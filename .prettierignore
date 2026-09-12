@@ -6,6 +6,7 @@ bin/
 dist/
 .claude/
 .agents/
+.specify/
 .github/
 docs/
 *.md

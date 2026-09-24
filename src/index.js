@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { validateEnv } from './config/env.js';
+import { validateEnv, validateTimezone } from './config/env.js';
 
 // Fail fast with one aggregated error if any required config is missing.
 // This runs BEFORE the rest of the app is imported (those modules open the
@@ -11,8 +11,11 @@ validateEnv([
   'GUILD_ID',
   'DISCORD_CLIENT_SECRET',
   'JWT_SECRET',
-  'OAUTH_REDIRECT_URI'
+  'OAUTH_REDIRECT_URI',
+  'TZ'
 ]);
+// TZ must also be a real zone: an unknown one silently becomes UTC in SQLite.
+validateTimezone();
 
 // Loaded dynamically (after validation) so their side effects don't run on a
 // misconfigured environment. Static imports would be hoisted above the check.

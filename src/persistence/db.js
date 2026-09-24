@@ -8,16 +8,25 @@ import { logger } from '../utils/logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-class DatabaseManager {
-  constructor() {
-    // Ensure data directory exists
-    const dataDir = join(__dirname, '../../data');
-    if (!existsSync(dataDir)) {
-      mkdirSync(dataDir, { recursive: true });
-    }
+export class DatabaseManager {
+  /**
+   * @param {string|null} [dbPath] - Override the database file. Defaults to
+   *   data/music.db. Pass ':memory:' to get a throwaway database; used by tests
+   *   to exercise migrate() without touching the real file.
+   */
+  constructor(dbPath = null) {
+    if (dbPath) {
+      this.db = new Database(dbPath);
+    } else {
+      // Ensure data directory exists
+      const dataDir = join(__dirname, '../../data');
+      if (!existsSync(dataDir)) {
+        mkdirSync(dataDir, { recursive: true });
+      }
 
-    this.db = new Database(join(dataDir, 'music.db'));
-    this.db.pragma('journal_mode = WAL');
+      this.db = new Database(join(dataDir, 'music.db'));
+      this.db.pragma('journal_mode = WAL');
+    }
     this.init();
   }
 
@@ -46,6 +55,26 @@ class DatabaseManager {
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_history_guild_id ON history(guild_id)');
       logger.info('[Database] Migrated: added guild_id to history table');
     }
+
+    // Add the stats attribution columns. Existing rows keep NULL, which is the
+    // launch boundary the DJ stats queries filter on — they are never counted.
+    const hasRequestedById = tableInfo.some((col) => col.name === 'requested_by_id');
+    if (!hasRequestedById) {
+      this.db.exec('ALTER TABLE history ADD COLUMN requested_by_id TEXT');
+      logger.info('[Database] Migrated: added requested_by_id to history table');
+    }
+
+    const hasRequestedByAvatar = tableInfo.some((col) => col.name === 'requested_by_avatar');
+    if (!hasRequestedByAvatar) {
+      this.db.exec('ALTER TABLE history ADD COLUMN requested_by_avatar TEXT');
+      logger.info('[Database] Migrated: added requested_by_avatar to history table');
+    }
+
+    // Also declared in schema.sql, for the fresh-install path this method returns
+    // early on. IF NOT EXISTS keeps both paths idempotent.
+    this.db.exec(
+      'CREATE INDEX IF NOT EXISTS idx_history_requested_by_id ON history(requested_by_id)'
+    );
   }
 
   // User methods
@@ -118,7 +147,7 @@ class DatabaseManager {
         return;
       }
       const stmt = this.db.prepare(
-        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       );
       stmt.run(
         guildId,
@@ -126,7 +155,9 @@ class DatabaseManager {
         track.url,
         track.duration || 0,
         track.thumbnail || null,
-        track.requestedBy || 'Unknown'
+        track.requestedBy || 'Unknown',
+        track.requestedById || null,
+        track.requestedByAvatar || null
       );
     } catch (error) {
       logger.error('[Database] addToHistory failed:', error.message, { track: track?.title });
@@ -161,6 +192,402 @@ class DatabaseManager {
       logger.error('[Database] clearAllHistory failed:', error.message);
       return 0;
     }
+  }
+
+  // Counterpart to clearAllHistory(). Both are called together on guild removal:
+  // clearing one without the other leaves the two tables divergent, so the stats
+  // page would show behavior-award winners above an empty leaderboard.
+  clearAllEvents() {
+    try {
+      const stmt = this.db.prepare('DELETE FROM events');
+      const result = stmt.run();
+      logger.info(`[Database] Cleared all ${result.changes} event entries`);
+      return result.changes;
+    } catch (error) {
+      logger.error('[Database] clearAllEvents failed:', error.message);
+      return 0;
+    }
+  }
+
+  /**
+   * Record one control action or natural track completion.
+   *
+   * Best-effort by contract (FR-025): wrapped, logged, never rethrown. Recording
+   * runs inside the transport that performed the action, so a throw here would
+   * break the action being recorded rather than just losing a stat.
+   *
+   * @param {Object} payload - As produced by shared/statsEvents.js.
+   */
+  logEvent(payload) {
+    try {
+      if (!payload?.type) {
+        logger.warn('[Database] logEvent: missing event type');
+        return;
+      }
+      const stmt = this.db.prepare(
+        `INSERT INTO events (
+          guild_id, event_type, actor_id, actor_name, actor_avatar,
+          target_user_id, target_user_name, track_title, track_url, metadata
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      stmt.run(
+        payload.guildId || null,
+        payload.type,
+        payload.actor?.id || null,
+        payload.actor?.name || null,
+        payload.actor?.avatar || null,
+        payload.track?.requestedById || null,
+        payload.track?.requestedBy || null,
+        payload.track?.title || null,
+        payload.track?.url || null,
+        payload.metadata ? JSON.stringify(payload.metadata) : null
+      );
+    } catch (error) {
+      logger.error('[Database] logEvent failed:', error.message, { type: payload?.type });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // DJ stats read models
+  //
+  // Every query below filters `requested_by_id IS NOT NULL`. That NULL check is
+  // the launch boundary (FR-005): rows written before this feature carry no
+  // stable identity, so they are attributable only to a display name that may
+  // since have changed, and are deliberately never counted.
+  //
+  // Ordering is always `<count> DESC, MIN(played_at) ASC, <id> ASC`. The trailing
+  // two keys are required, not decoration: without them SQLite may return tied
+  // rows in any order, so repeated requests against unchanged data could reorder
+  // the leaderboard (SC-012) and award winners could flip between loads (FR-015).
+  //
+  // Hour and date expressions all pass 'localtime'. played_at is stored in UTC
+  // (CURRENT_TIMESTAMP), so omitting it computes awards against UTC and produces
+  // plausible but wrong winners.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Top DJs by track count for a period.
+   *
+   * Returns up to `limit + 1` rows on purpose: the caller needs to know whether
+   * an (limit+1)-th DJ qualified in order to report truncation, and a result
+   * capped at exactly `limit` cannot distinguish a full page from a truncated
+   * one. The caller slices the extra row off before rendering.
+   *
+   * @param {{ since: string|null, limit: number }} params
+   * @returns {Array<{ userId: string, displayName: string, avatar: string|null,
+   *   trackCount: number, totalDurationSeconds: number, uniqueTrackCount: number }>}
+   */
+  getLeaderboard({ since = null, limit = 10 } = {}) {
+    // Name and avatar come from the member's MOST RECENT row, not an arbitrary
+    // one: a DJ who changed their display name should appear under the new one.
+    const sql = `
+      SELECT
+        h.requested_by_id                        AS userId,
+        COUNT(*)                                 AS trackCount,
+        SUM(COALESCE(h.duration, 0))             AS totalDurationSeconds,
+        COUNT(DISTINCT h.url)                    AS uniqueTrackCount,
+        MIN(h.played_at)                         AS firstPlayedAt,
+        (SELECT h2.requested_by FROM history h2
+          WHERE h2.requested_by_id = h.requested_by_id
+            ${since ? 'AND h2.played_at >= @since' : ''}
+          ORDER BY h2.played_at DESC, h2.id DESC LIMIT 1)      AS displayName,
+        (SELECT h3.requested_by_avatar FROM history h3
+          WHERE h3.requested_by_id = h.requested_by_id
+            ${since ? 'AND h3.played_at >= @since' : ''}
+          ORDER BY h3.played_at DESC, h3.id DESC LIMIT 1)      AS avatar
+      FROM history h
+      WHERE h.requested_by_id IS NOT NULL
+        ${since ? 'AND h.played_at >= @since' : ''}
+      GROUP BY h.requested_by_id
+      ORDER BY trackCount DESC, firstPlayedAt ASC, userId ASC
+      LIMIT @limit
+    `;
+    return this.db.prepare(sql).all({ since, limit: limit + 1 });
+  }
+
+  /**
+   * One member's aggregate plus their true rank in the full ordering, for the
+   * pinned self-row when they fall outside the top 10.
+   *
+   * The rank is computed over every qualifying DJ, not just the returned page,
+   * so it is the member's real standing. Returns null when they have no
+   * qualifying plays in the period.
+   *
+   * @param {{ since: string|null, userId: string }} params
+   */
+  getLeaderboardEntryForUser({ since = null, userId }) {
+    if (!userId) return null;
+
+    // Same grouping and ordering as getLeaderboard, wrapped so ROW_NUMBER gives
+    // the rank. Keeping the ORDER BY byte-identical is what makes the pinned
+    // row's rank agree with the ranks assigned to the top-10 rows.
+    const sql = `
+      WITH ranked AS (
+        SELECT
+          h.requested_by_id            AS userId,
+          COUNT(*)                     AS trackCount,
+          SUM(COALESCE(h.duration, 0)) AS totalDurationSeconds,
+          COUNT(DISTINCT h.url)        AS uniqueTrackCount,
+          MIN(h.played_at)             AS firstPlayedAt,
+          ROW_NUMBER() OVER (
+            ORDER BY COUNT(*) DESC, MIN(h.played_at) ASC, h.requested_by_id ASC
+          )                            AS rank
+        FROM history h
+        WHERE h.requested_by_id IS NOT NULL
+          ${since ? 'AND h.played_at >= @since' : ''}
+        GROUP BY h.requested_by_id
+      )
+      SELECT
+        r.rank,
+        r.userId,
+        r.trackCount,
+        r.totalDurationSeconds,
+        r.uniqueTrackCount,
+        (SELECT h2.requested_by FROM history h2
+          WHERE h2.requested_by_id = r.userId
+            ${since ? 'AND h2.played_at >= @since' : ''}
+          ORDER BY h2.played_at DESC, h2.id DESC LIMIT 1)  AS displayName,
+        (SELECT h3.requested_by_avatar FROM history h3
+          WHERE h3.requested_by_id = r.userId
+            ${since ? 'AND h3.played_at >= @since' : ''}
+          ORDER BY h3.played_at DESC, h3.id DESC LIMIT 1)  AS avatar
+      FROM ranked r
+      WHERE r.userId = @userId
+    `;
+    return this.db.prepare(sql).get({ since, userId }) || null;
+  }
+
+  /**
+   * Convert local-calendar date modifiers into the UTC boundary played_at is
+   * compared against.
+   *
+   * The modifiers arrive as data (e.g. ['start of month']) and are bound, never
+   * interpolated. The 'utc' modifier reads the preceding local date as local time
+   * and converts it, which is what makes "this month" the viewer's month rather
+   * than UTC's.
+   *
+   * @param {string[]} modifiers - SQLite date modifiers, applied in order.
+   * @returns {string} UTC datetime string, e.g. '2026-08-31 22:00:00'.
+   */
+  getPeriodBoundary(modifiers = []) {
+    const placeholders = modifiers.map(() => ', ?').join('');
+    const sql = `SELECT datetime(date('now','localtime'${placeholders}), 'utc') AS since`;
+    return this.db
+      .prepare(sql)
+      .pluck()
+      .get(...modifiers);
+  }
+
+  // --- Awards derived from play history -------------------------------------
+  //
+  // Each returns at most one row shaped { userId, displayName, avatar, value },
+  // or undefined when nothing qualifies. The 3-item minimum is applied by the
+  // caller so the boundary lives in one place.
+  //
+  // Every hour and date expression repeats the full strftime(...) call on both
+  // sides of its OR/AND. `>= '22' OR < '04'` is prose shorthand, not valid SQL.
+
+  /** Most-played track. The winner is a track, not a member. */
+  getMostPlayedSongAward({ since = null } = {}) {
+    const sql = `
+      SELECT
+        h.url                                  AS url,
+        COUNT(*)                               AS value,
+        MIN(h.played_at)                        AS firstPlayedAt,
+        (SELECT h2.title FROM history h2
+          WHERE h2.url = h.url
+          ORDER BY h2.played_at DESC, h2.id DESC LIMIT 1)     AS displayName,
+        (SELECT h3.thumbnail FROM history h3
+          WHERE h3.url = h.url
+          ORDER BY h3.played_at DESC, h3.id DESC LIMIT 1)     AS avatar
+      FROM history h
+      WHERE h.requested_by_id IS NOT NULL
+        ${since ? 'AND h.played_at >= @since' : ''}
+      GROUP BY h.url
+      ORDER BY value DESC, firstPlayedAt ASC, h.url ASC
+      LIMIT 1
+    `;
+    return this.db.prepare(sql).get({ since });
+  }
+
+  /** Most tracks queued between 22:00 and 04:00 local time. */
+  getNightOwlAward({ since = null } = {}) {
+    return this.#historyMemberAward({
+      since,
+      hourPredicate: `(
+        strftime('%H', h.played_at, 'localtime') >= '22'
+        OR strftime('%H', h.played_at, 'localtime') < '04'
+      )`
+    });
+  }
+
+  /** Most tracks queued between 05:00 and 09:00 local time. */
+  getEarlyBirdAward({ since = null } = {}) {
+    return this.#historyMemberAward({
+      since,
+      hourPredicate: `(
+        strftime('%H', h.played_at, 'localtime') >= '05'
+        AND strftime('%H', h.played_at, 'localtime') < '09'
+      )`
+    });
+  }
+
+  /**
+   * Most plays by one member within a single local day.
+   *
+   * Grouped by member AND local date, then the best single day per member wins.
+   */
+  getHogAward({ since = null } = {}) {
+    const sql = `
+      WITH per_day AS (
+        SELECT
+          h.requested_by_id                     AS userId,
+          date(h.played_at, 'localtime')        AS localDay,
+          COUNT(*)                              AS value,
+          MIN(h.played_at)                      AS firstPlayedAt
+        FROM history h
+        WHERE h.requested_by_id IS NOT NULL
+          ${since ? 'AND h.played_at >= @since' : ''}
+        GROUP BY h.requested_by_id, date(h.played_at, 'localtime')
+      )
+      SELECT
+        p.userId,
+        p.value,
+        (SELECT h2.requested_by FROM history h2
+          WHERE h2.requested_by_id = p.userId
+          ORDER BY h2.played_at DESC, h2.id DESC LIMIT 1)   AS displayName,
+        (SELECT h3.requested_by_avatar FROM history h3
+          WHERE h3.requested_by_id = p.userId
+          ORDER BY h3.played_at DESC, h3.id DESC LIMIT 1)   AS avatar
+      FROM per_day p
+      ORDER BY p.value DESC, p.firstPlayedAt ASC, p.userId ASC
+      LIMIT 1
+    `;
+    return this.db.prepare(sql).get({ since });
+  }
+
+  /**
+   * Shared shape for the member awards counting history rows under an hour
+   * predicate. Private: the predicate is a code-defined SQL fragment from the two
+   * callers above, never anything user-supplied.
+   */
+  #historyMemberAward({ since, hourPredicate }) {
+    const sql = `
+      SELECT
+        h.requested_by_id                       AS userId,
+        COUNT(*)                                AS value,
+        MIN(h.played_at)                        AS firstPlayedAt,
+        (SELECT h2.requested_by FROM history h2
+          WHERE h2.requested_by_id = h.requested_by_id
+          ORDER BY h2.played_at DESC, h2.id DESC LIMIT 1)   AS displayName,
+        (SELECT h3.requested_by_avatar FROM history h3
+          WHERE h3.requested_by_id = h.requested_by_id
+          ORDER BY h3.played_at DESC, h3.id DESC LIMIT 1)   AS avatar
+      FROM history h
+      WHERE h.requested_by_id IS NOT NULL
+        AND ${hourPredicate}
+        ${since ? 'AND h.played_at >= @since' : ''}
+      GROUP BY h.requested_by_id
+      ORDER BY value DESC, firstPlayedAt ASC, userId ASC
+      LIMIT 1
+    `;
+    return this.db.prepare(sql).get({ since });
+  }
+
+  // --- Awards derived from recorded actions ---------------------------------
+
+  /**
+   * Most tracks skipped BY OTHER PEOPLE.
+   *
+   * Grouped by target_user_id, so the winner is the member whose queued tracks
+   * others skipped most — the victim, not the skipper. Grouping by actor_id here
+   * compiles, returns a plausible winner, and names the wrong person.
+   */
+  getDjSkipAward({ since = null } = {}) {
+    return this.#eventAward({
+      since,
+      eventType: 'skip',
+      groupColumn: 'target_user_id',
+      nameColumn: 'target_user_name',
+      extraPredicate: 'e.target_user_id <> e.actor_id',
+      // events records no avatar for the target, only for the actor, and the
+      // actor here is the person doing the skipping. The victim's own avatar
+      // comes from the plays they queued.
+      avatarFromHistory: true
+    });
+  }
+
+  /** Most skips of one's own tracks. */
+  getSelfSkipAward({ since = null } = {}) {
+    return this.#eventAward({
+      since,
+      eventType: 'skip',
+      groupColumn: 'actor_id',
+      nameColumn: 'actor_name',
+      extraPredicate: 'e.target_user_id = e.actor_id'
+    });
+  }
+
+  /** Most queue removals performed. */
+  getQueueYeeterAward({ since = null } = {}) {
+    return this.#eventAward({
+      since,
+      eventType: 'remove',
+      groupColumn: 'actor_id',
+      nameColumn: 'actor_name'
+    });
+  }
+
+  /** Most shuffles performed. */
+  getShuffleAddictAward({ since = null } = {}) {
+    return this.#eventAward({
+      since,
+      eventType: 'shuffle',
+      groupColumn: 'actor_id',
+      nameColumn: 'actor_name'
+    });
+  }
+
+  /**
+   * Shared shape for the awards counting `events` rows. Private, and every
+   * interpolated fragment is code-defined by the four callers above.
+   */
+  #eventAward({
+    since,
+    eventType,
+    groupColumn,
+    nameColumn,
+    extraPredicate = null,
+    avatarFromHistory = false
+  }) {
+    const avatarSubquery = avatarFromHistory
+      ? `(SELECT h.requested_by_avatar FROM history h
+           WHERE h.requested_by_id = e.${groupColumn}
+           ORDER BY h.played_at DESC, h.id DESC LIMIT 1)`
+      : `(SELECT e3.actor_avatar FROM events e3
+           WHERE e3.${groupColumn} = e.${groupColumn}
+           ORDER BY e3.created_at DESC, e3.id DESC LIMIT 1)`;
+
+    const sql = `
+      SELECT
+        e.${groupColumn}                        AS userId,
+        COUNT(*)                                AS value,
+        MIN(e.created_at)                       AS firstActionAt,
+        (SELECT e2.${nameColumn} FROM events e2
+          WHERE e2.${groupColumn} = e.${groupColumn}
+          ORDER BY e2.created_at DESC, e2.id DESC LIMIT 1)  AS displayName,
+        ${avatarSubquery}                       AS avatar
+      FROM events e
+      WHERE e.event_type = @eventType
+        AND e.${groupColumn} IS NOT NULL
+        AND e.actor_id IS NOT NULL
+        ${extraPredicate ? `AND ${extraPredicate}` : ''}
+        ${since ? 'AND e.created_at >= @since' : ''}
+      GROUP BY e.${groupColumn}
+      ORDER BY value DESC, firstActionAt ASC, userId ASC
+      LIMIT 1
+    `;
+    return this.db.prepare(sql).get({ since, eventType });
   }
 
   // Playlist methods

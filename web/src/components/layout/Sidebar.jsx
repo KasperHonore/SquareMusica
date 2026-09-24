@@ -74,6 +74,30 @@ const NAV_ITEMS = [
         <polyline points="12 6 12 12 16 14" />
       </svg>
     )
+  },
+  {
+    id: 'stats',
+    label: 'DJ Stats',
+    // Inline SVG literal, matching the three icons above: 15x15, unfilled,
+    // stroked with currentColor. Deliberately not imported from
+    // components/icons/ — those are a different family (24x24, filled, no
+    // stroke) and would render heavier than its neighbours here.
+    icon: (
+      <svg
+        width="15"
+        height="15"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <path d="M8 21h8" />
+        <path d="M12 17v4" />
+        <path d="M7 4h10v5a5 5 0 01-10 0V4z" />
+        <path d="M17 5h3v2a3 3 0 01-3 3" />
+        <path d="M7 5H4v2a3 3 0 003 3" />
+      </svg>
+    )
   }
 ];
 

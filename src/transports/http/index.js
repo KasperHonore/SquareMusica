@@ -12,6 +12,7 @@ import queueRoutes from './routes/queue.js';
 import playbackRoutes from './routes/playback.js';
 import spotifyRoutes from './routes/spotify.js';
 import playlistRoutes from './routes/playlists.js';
+import statsRoutes from './routes/stats.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -57,6 +58,9 @@ app.use('/api/queue', mutationLimiter, queueRoutes);
 app.use('/api/player', mutationLimiter, playbackRoutes);
 app.use('/api/spotify', spotifyRoutes);
 app.use('/api/playlists', mutationLimiter, playlistRoutes);
+// No mutationLimiter: /api/stats is read-only, and the limiter's skip predicate
+// already exempts GET, so attaching it here would be inert.
+app.use('/api/stats', statsRoutes);
 
 // Public bot info (no auth required)
 app.get('/api/bot-info', (req, res) => {

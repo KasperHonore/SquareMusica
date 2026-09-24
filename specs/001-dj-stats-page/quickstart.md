@@ -126,10 +126,23 @@ silent fall back to `all`.
 stub user and wave every request through, so the 401 check passes vacuously and proves
 nothing. Unset `developerMode`/`DEVELOPER_MODE` before the unauthenticated call.
 
-## 8. Timezone correctness (R4) — the subtle one
+## 8. Timezone correctness (R4, R10, FR-030, SC-013) — the subtle one
 
 The trap worth testing deliberately: `played_at` is stored in **UTC**, while Night Owl
-(22:00–04:00) and Early Bird (05:00–09:00) are defined in local time.
+(22:00–04:00) and Early Bird (05:00–09:00) are defined in the configured `TZ`.
+
+First, check that startup fails fast on a missing or bogus zone:
+
+```bash
+TZ=   npm start    # Expect: "Missing required environment variable(s): TZ"
+TZ=Bogus/Zone npm start   # Expect: a clear error naming TZ=Bogus/Zone, not a silent UTC boot
+```
+
+Then check that the zone is honoured whatever the host is set to. This is what SC-013
+asks for, and `test/services/statsQueries.test.js` pins it by running under
+`TZ=Europe/Copenhagen`. Seed plays at `2026-07-15 21:30:00` UTC (23:30 CEST) and
+`2026-01-15 22:30:00` UTC (23:30 CET). **Both** count toward Night Owl and toward the
+15th as their local day.
 
 ```bash
 sqlite3 data/music.db \
@@ -141,6 +154,21 @@ In any non-UTC deployment `utc_h` and `local_h` differ. Confirm the award bounda
 the **local** hour: seed a play at 22:30 local and check it counts toward Night Owl.
 Getting this wrong yields plausible-looking winners that are simply the wrong people, so
 a test that only asserts "Night Owl has a winner" will not catch it.
+
+## 8a. Loop replays are not counted (FR-005a, SC-014)
+
+Queue one track, set `/loop track`, and let it play through several times (or `/skip`
+repeatedly: in track-loop a skip replays the same entry).
+
+```bash
+sqlite3 data/music.db \
+  "SELECT id, title, is_loop_replay FROM history ORDER BY id DESC LIMIT 5;"
+```
+
+**Expected**: the first play has `is_loop_replay = 0` and every repeat has `1`. The History
+page lists them all, while the DJ Stats leaderboard shows `trackCount` 1 for that member
+and Most Played Song counts 1 play. Turn loop off and use **previous** on the realtime
+dashboard to replay the same entry. That replay is `0` and counts.
 
 ## 9. Award minimum and empty states (FR-013, FR-014, SC-004)
 
@@ -171,7 +199,7 @@ cd web && npm run dev      # http://localhost:5173
 
 ```bash
 docker build -t kasperhonore/discord-music .
-docker run --rm -p 3000:3000 --env-file .env kasperhonore/discord-music
+docker run --rm -p 3000:3000 --env-file .env kasperhonore/discord-music   # .env must set TZ
 curl -s localhost:3000/api/health      # {"status":"ok"} — unauthenticated by design
 ```
 

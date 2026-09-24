@@ -87,9 +87,10 @@ export function leaveChannel(guildId) {
     connection.destroy();
     connections.delete(guildId);
 
-    // Connection teardown only. Clearing play history + emitting historyCleared
-    // is the caller's job (musicManager.clearHistory) to keep this transport
-    // layer free of persistence concerns.
+    // Connection teardown only. Play history deliberately survives a voice
+    // leave — the DJ stats page aggregates it, so wiping it here would reset
+    // every figure each time the bot left a channel. Only guild removal clears
+    // it, in the GuildDelete handler in client.js.
     return true;
   }
   return false;

@@ -3,6 +3,25 @@ import { musicManager } from '../../../core/musicManager.js';
 import { getPlayer, getQueue } from '../../../services/playback.js';
 import { requireVoiceConnection } from './utils/checks.js';
 import { formatTime } from '../../../shared/formatTime.js';
+import { botEvents } from '../../../events/bus.js';
+import {
+  STATS_EVENT,
+  STATS_EVENT_TYPES,
+  createStatsEvent,
+  captureTrack
+} from '../../../shared/statsEvents.js';
+
+/**
+ * Emit one recorded action on the shared bus. Wrapped so a recording failure
+ * cannot break the command — bus listeners run synchronously in this stack.
+ */
+function emitAction(type, user, track, metadata = null) {
+  try {
+    botEvents.emit(STATS_EVENT, createStatsEvent({ type, actor: user, track, metadata }));
+  } catch {
+    // Deliberately silent; the recorder logs its own failures.
+  }
+}
 
 export async function handleQueue(interaction) {
   if (!(await requireVoiceConnection(interaction))) return;
@@ -92,8 +111,13 @@ export async function handleRemove(interaction) {
     });
   }
 
+  // Read the track BEFORE removing it, or there is nothing left to record.
+  const removedTrack = captureTrack(() => q.getAll()[position]);
+
   const removed = q.remove(position);
   musicManager.emitQueueUpdate();
+
+  emitAction(STATS_EVENT_TYPES.REMOVE, interaction.user, removedTrack || removed);
 
   await interaction.reply(`Removed **${removed.title}** from the queue.`);
 }
@@ -113,6 +137,9 @@ export async function handleShuffle(interaction) {
   q.shuffle();
   musicManager.emitQueueUpdate();
 
+  // Acts on the queue as a whole, so no track is recorded.
+  emitAction(STATS_EVENT_TYPES.SHUFFLE, interaction.user, null);
+
   await interaction.reply('Shuffled the queue.');
 }
 
@@ -121,11 +148,21 @@ export async function handleClear(interaction) {
 
   const q = getQueue();
   const current = q.getCurrent();
+  const clearedCount = Math.max(0, q.getAll().length - (current ? 1 : 0));
 
   // Clear all except current
   q.tracks = current ? [current] : [];
   q.currentIndex = 0;
   musicManager.emitQueueUpdate();
+
+  // The only clear_queue emit on the Discord surface — handleStop deliberately
+  // records nothing even though it also empties the queue. This variant keeps the
+  // current track, where HTTP empties everything and realtime drops only the
+  // upcoming tracks; the variant is what keeps those three distinguishable.
+  emitAction(STATS_EVENT_TYPES.CLEAR_QUEUE, interaction.user, null, {
+    variant: 'all_but_current',
+    clearedCount
+  });
 
   await interaction.reply('Cleared the queue.');
 }

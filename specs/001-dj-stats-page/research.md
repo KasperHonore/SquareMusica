@@ -4,6 +4,10 @@
 
 All Technical Context unknowns are resolved below. No `NEEDS CLARIFICATION` markers remain.
 
+**Revised 2026-09-24** after the second clarification session: R4 is amended (its
+`'localtime'` mechanism stands, but *which* local time is now pinned — see R10), and R10
+(configured timezone) and R11 (loop replays) are new.
+
 ---
 
 ## R1. Where to hook action recording so every transport is covered
@@ -150,9 +154,11 @@ apples-to-apples.
   rejected only for consistency, since the award-hour predicates need `'localtime'`
   inside SQL anyway. Either is acceptable at implementation time provided both use
   the same timezone basis.
-- *A `STATS_TZ` env var* — rejected: Principle IV would require adding it to
-  `validateEnv` as a fail-fast requirement, and the spec's assumption is explicitly
-  "the deployment's local timezone".
+- *A `STATS_TZ` env var* — rejected, and still rejected in favour of plain `TZ` (R10).
+  The original reason — "the spec says the deployment's local timezone" — **no longer
+  holds**: FR-030 now requires an explicitly configured zone, because the production image
+  sets no `TZ` and "deployment local time" was silently UTC. `'localtime'` remains the
+  mechanism; R10 pins what it resolves to.
 
 ---
 
@@ -266,3 +272,119 @@ FR-029 asks for.
 **Note**: `CenterPanel` has **three** separate switches on `activeView` (header,
 subheader, and body at lines 50, 62, 89). All three need a `stats` case, or the page
 renders with the wrong chrome. This is easy to half-do and worth an explicit task.
+
+---
+
+## R10. Pinning "local time" to one configured timezone (FR-030, SC-013)
+
+**Decision**: The standard `TZ` environment variable becomes **required**. It is added to
+the `validateEnv([...])` list in `src/index.js`, then checked in two stages:
+
+1. **Is it a real IANA zone?** — a new `validateTimezone()` in `src/config/env.js`, run
+   right after `validateEnv` and before any dynamic import, constructs
+   `new Intl.DateTimeFormat('en', { timeZone: process.env.TZ })`. An unknown zone throws
+   `RangeError`; it is rethrown as one clear message naming `TZ` and its value.
+2. **Does SQLite actually honour it?** — at `DatabaseManager` construction, `db.js` runs a
+   probe: for two fixed instants, one in January and one in July, compare
+   `strftime('%H:%M', ?, 'localtime')` with the same instant formatted by `Intl` in `TZ`.
+   Any mismatch throws, naming `TZ`, the zone, and "timezone data missing from runtime".
+   The probe is skipped when `TZ` is unset, which only happens in tests and in the CI
+   smoke test, because production boots through `validateEnv`.
+
+All the existing `'localtime'` SQL (R4) stays as it is. No query changes for this decision.
+
+**Rationale**: verified on this codebase with better-sqlite3:
+
+- SQLite's `'localtime'` goes through libc, which reads `TZ`. With
+  `TZ=Europe/Copenhagen`, `21:30Z` in July gives local hour `23` (CEST) and `22:30Z` in
+  January also gives `23` (CET). DST works with no extra code.
+- Node re-reads `TZ` when `process.env.TZ` is assigned at runtime. That is why
+  `vitest.config.js` can pin it for the whole suite.
+- **An unknown zone does not fail.** `TZ=Bogus/Zone` silently makes libc use UTC.
+  `Intl` is strict and throws `RangeError`, so stage 1 is needed.
+- `Intl` uses ICU data bundled into Node, while libc uses `/usr/share/zoneinfo`. If the
+  image lacks zoneinfo, `Intl` accepts the zone but SQLite still computes in UTC. Stage 2
+  catches exactly that case. `node:22-slim` does ship `Europe/Copenhagen`, checked by
+  running the image, so the Dockerfile needs **no `tzdata` install**. The probe keeps it
+  that way if the base image ever changes.
+
+Using `TZ` itself, not a new `STATS_TZ`, means there is one timezone for the whole process.
+A separate variable would let the page's labels (JS `Date`) and its SQL (libc) run on
+different clocks.
+
+**Alternatives considered**:
+
+- *`STATS_TZ` plus timezone math done in JS and bound into queries* — rejected. It
+  duplicates what `'localtime'` already does correctly, and the hour and day grouping for
+  Night Owl, Early Bird and The Hog would need the offset for every row, which changes
+  across DST. That is not something to hand-roll in SQL.
+- *Default to `Europe/Copenhagen` when `TZ` is unset* — rejected. FR-030 requires an
+  explicit value, and a hidden default is the same "silently UTC" failure pointing at a
+  different zone.
+- *Install `tzdata` in the Dockerfile anyway* — unnecessary today (see above); the stage-2
+  probe is the durable guard.
+
+---
+
+## R11. Excluding loop replays from stats (FR-005a, SC-014)
+
+**Decision**: `Queue.next()` in `src/core/queue.js` marks the entry it returns when
+**loop mode is on and that entry has already started playing** (`entry.loopReplay = true`).
+`musicManager.onTrackChange()` then:
+
+1. reads the flag,
+2. passes it to `db.addToHistory(track, guildId, { loopReplay })`,
+3. clears `loopReplay` and sets `entry.hasPlayed = true` on the same object.
+
+`history` gains `is_loop_replay INTEGER NOT NULL DEFAULT 0`. Every stats query keeps only
+counted plays with `requested_by_id IS NOT NULL AND is_loop_replay = 0`. That predicate is
+defined once in `db.js` and reused by all six history-reading queries.
+
+**Rationale**: the facts that decide where the flag goes:
+
+- **The object passed to `onTrackChange` is the queue entry.** `tryPlayWithFallback` calls
+  `player.play(queue.next())`. `ensureResolved` mutates the track in place and returns it.
+  `trackStart` emits that object. So a flag set in `next()` reaches `addToHistory` with no
+  new plumbing.
+- **`next()` is the only automatic advance, and every surface reaches it.** Natural end,
+  HTTP/realtime skip (`musicManager.skip`) and Discord `/skip` all go through
+  `advanceAndPlay` → `tryPlayWithFallback` → `queue.next()`. Deciding the flag there makes
+  the rule the same on every transport by construction (Principle III). Nothing is added
+  to a transport.
+- **`previous()` never sets the flag**, and a track queued again is a new entry
+  (`add()` spreads a copy). Both manual replays FR-005a says should count therefore count.
+- **The flag is read once.** Clearing it in `onTrackChange` stops a stale `true` leaking
+  into a later non-loop start of the same entry, such as `ensurePlaying()` after loop is
+  switched off. Without that, the first play after a stop could be dropped.
+
+**Edge rules this produces** (tests should cover them):
+
+| Situation | Counted? |
+|---|---|
+| Track-loop repeats the current entry (natural end) | No (loop replay) |
+| `/skip` while in track-loop: `next()` returns the same entry again | No (loop mode chose it) |
+| Queue-loop wraps to index 0 and continues through already-played entries | No, for every entry in the second pass and later passes |
+| Queue-loop on, but an entry that has not played yet (added after the wrap) | Yes |
+| `previous` to an already-played entry | Yes (manual) |
+| Loop off, `previous` then forward again to an already-played entry | Yes (loop off, so never flagged) |
+| Loop on, `previous` then forward again to an already-played entry | No. This is a deliberate simplification: the forward step goes through `next()` with loop on |
+| Same URL queued again as a new entry | Yes (new entry, `hasPlayed` false) |
+
+**Action-derived awards are unaffected.** FR-005a excludes loop *plays*. A skip, remove or
+pause during a loop replay is still a real action by a real member, so it is recorded and
+counted as usual. `track_complete` is still emitted for loop replays. No award reads it.
+
+**Alternatives considered**:
+
+- *Compare with the previous `history` row (same URL, same requester)* — rejected. It
+  cannot tell track-loop apart from a member queuing the same song twice in a row (which
+  counts), and it misses queue-loop entirely.
+- *A queue-level `lastAdvanceWasLoop` read by `onTrackChange`* — rejected. `player.play()`
+  awaits resolution and stream setup, so another `next()` can run in between. A flag on
+  the entry travels with the right track.
+- *Stop writing loop replays to history* — rejected by the clarification (the History
+  page must stay unchanged).
+- *Backfill `is_loop_replay` for rows already written* — not possible. Those rows carry no
+  signal, so they default to `0`. This affects only a development database, because the
+  feature has not been released.
+

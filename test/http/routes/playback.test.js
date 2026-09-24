@@ -10,6 +10,14 @@ vi.mock('../../../src/core/musicManager.js', () => ({
   musicManager: {
     guildId: 'g1',
     getPlayerState: vi.fn(() => ({ playing: false })),
+    // Read by the route to record which track an action affected. Present here so
+    // these tests exercise the real path rather than the capture's error guard.
+    getCurrentTrack: vi.fn(() => ({
+      title: 'Current Song',
+      url: 'https://example.com/current',
+      requestedById: 'd2',
+      requestedBy: 'queuer'
+    })),
     play: vi.fn(() => true),
     pause: vi.fn(() => true),
     skip: vi.fn(() => true),

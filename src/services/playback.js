@@ -4,6 +4,13 @@ import { musicManager } from '../core/musicManager.js';
 import { resolutionManager } from './resolutionManager.js';
 import { tryPlayWithFallback } from './trackResolver.js';
 import { getConnection } from '../transports/discord/voiceManager.js';
+import { botEvents } from '../events/bus.js';
+import {
+  STATS_EVENT,
+  STATS_EVENT_TYPES,
+  createStatsEvent,
+  captureTrack
+} from '../shared/statsEvents.js';
 import { logger } from '../utils/logger.js';
 
 // Singleton player + queue. Created lazily so the web UI can detect voice state
@@ -62,6 +69,13 @@ export function getPlayer() {
     player.on('trackEnd', () => {
       void (async () => {
         try {
+          // Read the finished track before advanceAndPlay moves the queue on.
+          // `trackEnd` is the one place a natural completion can be told apart
+          // from a skip: both skip paths and this auto-advance call
+          // advanceAndPlay({ skipCurrent: true }), so only the caller knows
+          // which happened. No flag on musicManager can distinguish them.
+          const completedTrack = captureTrack(() => musicManager.getCurrentTrack());
+
           const connection = getConnection(musicManager.guildId);
           const { played } = await advanceAndPlay({
             player,
@@ -74,6 +88,19 @@ export function getPlayer() {
             logger.info('[TrackEnd] No more playable tracks');
             resolutionManager.stop();
             resolutionManager.processingTracks.clear();
+          }
+
+          // A natural end has no actor. Emitted after the advance so a recording
+          // failure can never stop the next track from playing.
+          if (completedTrack) {
+            botEvents.emit(
+              STATS_EVENT,
+              createStatsEvent({
+                type: STATS_EVENT_TYPES.TRACK_COMPLETE,
+                actor: null,
+                track: completedTrack
+              })
+            );
           }
         } catch (error) {
           logger.error('[TrackEnd] Failed to autoplay next track:', error);

@@ -21,6 +21,11 @@
 - Q: Does Most Played Song, whose winner is a track rather than a member, still need 3 plays to qualify? → A: Yes — generalise FR-010/FR-013 to "winner"; the 3-item minimum applies to tracks too.
 - Q: With the voice-leave wipe gone, should members get a manual way to clear history from the dashboard? → A: Out of scope — no manual clear; recorded as a possible follow-up.
 
+### Session 2026-09-24
+
+- Q: Which timezone should decide the award hours, "a single day" for The Hog, and where This Week and This Month start? → A: A single timezone set explicitly in configuration (e.g. `TZ=Europe/Copenhagen`, with timezone data available in the runtime image), validated at startup; not whatever the host happens to default to.
+- Q: When loop mode (track or whole queue) replays a track, should each replay count as a new play in the stats? → A: Record every replay in play history but mark it as a loop replay; stats count only the first play, and loop replays are excluded from the leaderboard and every award.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - See who the top DJs are (Priority: P1)
@@ -145,7 +150,9 @@ and that the corresponding awards then show a winner.
 - **Tracks with unknown or missing duration.** These still count toward track counts but contribute zero to listening-time totals, and the page does not report a misleadingly precise total.
 - **Very long member names or track titles.** These are truncated within their card or row rather than breaking the layout or forcing horizontal scrolling.
 - **A single member is the only contributor.** The leaderboard renders a one-row list and awards resolve to that member without implying competition that does not exist.
+- **Loop mode left on.** A member who loops one track, or the whole queue, for hours gains nothing on the leaderboard or in any award from the repeats: only the first play counts (FR-005a). The repeats still appear on the History page.
 - **The same track is queued repeatedly by one member.** It counts once toward their unique-track/variety measure and once per play toward their total track count.
+- **Daylight-saving changeover.** On the night clocks change, hour windows and day/week/month boundaries follow the configured timezone's wall clock (FR-030); a play is never counted in two windows or two days, and none is lost.
 - **Period boundary crossing while the page is open.** If the week or month rolls over while a member has the page open, results may reflect the period in effect when the data was fetched; re-opening or re-selecting the period returns current results.
 - **Play history now grows without bound.** Nothing prunes it, so the History page and the stats queries must stay usable as it grows. The History page already pages through results rather than loading everything, and the stats figures are aggregates rather than row listings, so both scale with the indexes rather than the row count.
 - **A member requests stats while a very large body of activity exists.** The page still loads within the stated performance target, and the leaderboard renders at most 10 rows plus the signed-in member's pinned row, never an unbounded list.
@@ -164,6 +171,7 @@ and that the corresponding awards then show a winner.
 - **FR-003**: The system MUST present a leaderboard ranking members by the number of tracks they queued within the selected time period, in descending order.
 - **FR-004**: The system MUST record, against every play from this feature's launch onward, a stable identity for the member who queued the track — one that survives a change of display name — together with a snapshot of that member's display name and avatar as they were at that moment.
 - **FR-005**: The system MUST attribute plays to members by that stable identity, and MUST exclude plays recorded before this feature's launch, which carry no such identity. All figures on the page therefore describe activity from launch onward, and the page MUST NOT present them as covering a longer span.
+- **FR-005a**: The system MUST mark each play record that loop mode started automatically — a track-loop repeat, or a queue-loop wrap back to an already-played track — as a loop replay. Loop replays MUST still be written to play history, so the History page is unchanged, but MUST be excluded from every leaderboard figure (tracks queued, listening time, distinct tracks) and from every award. A replay the member starts manually (going back to the previous track, or queuing the track again) is an ordinary play and counts.
 - **FR-006**: Each leaderboard entry MUST show the member's rank, display name, avatar, tracks queued, total listening time contributed, and count of distinct tracks queued. The display name and avatar MUST be taken from the member's most recent recorded snapshot, never from a live profile lookup, so that the page renders without contacting Discord and continues to work for members who have left the guild or who have never signed into the dashboard.
 - **FR-007**: The leaderboard MUST resolve ties by a deterministic rule so that repeated views of unchanged data produce an identical ordering.
 - **FR-008**: The leaderboard MUST visually distinguish the signed-in member's own row.
@@ -173,7 +181,7 @@ and that the corresponding awards then show a winner.
 
 - **FR-010**: The system MUST present a set of named awards, each with an award name, a plain-language description of how it is earned, the winner, and the value that won it. A winner is usually a member, but MAY be a track where the award is about the music rather than the person — "Most Played Song" is the one such award in FR-011.
 - **FR-011**: The awards set MUST include at least the following, computed over the selected time period: most-replayed track; a late-night listening award ("Night Owl", counting plays from 22:00 up to 04:00); an early-morning listening award ("Early Bird", counting plays from 05:00 up to 09:00); a most-tracks-in-a-single-day award; a most-skipped-by-others award; a most-self-skipped award; a most-queue-removals award; and a most-shuffles award. **The most-skipped-by-others award is won by the victim, not the skipper** — its winner is the member whose queued tracks other people skipped most often, which is why it is described as "most skipped *by others*". Its working name, "DJ Skip", reads like the name of the person doing the skipping, and the other three action-derived awards (self-skip, removals, shuffles) *are* won by the member who performed the action. That asymmetry is easy to implement backwards and yields a plausible-looking but wrong winner.
-- **FR-012**: Hour-bounded awards MUST evaluate their boundaries in the deployment's local timezone, treating the start hour as inclusive and the end hour as exclusive, so that every play falls in at most one of the two windows. The two windows do not tile the day: with Night Owl running 22:00–04:00 and Early Bird 05:00–09:00, there are **two** gaps where a play counts toward neither award — 04:00–05:00 and 09:00–22:00. Both are deliberate, and a play landing in either is not a defect.
+- **FR-012**: Hour-bounded awards MUST evaluate their boundaries in the configured stats timezone (FR-030), treating the start hour as inclusive and the end hour as exclusive, so that every play falls in at most one of the two windows. The two windows do not tile the day: with Night Owl running 22:00–04:00 and Early Bird 05:00–09:00, there are **two** gaps where a play counts toward neither award — 04:00–05:00 and 09:00–22:00. Both are deliberate, and a play landing in either is not a defect.
 - **FR-013**: An award MUST NOT be given to any candidate — member or track — whose qualifying count for the selected period is below 3. Where no candidate reaches that floor, the award MUST fall back to its "no winner yet" state rather than crowning the highest count below the floor. A track played twice is therefore not "most played".
 - **FR-014**: An award with no winner for the selected period — whether because no activity qualified at all, or because no candidate met the minimum in FR-013 — MUST still be displayed, in an explicit "no winner yet" state.
 - **FR-015**: Awards MUST resolve ties by a deterministic rule so that repeated views of unchanged data produce the same winner.
@@ -201,10 +209,14 @@ and that the corresponding awards then show a winner.
 - **FR-028**: The page MUST match the existing dashboard's visual style and remain fully usable at phone width, with no horizontal scrolling of the page body.
 - **FR-029**: The page MUST show a loading state while stats are being retrieved, and a recoverable error state with a retry affordance if retrieval fails.
 
+#### Timezone
+
+- **FR-030**: Every time-of-day and calendar computation on the page — the Night Owl and Early Bird hour windows (FR-012), "a single day" for The Hog, and the start of This Week (Monday) and This Month — MUST use one explicitly configured IANA timezone (e.g. `Europe/Copenhagen`), including its daylight-saving transitions. The deployed runtime MUST carry the timezone data needed to honour it, and an unrecognised timezone value MUST stop startup with a clear error rather than silently falling back to UTC or the host default.
+
 ### Key Entities
 
 - **DJ (Member)**: A guild member who has queued at least one track since launch. Identified by a stable identity that survives display-name changes; presented using the display name and avatar captured on their most recent recorded play.
-- **Play Record**: One occurrence of a track being played — the track's title, link, duration, who queued it, and when it played. Play records already exist today but carry only a display name; from launch onward they also carry the queuing member's stable identity plus a snapshot of their display name and avatar at that moment, and only those enriched records feed this page.
+- **Play Record**: One occurrence of a track being played — the track's title, link, duration, who queued it, and when it played. Play records already exist today but carry only a display name; from launch onward they also carry the queuing member's stable identity plus a snapshot of their display name and avatar at that moment, and only those enriched records feed this page. Each record also notes whether loop mode started it; loop replays are kept in history but never counted here (FR-005a).
 - **Control Action**: One occurrence of a member changing playback or queue state — the action type, the acting member, when it happened, and, where applicable, the affected track and that track's original requester. New with this feature; the basis of the behavior-derived awards.
 - **Leaderboard Entry**: A member's aggregated standing for a selected period — rank, tracks queued, total listening time, and distinct-track count.
 - **Award**: A named superlative with a description, the rule that determines its winner, the winning member for a selected period, and the winning value. May have no winner.
@@ -226,6 +238,8 @@ and that the corresponding awards then show a winner.
 - **SC-010**: Every award defined by the feature is displayed at all times, each either with a winner or in an explicit "no winner yet" state — no award is ever missing or blank.
 - **SC-011**: The page is fully readable and operable at 400px viewport width, with no horizontal scrolling of the page body.
 - **SC-012**: Repeated loads of the same unchanged data produce identical rankings and award winners.
+- **SC-013**: A play recorded at 23:30 in the configured timezone counts toward Night Owl and toward that local calendar day, week and month in both summer and winter time, whatever timezone the host machine is set to.
+- **SC-014**: With track-loop on, a single queued track that plays 20 times contributes exactly 1 to its queuer's track count, 1 play toward Most Played Song, and 1 play toward The Hog, while the History page lists all 20 plays.
 
 ## Assumptions
 
@@ -233,7 +247,7 @@ and that the corresponding awards then show a winner.
 - **No backfill**: Neither historical plays nor pre-launch control actions can be reconstructed, and no attempt is made to infer identities from stored display names.
 - **Audience and visibility**: All stats are visible to every member authorized to use the dashboard. This is a single friend-group guild, and the superlatives are intended to be seen and joked about; no per-member opt-out or privacy control is in scope.
 - **Web surface only**: The DJ Stats page is a web dashboard feature. No Discord slash command for stats is in scope. The project's transport-parity principle is honored where it applies — the *recording* of control actions must be identical across Discord, HTTP, and realtime surfaces (FR-024) — but stats presentation is a read-only reporting view, not a playback capability that would diverge between transports.
-- **Calendar-based periods**: "This Week" means the current calendar week and "This Month" the current calendar month, in the deployment's local timezone — not rolling 7- and 30-day windows. This matches the labels shown to members.
+- **Calendar-based periods**: "This Week" means the current calendar week and "This Month" the current calendar month, in the configured stats timezone (FR-030) — not rolling 7- and 30-day windows. This matches the labels shown to members.
 - **Every played track has a requester**: Tracks are always queued by an identifiable member, so there is no "system" or "autoplay" DJ to exclude from the leaderboard.
 - **Awards follow the period toggle**: Award winners are recomputed for the selected period, not fixed to all-time.
 - **Stats are read-only and observational**: Nothing on this page changes playback, queue state, or any member's data.

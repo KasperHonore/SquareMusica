@@ -4,7 +4,6 @@ import { resolutionManager } from '../services/resolutionManager.js';
 import { tryPlayWithFallback } from '../services/trackResolver.js';
 import { advanceAndPlay } from '../services/playback.js';
 import { addTracksToQueue } from '../shared/queueHelpers.js';
-import { botEvents } from '../events/bus.js';
 import { logger } from '../utils/logger.js';
 
 class MusicManager extends EventEmitter {
@@ -199,14 +198,6 @@ class MusicManager extends EventEmitter {
     }
     this.emitQueueUpdate();
     return true;
-  }
-
-  // Clear play history (e.g. when leaving a voice channel) and notify clients.
-  // Owns the persistence + event so transports/voiceManager don't reach into db.
-  clearHistory(guildId) {
-    const cleared = db.clearAllHistory();
-    logger.debug(`[MusicManager] Cleared ${cleared} history records on voice leave`);
-    botEvents.emit('historyCleared', guildId);
   }
 
   stop() {

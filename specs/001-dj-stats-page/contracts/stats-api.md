@@ -94,6 +94,8 @@ what is actually supported, instead of being accepted and quietly resolved as al
 | `value` | `null` exactly when `winner` is `null`. |
 | `valueLabel` | The unit `value` is counted in (`"tracks"`, `"plays"`, `"shuffles"`, `"removals"`). Static per award and **always present, including when `winner` is `null`** — the card renders its unit in the "no winner yet" state too. |
 | `totalDurationSeconds` | Sums only known durations; unknown durations contribute 0. |
+| *(all history-derived figures)* | `trackCount`, `totalDurationSeconds`, `uniqueTrackCount` and the four history-sourced award values count **only** plays that are attributed and not loop replays (FR-005a). A track looped 20 times contributes 1 to each figure. The History endpoint is unaffected and still returns every row. |
+| *(all time-derived figures)* | Period boundaries, Night Owl and Early Bird hours, and The Hog's "day" are evaluated in the server's configured `TZ` (FR-030), never in the client's timezone. The response carries no timezone field, so clients MUST NOT recompute them locally. |
 
 ### Award ordering and identity
 
@@ -169,7 +171,7 @@ with each other.
 tracked actions: skip, pause, resume, remove, shuffle, clear_queue. `stop` is not among
 them, so no emit site exists for it and none should be added. This is worth stating
 plainly because stopping *does* empty the queue as a side effect — `musicManager.stop()`
-calls `queue.clear()` (`core/musicManager.js:215`), and HTTP `POST /api/player/stop`
+calls `queue.clear()` (`core/musicManager.js:207`), and HTTP `POST /api/player/stop`
 (`routes/playback.js:53`), realtime `'stop'` (`handlers.js:214`) and Discord `handleStop`
 (`commands/playback.js:163-164`, which does `p.stop(); q.clear()` directly) all reach the
 same outcome. The tempting "fix" is to emit `clear_queue` from a stop handler. Do not:

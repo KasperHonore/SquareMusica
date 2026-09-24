@@ -25,6 +25,7 @@ const { setupSocketServer, shutdownSocketServer } =
   await import('./transports/realtime/socketServer.js');
 const { db } = await import('./persistence/db.js');
 const { getPlayer, getQueue } = await import('./services/playback.js');
+const { registerStatsRecorder } = await import('./services/statsRecorder.js');
 const { logger } = await import('./utils/logger.js');
 
 const PORT = process.env.PORT || 3000;
@@ -34,6 +35,10 @@ const httpServer = createServer(app);
 
 // Setup Socket.io
 setupSocketServer(httpServer);
+
+// Start recording control actions for the DJ stats page. Must be registered
+// before any transport can emit, or early actions go unrecorded.
+registerStatsRecorder();
 
 // Setup Discord command handler
 setupCommandHandler();

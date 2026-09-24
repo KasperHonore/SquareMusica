@@ -6,6 +6,13 @@ import { search } from '../../../integrations/youtube.js';
 import { isConnected } from '../../discord/voiceManager.js';
 import { resolveQuery } from '../../../services/trackResolver.js';
 import { db } from '../../../persistence/db.js';
+import { botEvents } from '../../../events/bus.js';
+import {
+  STATS_EVENT,
+  STATS_EVENT_TYPES,
+  createStatsEvent,
+  captureTrack
+} from '../../../shared/statsEvents.js';
 import {
   ensureVoiceConnected,
   resolveQueryErrorToMessage,
@@ -15,6 +22,20 @@ import {
 import { logger } from '../../../utils/logger.js';
 
 const router = Router();
+
+/**
+ * Emit one recorded action on the shared bus.
+ *
+ * Wrapped so a recording failure cannot turn a working queue request into a 500:
+ * bus listeners run synchronously, inside this handler.
+ */
+function emitAction(type, user, track, metadata = null) {
+  try {
+    botEvents.emit(STATS_EVENT, createStatsEvent({ type, actor: user, track, metadata }));
+  } catch {
+    // Deliberately silent; the recorder logs its own failures.
+  }
+}
 
 // GET /search is a read but it spawns a yt-dlp subprocess, so it gets its own
 // limiter (the global mutation limiter intentionally skips GETs). Cheap reads
@@ -114,11 +135,16 @@ router.delete('/:position', authMiddleware, requireVoiceConnection, (req, res) =
     return res.status(400).json({ error: 'Invalid position' });
   }
 
+  // Read the track BEFORE removing it, or there is nothing left to record.
+  const removedTrack = captureTrack(() => musicManager.getQueue()[position]);
+
   const success = musicManager.removeFromQueue(position);
 
   if (!success) {
     return res.status(404).json({ error: 'Track not found at position' });
   }
+
+  emitAction(STATS_EVENT_TYPES.REMOVE, req.user, removedTrack);
 
   res.json({ success: true });
 });
@@ -160,6 +186,8 @@ router.patch('/reorder', authMiddleware, requireVoiceConnection, (req, res) => {
  */
 router.post('/shuffle', authMiddleware, requireVoiceConnection, (req, res) => {
   musicManager.shuffleQueue();
+  // Acts on the queue as a whole, so no track is recorded.
+  emitAction(STATS_EVENT_TYPES.SHUFFLE, req.user, null);
   res.json({ success: true });
 });
 
@@ -167,7 +195,19 @@ router.post('/shuffle', authMiddleware, requireVoiceConnection, (req, res) => {
  * DELETE /api/queue - Clear queue
  */
 router.delete('/', authMiddleware, requireVoiceConnection, (req, res) => {
+  const queueLength = musicManager.getQueue().length;
+
   musicManager.clearQueue();
+
+  // The three surfaces clear different things and always have: this one empties
+  // everything including the current track, realtime clears only the upcoming
+  // tracks, and Discord keeps the current one. Recording the variant is what
+  // stops one event type from silently equating three different outcomes.
+  emitAction(STATS_EVENT_TYPES.CLEAR_QUEUE, req.user, null, {
+    variant: 'all',
+    queueLength
+  });
+
   res.json({ success: true });
 });
 

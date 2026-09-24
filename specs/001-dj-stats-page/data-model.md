@@ -13,13 +13,14 @@ go in `DatabaseManager.migrate()`, which runs **before** `schema.sql` is execute
 
 ## 1. `history` — extended (existing table)
 
-Two additive columns. No existing column changes type or meaning, so the History page
-is unaffected.
+Three additive columns. No existing column changes type or meaning, so the History page
+is unaffected: it still lists every row, loop replays included.
 
 | Column | Type | Notes |
 |---|---|---|
 | `requested_by_id` | TEXT | **New.** Stable Discord user id of the queuer. NULL for every pre-launch row — this NULL-ness *is* the launch boundary (FR-005, R3). |
 | `requested_by_avatar` | TEXT | **New.** Avatar hash/URL snapshot as at play time (FR-004, FR-006). |
+| `is_loop_replay` | INTEGER NOT NULL DEFAULT 0 | **New (2026-09-24).** `1` when loop mode started this play automatically (FR-005a, R11). Such rows are kept for the History page but excluded from every stats figure. |
 
 Existing `requested_by TEXT NOT NULL` continues to hold the **display-name snapshot**
 at play time; no change needed for FR-004 beyond now treating it as a snapshot.
@@ -30,8 +31,14 @@ the existing `guild_id` migration is):
 ```sql
 ALTER TABLE history ADD COLUMN requested_by_id TEXT;
 ALTER TABLE history ADD COLUMN requested_by_avatar TEXT;
+ALTER TABLE history ADD COLUMN is_loop_replay INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_history_requested_by_id ON history(requested_by_id);
 ```
+
+Each `ALTER` is guarded on its own column. The `is_loop_replay` guard MUST NOT be nested
+inside the `requested_by_id` guard: a database that already has the first two columns
+(every development database on this branch) would otherwise never get the third.
+`ADD COLUMN ... NOT NULL DEFAULT 0` is valid in SQLite, and existing rows read as `0`.
 
 `schema.sql` gains the same two columns in its `CREATE TABLE`, **and the same index in its
 index block**, so fresh installs match:
@@ -47,14 +54,22 @@ an index created only inside `migrate()` would never exist on a new deployment, 
 every stats query to scan unindexed against SC-002's 100k-play target. `IF NOT EXISTS`
 makes the duplication harmless on both paths.
 
-**Write path**: `addToHistory()` (`db.js:111`) gains the two values from
+**Write path**: `addToHistory()` (`db.js:140`) gains the two values from
 `track.requestedById` / `track.requestedByAvatar`, which are already populated on every
 track by `trackResolver.js:92-94` and `resolutionManager.js:291-293`. The single caller
-is `musicManager.onTrackChange()` (`musicManager.js:266`) — one integration point for
+is `musicManager.onTrackChange()` (`musicManager.js:255`) — one integration point for
 all of FR-004.
 
-**Validation**: a row whose `requested_by_id` is NULL is never counted by any stats
-query. This is deliberate and self-healing (R3) — it covers both pre-launch rows and
+`addToHistory(track, guildId, { loopReplay = false } = {})` also writes
+`is_loop_replay`. The flag is decided in `core/queue.js` and passed through by
+`musicManager.onTrackChange()`. See §5 for the state rules.
+
+**Validation**: a row whose `requested_by_id` is NULL, or whose `is_loop_replay` is 1, is
+never counted by any stats query. Both conditions live in **one** SQL fragment in `db.js`,
+the *counted-play predicate* `requested_by_id IS NOT NULL AND is_loop_replay = 0`. The
+leaderboard and all four history-derived awards interpolate that fragment. None of them
+spells the conditions out itself, so no query can drift away from the others. The
+`requested_by_id` part is deliberate and self-healing (R3). It covers both pre-launch rows and
 any future play that somehow arrives without an id.
 
 ---
@@ -140,7 +155,8 @@ candidate, member or track, so a song played twice does not win Most Played Song
 otherwise `winner` is null and the card renders its "no winner yet" state. Same tie-break as the
 leaderboard (R5).
 
-**Award sources** (all filtered by the selected period and `requested_by_id IS NOT NULL`):
+**Award sources** (history-sourced awards are filtered by the selected period and the
+counted-play predicate from §1. Events-sourced awards are filtered by period only):
 
 | Award | Table | Rule |
 |---|---|---|
@@ -176,7 +192,9 @@ avatar for it.
 
 ### Period
 
-`all` | `week` | `month`. Maps to the SQL predicates in R4. Any other value is rejected
+`all` | `week` | `month`. Maps to the SQL predicates in R4. `'localtime'` resolves via the
+required, validated `TZ` (FR-030, R10). This applies to period boundaries, Night Owl and
+Early Bird hours, and The Hog's day grouping alike. Any other value is rejected
 with 400 rather than silently falling back (FR-020).
 
 ---
@@ -195,3 +213,32 @@ There is no `djs` table. A DJ is not stored — it is the grouping of `history` 
 `users` table is deliberately **not** used as the identity source: it is populated only
 by dashboard OAuth login (`db.js:52`), so a member who only ever queues from Discord has
 no row in it (Q1).
+
+---
+
+## 5. Queue entry play state — loop-replay marking (FR-005a, R11)
+
+These are in-memory fields on queue entries. They are not persisted, and there is no new
+table.
+
+| Field | Set by | Cleared by | Meaning |
+|---|---|---|---|
+| `hasPlayed` | `musicManager.onTrackChange()` once the entry starts | never (a new entry is a new object) | This entry has started at least once |
+| `loopReplay` | `Queue.next()` when `loopMode !== 'off'` **and** the entry it returns has `hasPlayed` | `musicManager.onTrackChange()`, right after it reads the value | This start was chosen by loop mode |
+
+```text
+            add()                 next()/previous()/ensurePlaying
+  [queued] ───────> hasPlayed=false ─────────────────────────────> onTrackChange: record (counted), hasPlayed=true
+                                                                              │
+             next() with loop on ─> loopReplay=true ─> onTrackChange: record (is_loop_replay=1), loopReplay cleared
+             previous()          ─> (flag untouched) ─> onTrackChange: record (counted)
+```
+
+`previous()` MUST NOT set `loopReplay`: a manual step back is an ordinary play. If a
+start fails in `player.play()`, `onTrackChange` never runs, so no row is written. A
+`loopReplay` left on an entry by a failed start is overwritten the next time `next()`
+visits that entry, and only `next()` sets it.
+
+Queue entries are serialised to clients in `queue:update`. The two fields ride along and
+are ignored by the web UI. They are internal, not part of any contract.
+

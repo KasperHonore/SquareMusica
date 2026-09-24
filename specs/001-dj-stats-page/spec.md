@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-12
 
-**Status**: Planned — spec, plan and tasks complete and analyzed (2026-09-12, 0 CRITICAL). Implementation not started.
+**Status**: Implemented — phases 1–7 plus the 2026-09-24 delta (FR-005a loop-replay exclusion, FR-030 required `TZ`), CI gates green. Quickstart steps 4, 5, 8a and 10 still need a manual run against a live Discord deployment.
 
 **Input**: User description: "The goal is to add a DJ Stats page to the web dashboard featuring a DJ Leaderboard, fun awards/superlatives, and a time-period toggle (All Time / This Week / This Month). We'll also add full event tracking (skips, pauses, removes, shuffles, clears) from day one so award data starts accumulating immediately."
 

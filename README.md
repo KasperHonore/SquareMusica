@@ -81,6 +81,7 @@ Required variables:
 - `DISCORD_TOKEN` - Your bot token from Discord Developer Portal
 - `APP_ID` - Your application ID
 - `GUILD_ID` - Your Discord server ID (restricts web UI to this server's members)
+- `TZ` - IANA timezone (e.g. `Europe/Copenhagen`) that DJ stats use for local hours, days and weeks. Startup fails if it is unset or not a known zone
 - `DISCORD_CLIENT_SECRET` - OAuth client secret (for web UI)
 - `JWT_SECRET` - Random string for JWT signing
 - `OAUTH_REDIRECT_URI` - OAuth callback URL (Discord redirects here after login)

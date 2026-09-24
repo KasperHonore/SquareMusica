@@ -81,6 +81,7 @@ jobs:
             -e DISCORD_CLIENT_SECRET=dummy \
             -e JWT_SECRET=dummy \
             -e OAUTH_REDIRECT_URI=http://localhost:3000/callback \
+            -e TZ=Europe/Copenhagen \
             discord-music-bot:ci \
             node --input-type=module -e "import('http').then(async (h) => { const { app } = await import('/app/src/transports/http/index.js'); h.createServer(app).listen(3000, () => console.log('SMOKE_SERVER_LISTENING')); })"
 

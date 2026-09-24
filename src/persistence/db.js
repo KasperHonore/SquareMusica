@@ -31,7 +31,41 @@ export class DatabaseManager {
       this.db = new Database(join(dataDir, 'music.db'));
       this.db.pragma('journal_mode = WAL');
     }
+    this.checkTimezone();
     this.init();
+  }
+
+  /**
+   * Verify SQLite's 'localtime' agrees with TZ.
+   *
+   * Intl uses ICU data bundled into Node, while SQLite goes through libc and
+   * /usr/share/zoneinfo. If the runtime lacks zoneinfo, Intl accepts the zone but
+   * SQLite silently computes in UTC. One January and one July instant are
+   * compared so both sides of a DST change are covered. Skipped when TZ is unset.
+   */
+  checkTimezone() {
+    const tz = process.env.TZ;
+    if (!tz) return;
+
+    const format = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    });
+    const probe = this.db.prepare("SELECT strftime('%H:%M', ?, 'localtime')").pluck();
+
+    for (const instant of ['2026-01-15T12:00:00Z', '2026-07-15T12:00:00Z']) {
+      const expected = format.format(new Date(instant));
+      const actual = probe.get(instant.slice(0, 19).replace('T', ' '));
+      if (actual !== expected) {
+        throw new Error(
+          `TZ="${tz}": timezone data missing from runtime. For ${instant} Intl ` +
+            `gives ${expected} but SQLite 'localtime' gives ${actual}. ` +
+            'Install tzdata (/usr/share/zoneinfo) in the runtime image.'
+        );
+      }
+    }
   }
 
   init() {

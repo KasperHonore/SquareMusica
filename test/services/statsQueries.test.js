@@ -800,3 +800,106 @@ describe('loop replays are kept in history but never counted (FR-005a, SC-014)',
     expect(history.every((row) => row.url === LOOPED.url)).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Configured timezone (FR-030, SC-013)
+//
+// vitest.config.js pins TZ=Europe/Copenhagen. These cases seed FIXED UTC
+// instants, not host-local wall-clock times, so they prove SQLite's 'localtime'
+// follows TZ, including across the CET/CEST switch, rather than just agreeing
+// with whatever zone the helper above converted from.
+// ---------------------------------------------------------------------------
+
+describe('configured timezone Europe/Copenhagen (SC-013)', () => {
+  /** Insert a post-launch play at an exact UTC played_at string. */
+  function addPlayAtUtc(userId, title, playedAtUtc) {
+    db.db
+      .prepare(
+        `INSERT INTO history
+           (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id,
+            requested_by_avatar, played_at)
+         VALUES ('g1', ?, ?, 100, 'thumb.png', ?, ?, ?, ?)`
+      )
+      .run(
+        title,
+        `https://example.com/${title}`,
+        `dj-${userId}`,
+        userId,
+        `avatar-${userId}`,
+        playedAtUtc
+      );
+  }
+
+  function awardFor(key) {
+    return buildAwards({ since: null }).find((a) => a.key === key);
+  }
+
+  it('runs the suite in Europe/Copenhagen', () => {
+    expect(process.env.TZ).toBe('Europe/Copenhagen');
+  });
+
+  it.each([
+    ['summer (CEST, UTC+2)', '2026-07-15 21:30:00', '2026-07-15'],
+    ['winter (CET, UTC+1)', '2026-01-15 22:30:00', '2026-01-15']
+  ])('counts 23:30 local in %s toward Night Owl', (_label, utc, localDay) => {
+    for (let i = 0; i < 3; i++) addPlayAtUtc('owl', `owl-${i}`, utc);
+
+    expect(awardFor('night_owl').winner?.userId).toBe('owl');
+    expect(awardFor('night_owl').value).toBe(3);
+    expect(
+      db.db.prepare("SELECT date(?, 'localtime')").pluck().get(utc),
+      'local day of the play'
+    ).toBe(localDay);
+  });
+
+  it.each([
+    // 00:30 local on the 15th is still the 14th in UTC.
+    ['summer (CEST)', '2026-07-14 22:30:00', '2026-07-15 21:30:00'],
+    ['winter (CET)', '2026-01-14 23:30:00', '2026-01-15 22:30:00']
+  ])('groups The Hog by local day in %s', (_label, justAfterLocalMidnight, lateEvening) => {
+    // In UTC these split 1 + 2 across two days (below the minimum); in local time
+    // all three fall on the 15th.
+    addPlayAtUtc('hog', 'h1', justAfterLocalMidnight);
+    addPlayAtUtc('hog', 'h2', lateEvening);
+    addPlayAtUtc('hog', 'h3', lateEvening);
+
+    expect(awardFor('the_hog').winner?.userId).toBe('hog');
+    expect(awardFor('the_hog').value).toBe(3);
+  });
+
+  describe('period boundaries across a DST change', () => {
+    // getPeriodBoundary() reads SQLite's 'now', which fake timers cannot move.
+    // This mirrors its expression with a pinned "now" and resolvePeriod's
+    // modifiers, then checks the boundary against the real leaderboard query.
+    const MODIFIERS = { month: ['start of month'], week: ['-6 days', 'weekday 1'] };
+
+    function boundaryAt(nowUtc, period) {
+      const modifiers = MODIFIERS[period];
+      const placeholders = modifiers.map(() => ', ?').join('');
+      return db.db
+        .prepare(`SELECT datetime(date(?, 'localtime'${placeholders}), 'utc')`)
+        .pluck()
+        .get(nowUtc, ...modifiers);
+    }
+
+    it.each([
+      // "now" is CEST (DST began 2026-03-29); the boundary is still CET.
+      ['month', '2026-03-30 12:00:00', '2026-02-28 23:00:00'],
+      ['week', '2026-03-29 12:00:00', '2026-03-22 23:00:00'],
+      // "now" is CET (DST ended 2026-10-25); the boundary is still CEST.
+      ['month', '2026-10-26 12:00:00', '2026-09-30 22:00:00'],
+      ['week', '2026-10-25 12:00:00', '2026-10-18 22:00:00']
+    ])('puts the %s start seen at %s at local midnight (%s UTC)', (period, nowUtc, expected) => {
+      expect(boundaryAt(nowUtc, period)).toBe(expected);
+    });
+
+    it('includes a play at the local month start and excludes one a second earlier', () => {
+      const since = boundaryAt('2026-03-30 12:00:00', 'month');
+      addPlayAtUtc('in', 'march-first', '2026-02-28 23:00:00');
+      addPlayAtUtc('out', 'february-last', '2026-02-28 22:59:59');
+
+      const ids = db.getLeaderboard({ since }).map((row) => row.userId);
+      expect(ids).toEqual(['in']);
+    });
+  });
+});

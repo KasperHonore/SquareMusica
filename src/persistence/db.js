@@ -8,6 +8,10 @@ import { logger } from '../utils/logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// The counted-play predicate: the one definition of which history rows feed the
+// DJ stats page. Written against the `h` alias every stats query uses.
+const COUNTED_PLAY = 'h.requested_by_id IS NOT NULL AND h.is_loop_replay = 0';
+
 export class DatabaseManager {
   /**
    * @param {string|null} [dbPath] - Override the database file. Defaults to
@@ -68,6 +72,15 @@ export class DatabaseManager {
     if (!hasRequestedByAvatar) {
       this.db.exec('ALTER TABLE history ADD COLUMN requested_by_avatar TEXT');
       logger.info('[Database] Migrated: added requested_by_avatar to history table');
+    }
+
+    // Guarded on its own, not nested under requested_by_id: a database that
+    // already has the two columns above must still get this one. Existing rows
+    // read as 0, i.e. ordinary plays.
+    const hasIsLoopReplay = tableInfo.some((col) => col.name === 'is_loop_replay');
+    if (!hasIsLoopReplay) {
+      this.db.exec('ALTER TABLE history ADD COLUMN is_loop_replay INTEGER NOT NULL DEFAULT 0');
+      logger.info('[Database] Migrated: added is_loop_replay to history table');
     }
 
     // Also declared in schema.sql, for the fresh-install path this method returns
@@ -137,7 +150,7 @@ export class DatabaseManager {
   }
 
   // History methods
-  addToHistory(track, guildId = null) {
+  addToHistory(track, guildId = null, { loopReplay = false } = {}) {
     try {
       if (!track?.title || !track?.url) {
         logger.warn('[Database] addToHistory: Missing required track fields', {
@@ -147,7 +160,7 @@ export class DatabaseManager {
         return;
       }
       const stmt = this.db.prepare(
-        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar, is_loop_replay) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
       );
       stmt.run(
         guildId,
@@ -157,7 +170,8 @@ export class DatabaseManager {
         track.thumbnail || null,
         track.requestedBy || 'Unknown',
         track.requestedById || null,
-        track.requestedByAvatar || null
+        track.requestedByAvatar || null,
+        loopReplay ? 1 : 0
       );
     } catch (error) {
       logger.error('[Database] addToHistory failed:', error.message, { track: track?.title });
@@ -250,10 +264,14 @@ export class DatabaseManager {
   // ---------------------------------------------------------------------------
   // DJ stats read models
   //
-  // Every query below filters `requested_by_id IS NOT NULL`. That NULL check is
-  // the launch boundary (FR-005): rows written before this feature carry no
-  // stable identity, so they are attributable only to a display name that may
-  // since have changed, and are deliberately never counted.
+  // Every history query below counts only rows matching COUNTED_PLAY (defined
+  // at the top of this file): `requested_by_id IS NOT NULL AND is_loop_replay = 0`.
+  // The NULL check is the launch boundary (FR-005): rows written before this
+  // feature carry no stable identity, so they are attributable only to a display
+  // name that may since have changed, and are deliberately never counted. The
+  // loop-replay check drops plays loop mode started automatically (FR-005a);
+  // they stay in history for the History page. Interpolate the fragment rather
+  // than spelling either condition out, so no query can drift from the others.
   //
   // Ordering is always `<count> DESC, MIN(played_at) ASC, <id> ASC`. The trailing
   // two keys are required, not decoration: without them SQLite may return tied
@@ -296,7 +314,7 @@ export class DatabaseManager {
             ${since ? 'AND h3.played_at >= @since' : ''}
           ORDER BY h3.played_at DESC, h3.id DESC LIMIT 1)      AS avatar
       FROM history h
-      WHERE h.requested_by_id IS NOT NULL
+      WHERE ${COUNTED_PLAY}
         ${since ? 'AND h.played_at >= @since' : ''}
       GROUP BY h.requested_by_id
       ORDER BY trackCount DESC, firstPlayedAt ASC, userId ASC
@@ -333,7 +351,7 @@ export class DatabaseManager {
             ORDER BY COUNT(*) DESC, MIN(h.played_at) ASC, h.requested_by_id ASC
           )                            AS rank
         FROM history h
-        WHERE h.requested_by_id IS NOT NULL
+        WHERE ${COUNTED_PLAY}
           ${since ? 'AND h.played_at >= @since' : ''}
         GROUP BY h.requested_by_id
       )
@@ -401,7 +419,7 @@ export class DatabaseManager {
           WHERE h3.url = h.url
           ORDER BY h3.played_at DESC, h3.id DESC LIMIT 1)     AS avatar
       FROM history h
-      WHERE h.requested_by_id IS NOT NULL
+      WHERE ${COUNTED_PLAY}
         ${since ? 'AND h.played_at >= @since' : ''}
       GROUP BY h.url
       ORDER BY value DESC, firstPlayedAt ASC, h.url ASC
@@ -446,7 +464,7 @@ export class DatabaseManager {
           COUNT(*)                              AS value,
           MIN(h.played_at)                      AS firstPlayedAt
         FROM history h
-        WHERE h.requested_by_id IS NOT NULL
+        WHERE ${COUNTED_PLAY}
           ${since ? 'AND h.played_at >= @since' : ''}
         GROUP BY h.requested_by_id, date(h.played_at, 'localtime')
       )
@@ -484,7 +502,7 @@ export class DatabaseManager {
           WHERE h3.requested_by_id = h.requested_by_id
           ORDER BY h3.played_at DESC, h3.id DESC LIMIT 1)   AS avatar
       FROM history h
-      WHERE h.requested_by_id IS NOT NULL
+      WHERE ${COUNTED_PLAY}
         AND ${hourPredicate}
         ${since ? 'AND h.played_at >= @since' : ''}
       GROUP BY h.requested_by_id

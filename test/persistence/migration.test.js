@@ -56,6 +56,24 @@ function seedLegacyDatabase() {
   seed.close();
 }
 
+// The shape every development database on the stats branch has: both
+// attribution columns already migrated in, but no is_loop_replay. This is the
+// case a nested guard would miss.
+const PRE_LOOP_REPLAY_HISTORY_SCHEMA = `
+  CREATE TABLE history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    duration INTEGER,
+    thumbnail TEXT,
+    requested_by TEXT NOT NULL,
+    requested_by_id TEXT,
+    requested_by_avatar TEXT,
+    played_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`;
+
 describe('DatabaseManager.migrate() — fresh install', () => {
   it('creates the events table and its three indexes', () => {
     const manager = new DatabaseManager(dbPath);
@@ -84,12 +102,13 @@ describe('DatabaseManager.migrate() — fresh install', () => {
     manager.close();
   });
 
-  it('creates history with both stats columns', () => {
+  it('creates history with both stats columns and is_loop_replay', () => {
     const manager = new DatabaseManager(dbPath);
 
     const columns = columnNames(manager.db, 'history');
     expect(columns).toContain('requested_by_id');
     expect(columns).toContain('requested_by_avatar');
+    expect(columns).toContain('is_loop_replay');
 
     manager.close();
   });
@@ -157,6 +176,64 @@ describe('DatabaseManager.migrate() — upgrade from a pre-stats database', () =
     expect(columnNames(second.db, 'history')).toEqual(columnsAfterFirst);
     expect(second.db.prepare('SELECT COUNT(*) AS n FROM history').get().n).toBe(rowsAfterFirst);
     expect(second.db.prepare('SELECT * FROM history').get().requested_by).toBe('legacy-dj');
+
+    second.close();
+  });
+});
+
+describe('DatabaseManager.migrate() — upgrade from a database without is_loop_replay', () => {
+  function seedPreLoopReplayDatabase() {
+    const seed = new Database(dbPath);
+    seed.exec(PRE_LOOP_REPLAY_HISTORY_SCHEMA);
+    seed
+      .prepare(
+        'INSERT INTO history (title, url, duration, requested_by, requested_by_id, requested_by_avatar) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+      .run('Stats Song', 'https://example.com/stats', 180, 'dj-A', 'A', 'avatar-A');
+    const columns = columnNames(seed, 'history');
+    expect(columns).toContain('requested_by_id');
+    expect(columns).not.toContain('is_loop_replay');
+    seed.close();
+  }
+
+  it('adds is_loop_replay even though the other stats columns already exist', () => {
+    seedPreLoopReplayDatabase();
+
+    const manager = new DatabaseManager(dbPath);
+
+    const column = manager.db
+      .pragma('table_info(history)')
+      .find((col) => col.name === 'is_loop_replay');
+    expect(column).toBeDefined();
+    expect(column.notnull).toBe(1);
+    expect(column.dflt_value).toBe('0');
+
+    manager.close();
+  });
+
+  it('reads existing rows as ordinary counted plays', () => {
+    seedPreLoopReplayDatabase();
+
+    const manager = new DatabaseManager(dbPath);
+
+    const row = manager.db.prepare('SELECT * FROM history WHERE title = ?').get('Stats Song');
+    expect(row.is_loop_replay).toBe(0);
+    expect(row.requested_by_id).toBe('A');
+    expect(manager.getLeaderboard({ since: null, limit: 10 })[0].trackCount).toBe(1);
+
+    manager.close();
+  });
+
+  it('is a no-op when run twice', () => {
+    seedPreLoopReplayDatabase();
+
+    new DatabaseManager(dbPath).close();
+
+    let second;
+    expect(() => {
+      second = new DatabaseManager(dbPath);
+    }).not.toThrow();
+    expect(columnNames(second.db, 'history').filter((c) => c === 'is_loop_replay')).toHaveLength(1);
 
     second.close();
   });

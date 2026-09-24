@@ -11,7 +11,9 @@ CREATE TABLE IF NOT EXISTS users (
 -- requested_by holds the display-name snapshot at play time; requested_by_id is
 -- the stable Discord user id the DJ stats page groups on. Rows predating the
 -- stats feature have a NULL requested_by_id, and that NULL-ness is the launch
--- boundary — no stats query counts them.
+-- boundary — no stats query counts them. is_loop_replay is 1 when loop mode
+-- started the play automatically; those rows stay for the History page but are
+-- never counted either (FR-005a).
 CREATE TABLE IF NOT EXISTS history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   guild_id TEXT,
@@ -22,6 +24,7 @@ CREATE TABLE IF NOT EXISTS history (
   requested_by TEXT NOT NULL,
   requested_by_id TEXT,
   requested_by_avatar TEXT,
+  is_loop_replay INTEGER NOT NULL DEFAULT 0,
   played_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

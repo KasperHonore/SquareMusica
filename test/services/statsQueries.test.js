@@ -715,3 +715,88 @@ describe('event-derived award direction and thresholds', () => {
     expect(awardFor(key).value).toBe(3);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Loop replays (FR-005a, SC-014)
+// ---------------------------------------------------------------------------
+
+describe('loop replays are kept in history but never counted (FR-005a, SC-014)', () => {
+  const LOOPED = {
+    title: 'Looped Track',
+    url: 'https://example.com/looped',
+    duration: 200,
+    thumbnail: 'thumb.png',
+    requestedBy: 'dj-A',
+    requestedById: 'A',
+    requestedByAvatar: 'avatar-A'
+  };
+
+  // One queued track under track-loop: the first start is counted, the next 19
+  // are loop replays. Written through db.addToHistory, the real write path.
+  function playLoopedTwentyTimes() {
+    db.addToHistory(LOOPED, 'g1');
+    for (let i = 0; i < 19; i++) {
+      db.addToHistory(LOOPED, 'g1', { loopReplay: true });
+    }
+  }
+
+  it('writes is_loop_replay, defaulting to 0', () => {
+    playLoopedTwentyTimes();
+
+    const flags = db.db
+      .prepare('SELECT is_loop_replay AS f, COUNT(*) AS n FROM history GROUP BY f ORDER BY f')
+      .all();
+    expect(flags).toEqual([
+      { f: 0, n: 1 },
+      { f: 1, n: 19 }
+    ]);
+  });
+
+  it('contributes 1 to trackCount, listening time and distinct tracks', () => {
+    playLoopedTwentyTimes();
+
+    const { leaderboard } = buildStatsPayload({ period: 'all', selfUserId: null });
+
+    expect(leaderboard).toHaveLength(1);
+    expect(leaderboard[0].trackCount).toBe(1);
+    expect(leaderboard[0].totalDurationSeconds).toBe(200);
+    expect(leaderboard[0].uniqueTrackCount).toBe(1);
+  });
+
+  it('contributes 1 to the pinned self-row as well', () => {
+    playLoopedTwentyTimes();
+
+    expect(db.getLeaderboardEntryForUser({ since: null, userId: 'A' }).trackCount).toBe(1);
+  });
+
+  it('contributes 1 play toward Most Played Song and The Hog', () => {
+    playLoopedTwentyTimes();
+
+    expect(db.getMostPlayedSongAward({ since: null }).value).toBe(1);
+    expect(db.getHogAward({ since: null }).value).toBe(1);
+
+    const awards = buildAwards({ since: null });
+    expect(awards.find((a) => a.key === 'most_played_song').winner).toBeNull();
+    expect(awards.find((a) => a.key === 'the_hog').winner).toBeNull();
+  });
+
+  it('excludes loop replays from Night Owl and Early Bird', () => {
+    for (const playedAtLocal of ['2026-09-11T23:00:00', '2026-09-11T06:00:00']) {
+      for (let i = 0; i < 5; i++) {
+        addPlay({ userId: 'A', playedAtLocal });
+      }
+    }
+    db.db.exec('UPDATE history SET is_loop_replay = 1');
+
+    expect(db.getNightOwlAward({ since: null })).toBeUndefined();
+    expect(db.getEarlyBirdAward({ since: null })).toBeUndefined();
+  });
+
+  it('still lists all 20 plays in getHistory', () => {
+    playLoopedTwentyTimes();
+
+    const history = db.getHistory(50, 0);
+    expect(history).toHaveLength(20);
+    expect(history.every((row) => row.url === LOOPED.url)).toBe(true);
+  });
+});

@@ -254,7 +254,13 @@ class MusicManager extends EventEmitter {
   // Called when track changes
   onTrackChange(track) {
     if (track) {
-      db.addToHistory(track, this.guildId);
+      // track is the queue entry itself, so the flag Queue.next() set is here.
+      // Read once and cleared, so a later non-loop start of the same entry (e.g.
+      // after loop is switched off) is counted.
+      const loopReplay = track.loopReplay === true;
+      db.addToHistory(track, this.guildId, { loopReplay });
+      track.loopReplay = false;
+      track.hasPlayed = true;
     }
     this.emit('track:change', track);
     this.emitQueueUpdate();

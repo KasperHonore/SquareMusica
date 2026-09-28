@@ -30,7 +30,7 @@ do not rely on it in committed docs or scripts.
 
 # Constitution
 
-`.specify/memory/constitution.md` (v1.0.0) governs how this project is built.
+`.specify/memory/constitution.md` (v1.0.1) governs how this project is built.
 Its five principles are binding: single-guild scope (per
 `docs/ADR-001-guild-scope.md`, non-negotiable), layered dependency direction
 (`core/` must not import `transports/`), transport parity across Discord, HTTP,

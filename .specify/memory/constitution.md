@@ -100,7 +100,7 @@ connection crash instead of a clear message naming the missing variables.
 ### V. CI-Enforced Validation Gates
 
 `.github/workflows/ci.yml` defines the validation contract. All four jobs MUST pass on
-every pull request and every push to `master`; changes MUST NOT be merged on a red CI.
+every pull request and every push to `main`; changes MUST NOT be merged on a red CI.
 
 - **backend** — `npm ci`, `npm run lint` (ESLint), `npm run format:check` (Prettier).
 - **test** — `npm test` (Vitest). This includes `test/import-resolution.test.js`, which
@@ -140,7 +140,7 @@ validation requirements are imposed here beyond what CI already enforces.
 
 ## Development Workflow
 
-- Work on `master` as the main branch; changes land via pull request, which runs the
+- Work on `main` as the main branch; changes land via pull request, which runs the
   Principle V gates.
 - Run `npm run lint`, `npm run format:check`, and `npm test` locally before pushing;
   `npm run format` applies Prettier. The root ESLint and Prettier configs deliberately
@@ -180,4 +180,4 @@ SquareMusica is built; it does not describe features.
 - **Runtime guidance**: `CLAUDE.md` holds agent and tooling guidance and is subordinate to
   this constitution.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-12 | **Last Amended**: 2026-09-12
+**Version**: 1.0.1 | **Ratified**: 2026-09-12 | **Last Amended**: 2026-09-28

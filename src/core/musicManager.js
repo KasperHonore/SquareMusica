@@ -4,7 +4,6 @@ import { resolutionManager } from '../services/resolutionManager.js';
 import { tryPlayWithFallback } from '../services/trackResolver.js';
 import { advanceAndPlay } from '../services/playback.js';
 import { addTracksToQueue } from '../shared/queueHelpers.js';
-import { botEvents } from '../events/bus.js';
 import { logger } from '../utils/logger.js';
 
 class MusicManager extends EventEmitter {
@@ -201,14 +200,6 @@ class MusicManager extends EventEmitter {
     return true;
   }
 
-  // Clear play history (e.g. when leaving a voice channel) and notify clients.
-  // Owns the persistence + event so transports/voiceManager don't reach into db.
-  clearHistory(guildId) {
-    const cleared = db.clearAllHistory();
-    logger.debug(`[MusicManager] Cleared ${cleared} history records on voice leave`);
-    botEvents.emit('historyCleared', guildId);
-  }
-
   stop() {
     if (!this.player) return false;
     this.player.stop();
@@ -263,7 +254,13 @@ class MusicManager extends EventEmitter {
   // Called when track changes
   onTrackChange(track) {
     if (track) {
-      db.addToHistory(track, this.guildId);
+      // track is the queue entry itself, so the flag Queue.next() set is here.
+      // Read once and cleared, so a later non-loop start of the same entry (e.g.
+      // after loop is switched off) is counted.
+      const loopReplay = track.loopReplay === true;
+      db.addToHistory(track, this.guildId, { loopReplay });
+      track.loopReplay = false;
+      track.hasPlayed = true;
     }
     this.emit('track:change', track);
     this.emitQueueUpdate();

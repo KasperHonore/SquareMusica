@@ -24,6 +24,8 @@
  * @property {Date} addedAt
  * @property {SpotifyData} [spotifyData] - Original Spotify data (if from Spotify)
  * @property {ResolutionStatus} [status] - Resolution status for Spotify tracks
+ * @property {boolean} [hasPlayed] - This entry has started at least once
+ * @property {boolean} [loopReplay] - This start was chosen by loop mode
  */
 
 class Queue {
@@ -116,17 +118,17 @@ class Queue {
     if (this.tracks.length === 0) return null;
 
     if (this.loopMode === 'track') {
-      return this.tracks[this.currentIndex];
+      return this.#markLoopReplay(this.tracks[this.currentIndex]);
     }
 
     if (this.currentIndex < this.tracks.length - 1) {
       this.currentIndex++;
-      return this.tracks[this.currentIndex];
+      return this.#markLoopReplay(this.tracks[this.currentIndex]);
     }
 
     if (this.loopMode === 'queue') {
       this.currentIndex = 0;
-      return this.tracks[this.currentIndex];
+      return this.#markLoopReplay(this.tracks[this.currentIndex]);
     }
 
     // Queue ended naturally - clear immediately to prevent ghost tracks
@@ -135,6 +137,22 @@ class Queue {
     this.tracks = [];
     this.currentIndex = 0;
     return null;
+  }
+
+  /**
+   * Flag an entry whose start loop mode chose, so its play is kept in history
+   * but excluded from stats (FR-005a). Assigned on every visit, so a flag left
+   * by a start that failed is overwritten here. musicManager.onTrackChange()
+   * reads and clears it, and sets hasPlayed. previous() deliberately never calls
+   * this: a manual step back is an ordinary, counted play.
+   * @param {Track} entry
+   * @returns {Track}
+   */
+  #markLoopReplay(entry) {
+    if (entry) {
+      entry.loopReplay = this.loopMode !== 'off' && entry.hasPlayed === true;
+    }
+    return entry;
   }
 
   /**

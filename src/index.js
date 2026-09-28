@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { validateEnv } from './config/env.js';
+import { validateEnv, validateTimezone } from './config/env.js';
 
 // Fail fast with one aggregated error if any required config is missing.
 // This runs BEFORE the rest of the app is imported (those modules open the
@@ -11,8 +11,11 @@ validateEnv([
   'GUILD_ID',
   'DISCORD_CLIENT_SECRET',
   'JWT_SECRET',
-  'OAUTH_REDIRECT_URI'
+  'OAUTH_REDIRECT_URI',
+  'TZ'
 ]);
+// TZ must also be a real zone: an unknown one silently becomes UTC in SQLite.
+validateTimezone();
 
 // Loaded dynamically (after validation) so their side effects don't run on a
 // misconfigured environment. Static imports would be hoisted above the check.
@@ -25,6 +28,7 @@ const { setupSocketServer, shutdownSocketServer } =
   await import('./transports/realtime/socketServer.js');
 const { db } = await import('./persistence/db.js');
 const { getPlayer, getQueue } = await import('./services/playback.js');
+const { registerStatsRecorder } = await import('./services/statsRecorder.js');
 const { logger } = await import('./utils/logger.js');
 
 const PORT = process.env.PORT || 3000;
@@ -34,6 +38,10 @@ const httpServer = createServer(app);
 
 // Setup Socket.io
 setupSocketServer(httpServer);
+
+// Start recording control actions for the DJ stats page. Must be registered
+// before any transport can emit, or early actions go unrecorded.
+registerStatsRecorder();
 
 // Setup Discord command handler
 setupCommandHandler();

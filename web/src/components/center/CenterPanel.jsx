@@ -6,6 +6,7 @@ import { PlaylistsView } from './PlaylistsView';
 import { SearchBar } from './SearchBar';
 import { useTrackSearch } from './useTrackSearch';
 import { History } from '../../pages/History';
+import { Stats } from '../../pages/Stats';
 
 // Time-aware greeting
 function getGreeting() {
@@ -50,6 +51,8 @@ export function CenterPanel({
     switch (activeView) {
       case 'history':
         return 'PLAY HISTORY';
+      case 'stats':
+        return 'DJ STATS';
       case 'playlists':
         return selectedPlaylist ? selectedPlaylist.name : 'PLAYLISTS';
       default:
@@ -61,6 +64,8 @@ export function CenterPanel({
   const getPlaceholder = () => {
     switch (activeView) {
       case 'history':
+        return 'Search YouTube — type to find any song…';
+      case 'stats':
         return 'Search YouTube — type to find any song…';
       case 'playlists':
         return 'Search YouTube — type to find any song…';
@@ -89,6 +94,8 @@ export function CenterPanel({
     switch (activeView) {
       case 'history':
         return <History addToQueue={addToQueue} historyVersion={historyVersion} />;
+      case 'stats':
+        return <Stats />;
       case 'playlists':
         return (
           <PlaylistsView

@@ -32,8 +32,12 @@ client.once('ready', () => {
 
 client.on(Events.GuildDelete, (guild) => {
   logger.info(`[Bot] Left guild: ${guild.name} (${guild.id})`);
-  const cleared = db.clearAllHistory();
-  logger.info(`[Bot] Cleared ${cleared} history records`);
+  // Both data sets go together. Clearing only history would leave the events
+  // table behind, so re-adding the bot would show behavior-award winners above
+  // an empty leaderboard.
+  const clearedHistory = db.clearAllHistory();
+  const clearedEvents = db.clearAllEvents();
+  logger.info(`[Bot] Cleared ${clearedHistory} history and ${clearedEvents} event records`);
   botEvents.emit('historyCleared', guild.id);
 });
 
@@ -75,9 +79,7 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
       logger.debug(`[Bot] VoiceStateUpdate: no humans left, starting inactivity timer`);
       startInactivityTimer(guildId, () => {
         logger.debug(`[Bot] Inactivity timer fired, leaving channel`);
-        if (leaveChannel(guildId)) {
-          musicManager.clearHistory(guildId);
-        }
+        leaveChannel(guildId);
         setChannelCache(guildId, null);
         musicManager.stop();
         musicManager.emitVoiceContext();
@@ -102,9 +104,7 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
         logger.debug(`[Bot] VoiceStateUpdate(fetch): no humans left, starting inactivity timer`);
         startInactivityTimer(guildId, () => {
           logger.debug(`[Bot] Inactivity timer fired, leaving channel`);
-          if (leaveChannel(guildId)) {
-            musicManager.clearHistory(guildId);
-          }
+          leaveChannel(guildId);
           setChannelCache(guildId, null);
           musicManager.stop();
           musicManager.emitVoiceContext();

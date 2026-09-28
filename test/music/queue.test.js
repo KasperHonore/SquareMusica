@@ -344,4 +344,144 @@ describe('Queue', () => {
       });
     });
   });
+
+  // Research R11's rules table, row by row. start() stands in for
+  // musicManager.onTrackChange(): it reports whether the start would be written
+  // as a loop replay, then clears the flag and marks the entry played, exactly
+  // as onTrackChange does on the same queue-entry object.
+  describe('loop-replay marking (FR-005a, R11)', () => {
+    function start(entry) {
+      const loopReplay = entry.loopReplay === true;
+      entry.loopReplay = false;
+      entry.hasPlayed = true;
+      return loopReplay;
+    }
+
+    it('flags a track-loop repeat of the current entry', () => {
+      seed(queue, ['a'], 0);
+      queue.loopMode = 'track';
+      expect(start(queue.getCurrent())).toBe(false);
+
+      for (let i = 0; i < 19; i++) {
+        const entry = queue.next();
+        expect(entry.id).toBe('a');
+        expect(start(entry)).toBe(true);
+      }
+    });
+
+    it('flags /skip in track-loop, since next() returns the same entry again', () => {
+      seed(queue, ['a', 'b'], 0);
+      queue.loopMode = 'track';
+      start(queue.getCurrent());
+
+      // A skip goes through advanceAndPlay -> queue.next(), same as a natural end.
+      const entry = queue.next();
+      expect(entry.id).toBe('a');
+      expect(start(entry)).toBe(true);
+    });
+
+    it('does not flag the first pass through the queue with loop on', () => {
+      seed(queue, ['a', 'b', 'c'], 0);
+      queue.loopMode = 'queue';
+      expect(start(queue.getCurrent())).toBe(false);
+      expect(start(queue.next())).toBe(false);
+      expect(start(queue.next())).toBe(false);
+    });
+
+    it('flags every entry on the queue-loop second pass and later passes', () => {
+      seed(queue, ['a', 'b', 'c'], 0);
+      queue.loopMode = 'queue';
+      start(queue.getCurrent());
+      start(queue.next());
+      start(queue.next());
+
+      for (let pass = 0; pass < 2; pass++) {
+        for (const id of ['a', 'b', 'c']) {
+          const entry = queue.next();
+          expect(entry.id).toBe(id);
+          expect(start(entry)).toBe(true);
+        }
+      }
+    });
+
+    it('does not flag an unplayed entry reached after a queue-loop wrap', () => {
+      seed(queue, ['a', 'b'], 0);
+      queue.loopMode = 'queue';
+      start(queue.getCurrent());
+      start(queue.next());
+
+      const wrapped = queue.next();
+      expect(wrapped.id).toBe('a');
+      expect(start(wrapped)).toBe(true);
+
+      queue.add(t('c')); // added after the wrap, never played
+      expect(start(queue.next())).toBe(true); // b, second pass
+      const fresh = queue.next();
+      expect(fresh.id).toBe('c');
+      expect(start(fresh)).toBe(false);
+    });
+
+    it('never flags previous() to an already-played entry, loop on or off', () => {
+      for (const mode of ['off', 'track', 'queue']) {
+        seed(queue, ['a', 'b'], 0);
+        queue.loopMode = mode;
+        start(queue.getCurrent());
+        queue.currentIndex = 1;
+        start(queue.getCurrent());
+
+        const back = queue.previous();
+        expect(back.id).toBe('a');
+        expect(start(back), `previous with loop ${mode}`).toBe(false);
+      }
+    });
+
+    it('does not flag previous then forward again with loop off', () => {
+      seed(queue, ['a', 'b'], 0);
+      start(queue.getCurrent());
+      start(queue.next());
+      start(queue.previous());
+
+      const forward = queue.next();
+      expect(forward.id).toBe('b');
+      expect(start(forward)).toBe(false);
+    });
+
+    it('flags previous then forward again with queue-loop on (deliberate simplification)', () => {
+      seed(queue, ['a', 'b'], 0);
+      queue.loopMode = 'queue';
+      start(queue.getCurrent());
+      start(queue.next());
+      start(queue.previous());
+
+      const forward = queue.next();
+      expect(forward.id).toBe('b');
+      expect(start(forward)).toBe(true);
+    });
+
+    it('does not flag the same URL queued again as a new entry', () => {
+      queue.loopMode = 'queue';
+      queue.add({ id: 'first', url: 'https://example.com/same' });
+      start(queue.getCurrent());
+      queue.add({ id: 'again', url: 'https://example.com/same' });
+
+      const requeued = queue.next();
+      expect(requeued.id).toBe('again');
+      expect(requeued.hasPlayed).toBeUndefined();
+      expect(start(requeued)).toBe(false);
+    });
+
+    it('overwrites a stale flag once loop is switched off', () => {
+      seed(queue, ['a', 'b'], 0);
+      queue.loopMode = 'queue';
+      start(queue.getCurrent());
+      start(queue.next());
+      // Loop flagged the wrap, but the start failed so onTrackChange never ran.
+      expect(queue.next().loopReplay).toBe(true);
+
+      queue.loopMode = 'off';
+      const entry = queue.next();
+      expect(entry.id).toBe('b');
+      expect(start(entry)).toBe(false);
+    });
+  });
 });

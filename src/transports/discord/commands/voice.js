@@ -39,9 +39,7 @@ export async function handleLeave(interaction) {
     });
   }
 
-  if (leaveChannel(interaction.guildId)) {
-    musicManager.clearHistory(interaction.guildId);
-  }
+  leaveChannel(interaction.guildId);
   setChannelCache(interaction.guildId, null);
   musicManager.stop();
   musicManager.emitVoiceContext();

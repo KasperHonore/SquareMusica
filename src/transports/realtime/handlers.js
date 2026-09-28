@@ -13,6 +13,13 @@ import {
   formatTruncationNotice,
   MAX_QUERY_LENGTH
 } from '../../shared/queueHelpers.js';
+import { botEvents } from '../../events/bus.js';
+import {
+  STATS_EVENT,
+  STATS_EVENT_TYPES,
+  createStatsEvent,
+  captureTrack
+} from '../../shared/statsEvents.js';
 import { logger } from '../../utils/logger.js';
 
 // Minimum interval (ms) between accepted events of a given type. Lightweight
@@ -101,6 +108,20 @@ function checkVoiceConnection(socket) {
 }
 
 /**
+ * Emit one recorded action on the shared bus.
+ *
+ * Wrapped so a recording failure cannot surface as a socket error: bus listeners
+ * run synchronously, inside this handler's try block.
+ */
+function emitAction(type, user, track, metadata = null) {
+  try {
+    botEvents.emit(STATS_EVENT, createStatsEvent({ type, actor: user, track, metadata }));
+  } catch {
+    // Deliberately silent; the recorder logs its own failures.
+  }
+}
+
+/**
  * Handle queue add requests from web clients
  * @param {Socket} socket - Socket.io socket instance
  * @returns {Function} Event handler
@@ -164,7 +185,12 @@ export function handleQueueRemove(socket) {
     if (!checkVoiceConnection(socket)) return;
 
     try {
+      // Read the track BEFORE removing it, or there is nothing left to record.
+      const removedTrack = captureTrack(() => musicManager.getQueue()[position]);
+
       musicManager.removeFromQueue(position);
+
+      emitAction(STATS_EVENT_TYPES.REMOVE, socket.user, removedTrack);
     } catch (err) {
       logger.error('Queue remove error:', err);
       socket.emit('error', { message: 'Failed to remove the track. Please try again.' });
@@ -200,17 +226,31 @@ export function handlePlayerControl(socket) {
     if (!checkVoiceConnection(socket)) return;
 
     try {
+      // Captured BEFORE any mutation: skip advances the queue, so reading the
+      // current track afterwards records the track that came next. pause/resume
+      // target whatever is playing and so carry it too.
+      const affectedTrack = captureTrack(() => musicManager.getCurrentTrack());
+
       switch (action) {
         case 'play':
           musicManager.play();
+          // Recorded as `resume`: musicManager.play() calls player.resume(), and
+          // this surface has no separate resume action.
+          emitAction(STATS_EVENT_TYPES.RESUME, socket.user, affectedTrack);
           break;
         case 'pause':
           musicManager.pause();
+          emitAction(STATS_EVENT_TYPES.PAUSE, socket.user, affectedTrack);
           break;
         case 'skip':
           musicManager.skip();
+          emitAction(STATS_EVENT_TYPES.SKIP, socket.user, affectedTrack);
           break;
         case 'stop':
+          // Deliberately not recorded, on any surface. Stopping does clear the
+          // queue as a side effect, but `stop` is not one of the tracked actions,
+          // and instrumenting it here and nowhere else is exactly the parity
+          // divergence the emit matrix exists to prevent.
           musicManager.stop();
           break;
         case 'loop':
@@ -220,9 +260,16 @@ export function handlePlayerControl(socket) {
           break;
         case 'shuffle':
           musicManager.shuffleQueue();
+          // Acts on the queue as a whole, so no track is recorded.
+          emitAction(STATS_EVENT_TYPES.SHUFFLE, socket.user, null);
           break;
         case 'clear':
           musicManager.clearUpcomingQueue();
+          // This surface keeps the current track playing and drops the rest —
+          // unlike HTTP, which empties everything. Hence the variant.
+          emitAction(STATS_EVENT_TYPES.CLEAR_QUEUE, socket.user, null, {
+            variant: 'upcoming'
+          });
           break;
         case 'previous':
           await musicManager.playPrevious();
@@ -309,9 +356,7 @@ export function handleVoiceLeave(socket) {
   return async () => {
     try {
       const guildId = musicManager.guildId || process.env.GUILD_ID;
-      if (leaveChannel(guildId)) {
-        musicManager.clearHistory(guildId);
-      }
+      leaveChannel(guildId);
       setChannelCache(guildId, null);
       musicManager.stop();
       musicManager.emitVoiceContext();

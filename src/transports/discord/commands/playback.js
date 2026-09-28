@@ -4,12 +4,37 @@ import { musicManager } from '../../../core/musicManager.js';
 import { resolveQuery, tryPlayWithFallback } from '../../../services/trackResolver.js';
 import { resolutionManager } from '../../../services/resolutionManager.js';
 import { advanceAndPlay, getPlayer, getQueue } from '../../../services/playback.js';
+import { botEvents } from '../../../events/bus.js';
+import {
+  STATS_EVENT,
+  STATS_EVENT_TYPES,
+  createStatsEvent,
+  captureTrack
+} from '../../../shared/statsEvents.js';
 import { logger } from '../../../utils/logger.js';
 import {
   addTracksToQueue,
   resolveQueryErrorToMessage,
   formatTruncationNotice
 } from '../../../shared/queueHelpers.js';
+
+/**
+ * Emit one recorded action on the shared bus.
+ *
+ * These handlers reach getPlayer()/advanceAndPlay() directly rather than going
+ * through musicManager, which is exactly why Discord needs its own emit sites:
+ * instrumenting the mediator alone would miss every action taken from Discord.
+ *
+ * Wrapped so a recording failure cannot break the command: bus listeners run
+ * synchronously, in this handler's stack.
+ */
+function emitAction(type, user, track, metadata = null) {
+  try {
+    botEvents.emit(STATS_EVENT, createStatsEvent({ type, actor: user, track, metadata }));
+  } catch {
+    // Deliberately silent; the recorder logs its own failures.
+  }
+}
 
 export async function handlePlay(interaction) {
   const member = interaction.member;
@@ -105,6 +130,13 @@ export async function handlePause(interaction) {
   }
 
   p.pause();
+  // musicManager is imported here already, so the current track is reachable even
+  // though this handler otherwise bypasses the mediator.
+  emitAction(
+    STATS_EVENT_TYPES.PAUSE,
+    interaction.user,
+    captureTrack(() => musicManager.getCurrentTrack())
+  );
   await interaction.reply('Paused playback.');
 }
 
@@ -121,6 +153,11 @@ export async function handleResume(interaction) {
   }
 
   p.resume();
+  emitAction(
+    STATS_EVENT_TYPES.RESUME,
+    interaction.user,
+    captureTrack(() => musicManager.getCurrentTrack())
+  );
   await interaction.reply('Resumed playback.');
 }
 
@@ -140,12 +177,18 @@ export async function handleSkip(interaction) {
 
   const skipped = p.currentTrack.title;
 
+  // Captured BEFORE advanceAndPlay moves the queue on, or the recorded track is
+  // the one that came next rather than the one skipped.
+  const skippedTrack = captureTrack(() => p.currentTrack);
+
   const { played, track: playingTrack } = await advanceAndPlay({
     player: p,
     queue: q,
     connection,
     skipCurrent: true
   });
+
+  emitAction(STATS_EVENT_TYPES.SKIP, interaction.user, skippedTrack);
 
   if (played) {
     await interaction.reply(`Skipped **${skipped}**. Now playing: **${playingTrack.title}**`);
@@ -160,6 +203,13 @@ export async function handleStop(interaction) {
   const p = getPlayer();
   const q = getQueue();
 
+  // Deliberately records nothing. This does empty the queue, so emitting
+  // clear_queue here looks like closing a gap — it is not. `stop` is not one of
+  // the tracked actions, and HTTP's and realtime's stop paths (both
+  // musicManager.stop(), which also clears) record nothing either. Emitting only
+  // here would make Discord the one surface that records a stop, which is a
+  // parity violation rather than a fix for one. Discord's clear_queue comes from
+  // handleClear alone.
   p.stop();
   q.clear();
   musicManager.emitQueueUpdate();

@@ -97,11 +97,18 @@ class MusicPlayer extends EventEmitter {
    * Mix a DJ line over the current track with ducking, replacing any line in
    * progress.
    * @param {Buffer} pcm - 48 kHz s16le stereo
+   * Accepted while the track is still Buffering: play() emits trackStart right
+   * after audioPlayer.play(), before the new mixer has produced data, and the
+   * mixer simply holds the line until the music reaches it.
    * @returns {boolean} False if nothing is playing, playback is paused, or mixing
    *   is disabled
    */
   overlay(pcm) {
-    if (!this._mixingEnabled || !this._mixer || !this.isPlaying()) return false;
+    if (!this._mixingEnabled || !this._mixer || this._mixer.destroyed) return false;
+    const status = this.audioPlayer.state.status;
+    if (status !== AudioPlayerStatus.Playing && status !== AudioPlayerStatus.Buffering) {
+      return false;
+    }
     this._mixer.overlay(pcm);
     return true;
   }

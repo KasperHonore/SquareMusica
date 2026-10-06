@@ -147,6 +147,13 @@ describe('MusicPlayer mixing seam (contracts §4)', () => {
     expect(first).not.toBe(second);
   });
 
+  it('overlay() accepts a line while the new track is still Buffering', async () => {
+    player.setMixingEnabled(true);
+    await player.play(track('a'), connection);
+    player.audioPlayer.state = { ...player.audioPlayer.state, status: 'buffering' };
+    expect(player.overlay(Buffer.alloc(8))).toBe(true);
+  });
+
   it('overlay() returns false when nothing is playing', () => {
     player.setMixingEnabled(true);
     expect(player.overlay(Buffer.alloc(8))).toBe(false);

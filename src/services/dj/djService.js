@@ -2,7 +2,10 @@ import { musicManager } from '../../core/musicManager.js';
 import { db } from '../../persistence/db.js';
 import { getDjConfig, isDjConfigured } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
+import { getPlayer, getQueue } from '../playback.js';
 import { DjError, DJ_UNAVAILABLE, INVALID_INTERVAL, INVALID_LOOKAHEAD } from './errors.js';
+import { createLinePlanner } from './linePlanner.js';
+import { writeLine } from './lineWriter.js';
 
 // The AI DJ service: the one API all three transports call (research R12). It
 // is only constructed when the DJ env group is configured (src/index.js), and
@@ -18,6 +21,8 @@ let settings = null;
 let health = 'ok';
 let caps = null;
 let midnightTimer = null;
+let planner = null;
+let unsubscribe = null;
 
 const breaker = {
   consecutiveFailures: 0,
@@ -122,6 +127,7 @@ function scheduleMidnightReset() {
   midnightTimer = setTimeout(() => {
     midnightTimer = null;
     caps = computeCaps();
+    planner?.rolloverStats();
     broadcast();
     scheduleMidnightReset();
   }, delay);
@@ -144,6 +150,7 @@ export function init() {
   initialised = true;
   musicManager.setGetDjState(getState);
   scheduleMidnightReset();
+  startPlanner();
   logger.info(
     `[DJ] Initialised: enabled=${settings.enabled} interval=${settings.interval} lookahead=${settings.lookahead}`
   );
@@ -153,6 +160,7 @@ export function init() {
  * Stop the service's timers. Used on shutdown and between tests.
  */
 export function shutdown() {
+  stopPlanner();
   if (midnightTimer) clearTimeout(midnightTimer);
   midnightTimer = null;
   initialised = false;
@@ -194,7 +202,12 @@ export function setSettings(partial, actor = null) {
     update.enabled = input.enabled;
   }
 
+  const restartCount =
+    (update.interval !== undefined && update.interval !== settings.interval) ||
+    (update.enabled === true && !settings.enabled);
+
   settings = db.updateDjSettings(update);
+  if (restartCount) planner?.resetCounter();
   logger.info(`[DJ] Settings changed by ${actor?.name ?? 'unknown'}: ${JSON.stringify(update)}`);
   broadcast();
   return getState();
@@ -267,4 +280,61 @@ export function refreshCaps() {
   ) {
     broadcast();
   }
+}
+
+/**
+ * Write and voice a line, recording the outcome with the breaker and the daily
+ * usage. The usage counts when TTS succeeds, because that is when the cost is
+ * incurred (R9).
+ * @param {Object} ctx
+ * @param {string[]} recentSpoken
+ * @returns {Promise<Object>}
+ */
+async function writeTrackedLine(ctx, recentSpoken) {
+  if (!breakerAllows()) {
+    throw Object.assign(new Error('Breaker open'), { kind: 'breaker' });
+  }
+  let line;
+  try {
+    line = await writeLine(ctx, recentSpoken);
+  } catch (error) {
+    // A rejected line is the model misbehaving, not the service being down, but
+    // it still means no line; every failure counts toward the breaker (R6, §5a).
+    recordFailure(error?.kind ?? 'llm', error);
+    throw error;
+  }
+  recordSuccess();
+  db.incrementDjUsage(today(), 'lines');
+  refreshCaps();
+  return line;
+}
+
+function startPlanner() {
+  stopPlanner();
+  planner = createLinePlanner({
+    getSettings: () => settings,
+    getVoiceContext: () => musicManager.getVoiceContext(),
+    getQueue,
+    getPlayer,
+    writeLine: writeTrackedLine,
+    isBreakerOpen: () => breaker.openUntil !== null && Date.now() < breaker.openUntil,
+    isCapReached: () => caps.lines.reached,
+    today: () => today()
+  });
+
+  const onTrackChange = (track) => planner?.onTrackChange(track);
+  const onQueueUpdate = () => planner?.onQueueUpdate();
+  musicManager.on('track:change', onTrackChange);
+  musicManager.on('queue:update', onQueueUpdate);
+  unsubscribe = () => {
+    musicManager.off('track:change', onTrackChange);
+    musicManager.off('queue:update', onQueueUpdate);
+  };
+}
+
+function stopPlanner() {
+  unsubscribe?.();
+  unsubscribe = null;
+  planner?.shutdown();
+  planner = null;
 }

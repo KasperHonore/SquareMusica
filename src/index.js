@@ -62,10 +62,12 @@ getQueue();
 
 // The AI DJ is only constructed when its env group is configured. Otherwise the
 // player keeps the legacy audio path and nothing DJ-related exists (FR-030).
+let shutdownDj = null;
 if (isDjConfigured()) {
   player.setMixingEnabled(true);
-  const { init: initDj } = await import('./services/dj/djService.js');
+  const { init: initDj, shutdown } = await import('./services/dj/djService.js');
   initDj();
+  shutdownDj = shutdown;
 }
 
 // Start servers
@@ -88,6 +90,7 @@ async function start() {
 // Graceful shutdown handling
 process.on('SIGINT', () => {
   logger.info('Shutting down...');
+  shutdownDj?.();
   shutdownSocketServer();
   db.close();
   client.destroy();
@@ -99,6 +102,7 @@ process.on('SIGINT', () => {
 
 process.on('SIGTERM', () => {
   logger.info('Received SIGTERM, shutting down...');
+  shutdownDj?.();
   shutdownSocketServer();
   db.close();
   client.destroy();

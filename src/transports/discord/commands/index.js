@@ -10,6 +10,7 @@ import {
   handleClear
 } from './queue.js';
 import { handleLoop } from './settings.js';
+import { handleDj } from './dj.js';
 import { handleWebUI } from './utility.js';
 
 export function registerAllCommands() {
@@ -33,6 +34,7 @@ export function registerAllCommands() {
 
   // Settings
   registerCommand('loop', handleLoop);
+  registerCommand('dj', handleDj);
 
   // Utility
   registerCommand('webui', handleWebUI);

@@ -13,6 +13,7 @@ import playbackRoutes from './routes/playback.js';
 import spotifyRoutes from './routes/spotify.js';
 import playlistRoutes from './routes/playlists.js';
 import statsRoutes from './routes/stats.js';
+import djRoutes from './routes/dj.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -61,6 +62,8 @@ app.use('/api/playlists', mutationLimiter, playlistRoutes);
 // No mutationLimiter: /api/stats is read-only, and the limiter's skip predicate
 // already exempts GET, so attaching it here would be inert.
 app.use('/api/stats', statsRoutes);
+// authMiddleware is applied per route inside the router, as for the other groups.
+app.use('/api/dj', mutationLimiter, djRoutes);
 
 // Public bot info (no auth required)
 app.get('/api/bot-info', (req, res) => {

@@ -128,12 +128,47 @@ function factValues(fact) {
   return values;
 }
 
+// Abbreviations that end in a full stop without ending a sentence, common in
+// track titles and artist names ("Mr. Brightside", "feat. X", "Vol. 2").
+const ABBREVIATIONS = ['mr', 'mrs', 'ms', 'dr', 'st', 'jr', 'sr', 'mt', 'feat', 'ft', 'vs'];
+// These only abbreviate before a number ("Vol. 2", "No. 5", "Pt. 1", "Op. 9").
+const NUMBERED_ABBREVIATIONS = ['vol', 'no', 'pt', 'op'];
+const ABBREVIATION_RE = new RegExp(
+  `\\b(?:(?:${ABBREVIATIONS.join('|')})\\.|(?:${NUMBERED_ABBREVIATIONS.join('|')})\\.(?=\\s*\\d))`,
+  'gi'
+);
+// A dotted acronym ("R.E.M."). Its inner dots never end a sentence; its last
+// dot does only when a capital follows. A lone initial ("J. Cole") is covered by
+// the track's artist name in `phrases`.
+const ACRONYM_RE = /\b(?:\p{Lu}\.){2,}(?=(\s*\p{Lu}|\s*$)?)/gu;
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
+ * Count sentences. Track titles and artist names in `phrases` are masked first,
+ * as are common abbreviations and initials, so their punctuation never ends a
+ * sentence ("Up next, Mr. Brightside by The Killers. Enjoy!" is two).
  * @param {string} text
+ * @param {string[]} [phrases] - Names whose punctuation is not sentence-ending
  * @returns {number}
  */
-export function countSentences(text) {
-  return text
+export function countSentences(text, phrases = []) {
+  let masked = text;
+  const names = phrases
+    .filter((p) => typeof p === 'string' && /[.!?…]/.test(p))
+    .sort((a, b) => b.length - a.length);
+  for (const name of names) {
+    masked = masked.replace(new RegExp(escapeRegExp(name), 'gi'), (m) => m.replace(/[.!?…]/g, ' '));
+  }
+  masked = masked
+    .replace(ABBREVIATION_RE, (m) => m.slice(0, -1))
+    .replace(
+      ACRONYM_RE,
+      (m, endsSentence) => m.replace(/\./g, '') + (endsSentence !== undefined ? '.' : '')
+    );
+  return masked
     .split(/[.!?…]+(?=\s|$)/)
     .map((s) => s.trim())
     .filter((s) => /[\p{L}\p{N}]/u.test(s)).length;
@@ -162,7 +197,8 @@ export function validateLine(response, ctx, recentSpoken = []) {
 
   const text = line.trim().replace(/\s+/g, ' ');
   if (text.length > MAX_CHARS) reject(`${text.length} characters`);
-  const sentences = countSentences(text);
+  const names = [ctx.next, ctx.previous].flatMap((t) => (t ? [t.title, t.artist] : []));
+  const sentences = countSentences(text, names);
   if (sentences < 1 || sentences > MAX_SENTENCES) reject(`${sentences} sentences`);
 
   const factsById = new Map(ctx.facts.map((f) => [f.id, f]));

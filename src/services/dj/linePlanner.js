@@ -164,7 +164,7 @@ export function createLinePlanner(deps) {
       if (line && isSameTrack(line.forKey, target.track)) speak(line, target.key);
       else drop(line ? 'stale' : (failed?.reason ?? 'service'), target.key);
     } else if (line && job.epoch === epoch) {
-      if (line.forKey === trackKey(predictedNext())) prepared = { line, epoch };
+      if (isSameTrack(line.forKey, predictedNext())) prepared = { line, epoch };
       else drop('stale', line.forKey);
     }
 
@@ -302,12 +302,15 @@ export function createLinePlanner(deps) {
     const current = deps.getQueue()?.getCurrent?.();
     if (trackKey(current) !== trackKey(previousTrack)) return;
 
-    const nextKey = trackKey(predictedNext());
-    if (prepared && prepared.line.forKey !== nextKey) {
+    // isSameTrack, not key equality: background resolution of a Spotify track
+    // changes its key from the Spotify id to the URL without changing the track.
+    const next = predictedNext();
+    const nextKey = trackKey(next);
+    if (prepared && !isSameTrack(prepared.line.forKey, next)) {
       drop('stale', prepared.line.forKey);
       prepared = null;
     }
-    if (inflight && inflight.epoch === epoch && inflight.key !== nextKey) {
+    if (inflight && inflight.epoch === epoch && !isSameTrack(inflight.key, next)) {
       reprepareAfterInflight = true;
     }
     if (prepareTimeReached && !prepared && !inflight && nextKey) prepare();

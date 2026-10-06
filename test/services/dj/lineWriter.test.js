@@ -53,6 +53,21 @@ describe('writeLine: accepted lines', () => {
     }
   );
 
+  it.each([
+    ['Up next, Mr. Brightside by The Killers. Enjoy!', {}],
+    ['Here comes Song B feat. Someone. Turn it up!', {}],
+    ['Hits Vol. 2 starts now. Enjoy!', { title: 'Hits Vol. 2' }],
+    ['Up next, R.E.M. with a classic. Enjoy!', {}],
+    [
+      'Next up, Hello. Goodbye. by J. Cole. Enjoy!',
+      { title: 'Hello. Goodbye.', channel: 'J. Cole' }
+    ]
+  ])('does not count abbreviations or name punctuation as sentence ends: %s', async (text, n) => {
+    modelSays(text, ['f-next']);
+    const c = buildContext({ previous, next: { ...next, ...n } });
+    await expect(writeLine(c, [])).resolves.toMatchObject({ text });
+  });
+
   it('accepts a quantity that matches a cited numeric fact', async () => {
     modelSays('Song B again, played seven times this week!', ['f-next', 'f-m1']);
     const c = ctx([{ id: 'f-m1', kind: 'member', text: 'Kasper has played this track 7 times.' }]);
@@ -93,6 +108,11 @@ describe('writeLine: rejected lines never reach TTS', () => {
 
   it.each([
     ['three sentences', () => modelSays('One. Two. Three.')],
+    ['three sentences despite an abbreviation', () => modelSays('Mr. Song is next. Two. Three.')],
+    [
+      'three sentences ending in an ordinary "no."',
+      () => modelSays('The answer is no. Two. Three.')
+    ],
     ['more than 240 characters', () => modelSays(`${'la '.repeat(90)}.`)],
     ['an unknown fact id', () => modelSays('Song B is next.', ['f-next', 'f-nope'])],
     ['malformed JSON', () => chatJson.mockRejectedValueOnce(new SyntaxError('Unexpected token'))],

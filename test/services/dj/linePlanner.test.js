@@ -282,6 +282,42 @@ describe('linePlanner: preparation timing (R5)', () => {
     expect(t.writeLine).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a prepared line when the next Spotify track resolves in the background', async () => {
+    const t = setup({ interval: 1, tracks: 1 });
+    const lazy = {
+      title: 'Lazy',
+      url: null,
+      duration: 200,
+      spotifyData: { spotifyId: 'sp-lazy' }
+    };
+    t.queue.add(lazy);
+    t.startFirst();
+    await playOut();
+    expect(t.writeLine.mock.calls[0][0].forKey).toBe('sp-lazy');
+    // Background resolution mutates the queue entry: its key goes from the
+    // Spotify id to the URL.
+    t.queue.peekNext().url = 'https://youtu.be/lazy';
+    t.planner.onQueueUpdate();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.writeLine).toHaveBeenCalledTimes(1);
+    t.advance();
+    expect(t.player.overlay).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an in-flight line when the next Spotify track resolves meanwhile', async () => {
+    const t = setup({ interval: 1, tracks: 1, writeDelayMs: 10000 });
+    const lazy = { title: 'Lazy', url: null, duration: 200, spotifyData: { spotifyId: 'sp-lazy' } };
+    t.queue.add(lazy);
+    t.startFirst();
+    await vi.advanceTimersByTimeAsync(170 * 1000);
+    t.queue.peekNext().url = 'https://youtu.be/lazy';
+    t.planner.onQueueUpdate();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(t.writeLine).toHaveBeenCalledTimes(1);
+    t.advance();
+    expect(t.player.overlay).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps one preparation in flight at a time', async () => {
     const t = setup({ interval: 1, writeDelayMs: 10000 });
     t.startFirst();

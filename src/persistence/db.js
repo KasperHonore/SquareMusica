@@ -73,6 +73,7 @@ export class DatabaseManager {
     this.migrate();
     const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf8');
     this.db.exec(schema);
+    this.pruneDjUsage();
     logger.info('[Database] Schema initialized successfully');
   }
 
@@ -640,6 +641,82 @@ export class DatabaseManager {
       LIMIT 1
     `;
     return this.db.prepare(sql).get({ since, eventType });
+  }
+
+  // AI DJ methods
+
+  /**
+   * The persisted DJ settings, creating the single row with its defaults on
+   * first read.
+   * @returns {{ enabled: boolean, interval: number, lookahead: number }}
+   */
+  getDjSettings() {
+    this.db.prepare('INSERT OR IGNORE INTO dj_settings (id) VALUES (1)').run();
+    const row = this.db
+      .prepare('SELECT enabled, interval, lookahead FROM dj_settings WHERE id = 1')
+      .get();
+    return { enabled: row.enabled === 1, interval: row.interval, lookahead: row.lookahead };
+  }
+
+  /**
+   * Write any subset of the DJ settings in one UPDATE. Validation belongs to the
+   * DJ service; the table's CHECK constraints are the backstop.
+   * @param {{ enabled?: boolean, interval?: number, lookahead?: number }} partial
+   * @returns {{ enabled: boolean, interval: number, lookahead: number }}
+   */
+  updateDjSettings(partial) {
+    this.db.prepare('INSERT OR IGNORE INTO dj_settings (id) VALUES (1)').run();
+    const sets = ['updated_at = CURRENT_TIMESTAMP'];
+    const params = {};
+    if (partial.enabled !== undefined) {
+      sets.push('enabled = @enabled');
+      params.enabled = partial.enabled ? 1 : 0;
+    }
+    if (partial.interval !== undefined) {
+      sets.push('interval = @interval');
+      params.interval = partial.interval;
+    }
+    if (partial.lookahead !== undefined) {
+      sets.push('lookahead = @lookahead');
+      params.lookahead = partial.lookahead;
+    }
+    this.db.prepare(`UPDATE dj_settings SET ${sets.join(', ')} WHERE id = 1`).run(params);
+    return this.getDjSettings();
+  }
+
+  /**
+   * @param {string} day - Local date, YYYY-MM-DD
+   * @returns {{ lines: number, themed_tracks: number }} Zeros when no row exists
+   */
+  getDjUsage(day) {
+    const row = this.db.prepare('SELECT lines, themed_tracks FROM dj_usage WHERE day = ?').get(day);
+    return row ?? { lines: 0, themed_tracks: 0 };
+  }
+
+  /**
+   * Add one to a daily usage counter.
+   * @param {string} day - Local date, YYYY-MM-DD
+   * @param {'lines'|'themed_tracks'} field - Whitelisted, because it is
+   *   interpolated into the SQL
+   */
+  incrementDjUsage(day, field) {
+    if (field !== 'lines' && field !== 'themed_tracks') {
+      throw new Error(`incrementDjUsage: unknown field "${field}"`);
+    }
+    this.db
+      .prepare(
+        `INSERT INTO dj_usage (day, ${field}) VALUES (?, 1)
+         ON CONFLICT(day) DO UPDATE SET ${field} = ${field} + 1`
+      )
+      .run(day);
+  }
+
+  /**
+   * Drop usage rows older than 30 days. Only today's row is ever read, so this
+   * just keeps the table from growing forever. Run once at boot.
+   */
+  pruneDjUsage() {
+    this.db.prepare("DELETE FROM dj_usage WHERE day < date('now', 'localtime', '-30 days')").run();
   }
 
   // Playlist methods

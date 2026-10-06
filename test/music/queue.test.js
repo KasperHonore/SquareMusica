@@ -484,4 +484,54 @@ describe('Queue', () => {
       expect(start(entry)).toBe(false);
     });
   });
+  describe('peekNext (R5)', () => {
+    it("loopMode 'off' returns the following entry without moving", () => {
+      seed(queue, ['a', 'b', 'c'], 0);
+      expect(queue.peekNext().id).toBe('b');
+      expect(queue.currentIndex).toBe(0);
+    });
+
+    it("loopMode 'off' at the last index returns null and leaves the queue intact", () => {
+      seed(queue, ['a', 'b'], 1);
+      expect(queue.peekNext()).toBeNull();
+      expect(queue.length).toBe(2);
+      expect(queue.currentIndex).toBe(1);
+    });
+
+    it('returns null on an empty queue', () => {
+      expect(queue.peekNext()).toBeNull();
+    });
+
+    it("loopMode 'track' returns the current entry", () => {
+      seed(queue, ['a', 'b'], 0);
+      queue.loopMode = 'track';
+      expect(queue.peekNext().id).toBe('a');
+      expect(queue.currentIndex).toBe(0);
+    });
+
+    it("loopMode 'queue' wraps to the first entry at the last index", () => {
+      seed(queue, ['a', 'b', 'c'], 2);
+      queue.loopMode = 'queue';
+      expect(queue.peekNext().id).toBe('a');
+      expect(queue.currentIndex).toBe(2);
+    });
+
+    it("loopMode 'queue' mid-queue returns the following entry", () => {
+      seed(queue, ['a', 'b', 'c'], 0);
+      queue.loopMode = 'queue';
+      expect(queue.peekNext().id).toBe('b');
+    });
+
+    it('never touches loopReplay flags', () => {
+      seed(queue, ['a', 'b'], 0);
+      queue.loopMode = 'track';
+      queue.tracks[0].hasPlayed = true;
+      queue.peekNext();
+      expect(queue.tracks[0].loopReplay).toBeUndefined();
+      queue.loopMode = 'queue';
+      queue.tracks[1].hasPlayed = true;
+      queue.peekNext();
+      expect(queue.tracks[1].loopReplay).toBeUndefined();
+    });
+  });
 });

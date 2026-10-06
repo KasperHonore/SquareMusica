@@ -2,10 +2,12 @@ import {
   createAudioPlayer,
   createAudioResource,
   AudioPlayerStatus,
-  NoSubscriberBehavior
+  NoSubscriberBehavior,
+  StreamType
 } from '@discordjs/voice';
 import { EventEmitter } from 'events';
-import { getStream } from '../integrations/youtube.js';
+import { getStream, getPcmStream } from '../integrations/youtube.js';
+import { DuckingMixer } from './audioMixer.js';
 import { resolutionManager, ResolutionManager } from '../services/resolutionManager.js';
 import { logger } from '../utils/logger.js';
 
@@ -22,6 +24,10 @@ class MusicPlayer extends EventEmitter {
     this.pausedAt = null;
     this._currentCleanup = null;
     this._switching = false;
+    // AI DJ mixing (ADR-002). Off unless the DJ is configured, in which case
+    // every track goes through our own PCM transcode and a per-track mixer.
+    this._mixingEnabled = false;
+    this._mixer = null;
 
     this._setupListeners();
   }
@@ -63,6 +69,10 @@ class MusicPlayer extends EventEmitter {
   }
 
   _cleanupCurrentStream() {
+    if (this._mixer) {
+      if (!this._mixer.destroyed) this._mixer.destroy();
+      this._mixer = null;
+    }
     if (this._currentCleanup) {
       try {
         this._currentCleanup();
@@ -71,6 +81,36 @@ class MusicPlayer extends EventEmitter {
       }
       this._currentCleanup = null;
     }
+  }
+
+  /**
+   * Select the audio path for subsequent play() calls. Set once at boot from
+   * isDjConfigured(): true uses PCM through a DuckingMixer (StreamType.Raw),
+   * false keeps the legacy StreamType.Arbitrary path unchanged.
+   * @param {boolean} enabled
+   */
+  setMixingEnabled(enabled) {
+    this._mixingEnabled = enabled === true;
+  }
+
+  /**
+   * Mix a DJ line over the current track with ducking, replacing any line in
+   * progress.
+   * @param {Buffer} pcm - 48 kHz s16le stereo
+   * @returns {boolean} False if nothing is playing, playback is paused, or mixing
+   *   is disabled
+   */
+  overlay(pcm) {
+    if (!this._mixingEnabled || !this._mixer || !this.isPlaying()) return false;
+    this._mixer.overlay(pcm);
+    return true;
+  }
+
+  /**
+   * Cut off any DJ line and bring the music back to full level. Idempotent.
+   */
+  cancelOverlay() {
+    this._mixer?.cancelOverlay();
   }
 
   /**
@@ -84,6 +124,7 @@ class MusicPlayer extends EventEmitter {
       logger.info('Player.play() called with track:', track?.title);
 
       // Stop player and clean up previous stream before switching tracks
+      this.cancelOverlay();
       this._switching = true;
       this.audioPlayer.stop();
       this._cleanupCurrentStream();
@@ -104,12 +145,26 @@ class MusicPlayer extends EventEmitter {
       }
 
       logger.info('Playing track URL:', track.url);
-      const streamResult = await getStream(track.url);
-      this._currentCleanup = streamResult.cleanup || null;
+      let resource;
+      if (this._mixingEnabled) {
+        const streamResult = await getPcmStream(track.url);
+        this._currentCleanup = streamResult.cleanup || null;
 
-      const resource = createAudioResource(streamResult.stream, {
-        inputType: streamResult.type
-      });
+        // One mixer per track, so a line can never carry into the next track.
+        const mixer = new DuckingMixer();
+        streamResult.stream.on('error', (err) => mixer.destroy(err));
+        streamResult.stream.pipe(mixer);
+        this._mixer = mixer;
+
+        resource = createAudioResource(mixer, { inputType: StreamType.Raw });
+      } else {
+        const streamResult = await getStream(track.url);
+        this._currentCleanup = streamResult.cleanup || null;
+
+        resource = createAudioResource(streamResult.stream, {
+          inputType: streamResult.type
+        });
+      }
 
       this.currentTrack = track;
       this.startTime = Date.now();
@@ -134,6 +189,7 @@ class MusicPlayer extends EventEmitter {
    * Pause playback
    */
   pause() {
+    this.cancelOverlay();
     if (this.audioPlayer.state.status === AudioPlayerStatus.Playing) {
       this.pausedAt = Date.now();
       this.audioPlayer.pause();
@@ -162,6 +218,7 @@ class MusicPlayer extends EventEmitter {
    * Stop playback
    */
   stop() {
+    this.cancelOverlay();
     this._switching = true;
     this.audioPlayer.stop();
     this._cleanupCurrentStream();

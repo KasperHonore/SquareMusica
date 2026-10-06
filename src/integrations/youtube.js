@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import { PassThrough } from 'stream';
 import { existsSync } from 'fs';
 import { StreamType } from '@discordjs/voice';
+import ffmpegStatic from 'ffmpeg-static';
 import { logger } from '../utils/logger.js';
 
 const execFileAsync = promisify(execFile);
@@ -406,6 +407,154 @@ export async function getStream(url) {
     // to Opus, normalizing whatever container yt-dlp produced. Do not switch this
     // back to WebmOpus without restricting the format selector to webm/opus only.
     type: StreamType.Arbitrary,
+    cleanup
+  };
+}
+
+/**
+ * Resolve the FFmpeg binary the way @discordjs/voice's prism-media does:
+ * ffmpeg-static when its binary is present, else `ffmpeg` on PATH (research R2).
+ */
+function getFfmpegPath() {
+  if (ffmpegStatic && existsSync(ffmpegStatic)) return ffmpegStatic;
+  return 'ffmpeg';
+}
+
+// Decode whatever container yt-dlp produced to the PCM DuckingMixer expects.
+const FFMPEG_PCM_ARGS = [
+  '-hide_banner',
+  '-loglevel',
+  'error',
+  '-i',
+  'pipe:0',
+  '-f',
+  's16le',
+  '-ar',
+  '48000',
+  '-ac',
+  '2',
+  'pipe:1'
+];
+
+/**
+ * Get playback audio as 48 kHz s16le stereo PCM, for the AI DJ mixing path
+ * (ADR-002). Wraps getStream(): yt-dlp's output is piped through our own FFmpeg
+ * child instead of the one @discordjs/voice would spawn for StreamType.Arbitrary.
+ *
+ * getStream()'s startup watchdog still guards yt-dlp, and its error now also
+ * tears down FFmpeg. As there, a normal FFmpeg exit lets buffered audio drain;
+ * the output stream's own close runs cleanup.
+ *
+ * @param {string} url - YouTube URL
+ * @returns {Promise<Object>} Same shape as getStream(), with type StreamType.Raw
+ */
+export async function getPcmStream(url) {
+  const source = await getStream(url);
+  const output = new PassThrough();
+
+  let ffmpeg;
+  try {
+    ffmpeg = spawn(getFfmpegPath(), FFMPEG_PCM_ARGS);
+  } catch (spawnError) {
+    source.cleanup(spawnError);
+    throw spawnError;
+  }
+
+  let cleanedUp = false;
+
+  // Single idempotent teardown covering yt-dlp (via getStream's cleanup), the
+  // FFmpeg child and the output stream, mirroring getStream's own cleanup.
+  const cleanup = (err) => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+
+    // Swap our source handler for a sink before tearing yt-dlp down: getStream's
+    // cleanup has already dropped its own listener, so any error the source
+    // emits from here on would otherwise be unhandled and crash the process.
+    source.stream.removeListener('error', onSourceError);
+    source.stream.on('error', onLateSourceError);
+    ffmpeg.removeListener('error', onProcessError);
+    ffmpeg.removeListener('close', onProcessClose);
+    output.removeListener('error', onOutputError);
+    output.removeListener('close', onOutputClose);
+
+    // The error, if any, is surfaced once on the output stream below; the
+    // internal yt-dlp stream only needs to be closed.
+    source.cleanup();
+
+    if (!ffmpeg.killed && ffmpeg.exitCode === null) {
+      try {
+        ffmpeg.kill('SIGKILL');
+        logger.debug('[Stream] ffmpeg process killed via cleanup');
+      } catch (killErr) {
+        logger.debug('[Stream] ffmpeg kill skipped (already exited):', killErr.message);
+      }
+    }
+
+    if (!output.destroyed) {
+      output.destroy(err || undefined);
+      logger.debug('[Stream] PCM PassThrough destroyed via cleanup');
+    }
+  };
+
+  function onSourceError(err) {
+    // getStream's watchdog or a yt-dlp failure: nothing more will arrive.
+    cleanup(err);
+  }
+
+  function onLateSourceError(err) {
+    logger.debug('[Stream] yt-dlp stream error after PCM cleanup:', err.message);
+  }
+
+  function onProcessError(error) {
+    logger.error('ffmpeg process error:', error);
+    cleanup(error);
+  }
+
+  function onProcessClose(code) {
+    if (code !== 0 && code !== null) {
+      logger.error(`ffmpeg exited with code ${code}`);
+    }
+    // Normal exit: let buffered PCM drain, as getStream does for yt-dlp.
+  }
+
+  function onOutputError(err) {
+    logger.debug('[Stream] PCM PassThrough error (expected during cleanup):', err.message);
+    cleanup(err);
+  }
+
+  function onOutputClose() {
+    logger.debug('[Stream] PCM PassThrough closed');
+    cleanup();
+  }
+
+  try {
+    // FFmpeg exiting early closes its stdin; swallow the resulting EPIPE, the
+    // close/error handlers above decide what happens.
+    ffmpeg.stdin.on('error', (err) => {
+      logger.debug('[Stream] ffmpeg stdin error:', err.message);
+    });
+    ffmpeg.stderr.on('data', (data) => {
+      logger.error('ffmpeg stderr:', data.toString());
+    });
+
+    source.stream.pipe(ffmpeg.stdin);
+    ffmpeg.stdout.pipe(output);
+
+    source.stream.on('error', onSourceError);
+    ffmpeg.on('error', onProcessError);
+    ffmpeg.on('close', onProcessClose);
+    output.on('error', onOutputError);
+    output.on('close', onOutputClose);
+  } catch (setupError) {
+    logger.error('[Stream] PCM setup failed; tearing down ffmpeg and yt-dlp:', setupError);
+    cleanup(setupError);
+    throw setupError;
+  }
+
+  return {
+    stream: output,
+    type: StreamType.Raw,
     cleanup
   };
 }

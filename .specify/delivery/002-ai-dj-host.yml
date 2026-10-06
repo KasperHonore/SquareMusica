@@ -1,0 +1,520 @@
+# Spec Kit Nightshift delivery record. Owned by agents working in this repo;
+# never edited from GitHub. See the nightshift design, section 4.
+schema: 1
+feature: specs/002-ai-dj-host
+pieces:
+  foundation:
+    loop: build
+    reason: Shared infrastructure with settled tasks
+    source: rule
+  us1:
+    loop: build
+    reason: US1 behaviour is specified and its tasks are settled
+    source: rule
+  us2:
+    loop: build
+    reason: US2 behaviour is specified and its tasks are settled
+    source: rule
+  us3:
+    loop: build
+    reason: US3 behaviour is specified and its tasks are settled
+    source: rule
+  us4:
+    loop: build
+    reason: US4 behaviour is specified and its tasks are settled
+    source: rule
+  polish:
+    loop: build
+    reason: Cross-cutting tasks are settled
+    source: rule
+protected_paths: []
+blockers: []
+issues:
+  parent: 7
+  pieces:
+    foundation: 8
+    us1: 9
+    us2: 10
+    us3: 11
+    us4: 12
+    polish: 13
+  repo: KasperHonore/SquareMusica
+  published:
+    parent: 8e0cbc3a3b2cd132
+    foundation: 4618ffb6cfc3f99d
+    us1: fa0a1c9178061904
+    us2: 85479198224a43b7
+    us3: a532785c8f7795cc
+    us4: 0cb6f65f94880a8e
+    polish: ede4cc6869c593b7
+approval:
+  approved_at: "2026-10-06T22:00:39+02:00"
+  approved_by: Kasper Honore
+  contract: .specify/delivery/002-ai-dj-host/run-contract.md
+  contract_hash: fc41471aa4fb00e1079defe6fe157132f3caa3ac89182e806a627065a481dceb
+  baseline:
+    tasks:
+      T001:
+        fingerprint: db12524a99e95839
+        piece: foundation
+        parallel: true
+        story: ""
+      T002:
+        fingerprint: 2cf66584f41bbb3e
+        piece: foundation
+        parallel: true
+        story: ""
+      T003:
+        fingerprint: dd23a6a864eef4b3
+        piece: foundation
+        parallel: false
+        story: ""
+      T004:
+        fingerprint: 0ebf2107cba12c2a
+        piece: foundation
+        parallel: true
+        story: ""
+      T005:
+        fingerprint: b3ada386262a4605
+        piece: foundation
+        parallel: true
+        story: ""
+      T006:
+        fingerprint: 8007d47f71f29af6
+        piece: foundation
+        parallel: true
+        story: ""
+      T007:
+        fingerprint: 4ba27de0fd6e5d81
+        piece: foundation
+        parallel: true
+        story: ""
+      T008:
+        fingerprint: d9fe7ce0422fce57
+        piece: foundation
+        parallel: true
+        story: ""
+      T009:
+        fingerprint: 135eb014f5673073
+        piece: foundation
+        parallel: true
+        story: ""
+      T010:
+        fingerprint: 68fca9e64cb138d9
+        piece: foundation
+        parallel: false
+        story: ""
+      T011:
+        fingerprint: 69b742aa608d5b0a
+        piece: foundation
+        parallel: false
+        story: ""
+      T012:
+        fingerprint: 1ef78b7fd0de0812
+        piece: foundation
+        parallel: false
+        story: ""
+      T013:
+        fingerprint: f2c602266bce0e08
+        piece: foundation
+        parallel: false
+        story: ""
+      T014:
+        fingerprint: f5c56f660631ceb3
+        piece: foundation
+        parallel: true
+        story: ""
+      T015:
+        fingerprint: 8dc449dca05c34bc
+        piece: foundation
+        parallel: true
+        story: ""
+      T016:
+        fingerprint: a956c2a69e560a6b
+        piece: foundation
+        parallel: false
+        story: ""
+      T017:
+        fingerprint: fe4caffbe9006b8f
+        piece: foundation
+        parallel: true
+        story: ""
+      T018:
+        fingerprint: f06e2505d907f8f0
+        piece: foundation
+        parallel: true
+        story: ""
+      T019:
+        fingerprint: f588784eda000657
+        piece: foundation
+        parallel: false
+        story: ""
+      T020:
+        fingerprint: e0004ae8bdeda501
+        piece: foundation
+        parallel: false
+        story: ""
+      T021:
+        fingerprint: 0cc5155113c28a9e
+        piece: foundation
+        parallel: false
+        story: ""
+      T022:
+        fingerprint: a0eccc74e4899d10
+        piece: foundation
+        parallel: false
+        story: ""
+      T023:
+        fingerprint: 2ecfc2771c217271
+        piece: foundation
+        parallel: false
+        story: ""
+      T024:
+        fingerprint: 33070ee0ea242227
+        piece: us1
+        parallel: true
+        story: US1
+      T025:
+        fingerprint: 4f780a1314f63c83
+        piece: us1
+        parallel: true
+        story: US1
+      T026:
+        fingerprint: e8aed3b0e0d00010
+        piece: us1
+        parallel: true
+        story: US1
+      T027:
+        fingerprint: 77d8f6a816937eb8
+        piece: us1
+        parallel: true
+        story: US1
+      T028:
+        fingerprint: fdbc9888aab90bb9
+        piece: us1
+        parallel: false
+        story: US1
+      T029:
+        fingerprint: cfacc2538a367bc9
+        piece: us1
+        parallel: false
+        story: US1
+      T030:
+        fingerprint: 0b58f3be9d18572d
+        piece: us1
+        parallel: false
+        story: US1
+      T031:
+        fingerprint: bd207aca89e11502
+        piece: us1
+        parallel: false
+        story: US1
+      T032:
+        fingerprint: 35bb64969cb039f1
+        piece: us2
+        parallel: true
+        story: US2
+      T033:
+        fingerprint: 2fe22db90a96d377
+        piece: us2
+        parallel: true
+        story: US2
+      T034:
+        fingerprint: 87fdd8b436769b01
+        piece: us2
+        parallel: true
+        story: US2
+      T035:
+        fingerprint: e3fd2b8a31d85568
+        piece: us2
+        parallel: false
+        story: US2
+      T036:
+        fingerprint: fcc82c3c6b0b9516
+        piece: us2
+        parallel: false
+        story: US2
+      T037:
+        fingerprint: 2f2ff01debfb8eca
+        piece: us2
+        parallel: false
+        story: US2
+      T038:
+        fingerprint: ffaff1c057072787
+        piece: us2
+        parallel: false
+        story: US2
+      T039:
+        fingerprint: e64b52c44400225e
+        piece: us2
+        parallel: false
+        story: US2
+      T040:
+        fingerprint: 96085ff982ed42b7
+        piece: us2
+        parallel: false
+        story: US2
+      T041:
+        fingerprint: 144fc44ef9135cf2
+        piece: us2
+        parallel: true
+        story: US2
+      T042:
+        fingerprint: a4daad57d6ed1986
+        piece: us2
+        parallel: true
+        story: US2
+      T043:
+        fingerprint: 77997019cfb22d5c
+        piece: us2
+        parallel: false
+        story: US2
+      T044:
+        fingerprint: cffe8f0991e844de
+        piece: us3
+        parallel: true
+        story: US3
+      T045:
+        fingerprint: 81d022ff6cb906c1
+        piece: us3
+        parallel: true
+        story: US3
+      T046:
+        fingerprint: d00a25904af69f2c
+        piece: us3
+        parallel: true
+        story: US3
+      T047:
+        fingerprint: 95f5b9c86f0f88e5
+        piece: us3
+        parallel: false
+        story: US3
+      T048:
+        fingerprint: a661161210404c61
+        piece: us3
+        parallel: false
+        story: US3
+      T049:
+        fingerprint: 9bb1c298475ade33
+        piece: us3
+        parallel: true
+        story: US3
+      T050:
+        fingerprint: e371e47d5910c48c
+        piece: us3
+        parallel: false
+        story: US3
+      T051:
+        fingerprint: b5ce6fc7d3c2d027
+        piece: us3
+        parallel: false
+        story: US3
+      T052:
+        fingerprint: aa9865aadd00a33c
+        piece: us3
+        parallel: false
+        story: US3
+      T053:
+        fingerprint: 5f72aa4ec3c628b8
+        piece: us3
+        parallel: false
+        story: US3
+      T054:
+        fingerprint: 6492a2ade508a365
+        piece: us3
+        parallel: true
+        story: US3
+      T055:
+        fingerprint: 106275ccb3395b2a
+        piece: us3
+        parallel: true
+        story: US3
+      T056:
+        fingerprint: b61cce6ff54c4421
+        piece: us3
+        parallel: true
+        story: US3
+      T057:
+        fingerprint: c522533abf3d5bb2
+        piece: us3
+        parallel: false
+        story: US3
+      T058:
+        fingerprint: f814c6cc673f19c9
+        piece: us3
+        parallel: true
+        story: US3
+      T059:
+        fingerprint: fa9cbbe39b1ae529
+        piece: us4
+        parallel: true
+        story: US4
+      T060:
+        fingerprint: 4f9674aced30293e
+        piece: us4
+        parallel: true
+        story: US4
+      T061:
+        fingerprint: 2232ea86c7c78d45
+        piece: us4
+        parallel: true
+        story: US4
+      T062:
+        fingerprint: 37819cf6857e3b49
+        piece: us4
+        parallel: true
+        story: US4
+      T063:
+        fingerprint: c139a2460de23f1b
+        piece: us4
+        parallel: false
+        story: US4
+      T064:
+        fingerprint: 6480b5abc9ebba1e
+        piece: us4
+        parallel: false
+        story: US4
+      T065:
+        fingerprint: c6548c703dec2eaf
+        piece: us4
+        parallel: false
+        story: US4
+      T066:
+        fingerprint: b4877bb17fe70df5
+        piece: us4
+        parallel: false
+        story: US4
+      T067:
+        fingerprint: 10a878638865a180
+        piece: us4
+        parallel: false
+        story: US4
+      T068:
+        fingerprint: fcf36c0035cea7d3
+        piece: us4
+        parallel: false
+        story: US4
+      T069:
+        fingerprint: 3c20676100ecef0c
+        piece: us4
+        parallel: true
+        story: US4
+      T070:
+        fingerprint: 7b971dfdac1ac255
+        piece: us4
+        parallel: true
+        story: US4
+      T071:
+        fingerprint: 25759f748c51ee51
+        piece: us4
+        parallel: true
+        story: US4
+      T072:
+        fingerprint: 739132fc7fd2a8a4
+        piece: us4
+        parallel: false
+        story: US4
+      T073:
+        fingerprint: 4da78a9ae8bd7c2e
+        piece: us4
+        parallel: true
+        story: US4
+      T074:
+        fingerprint: 9cc4c55e6e8980cb
+        piece: us4
+        parallel: true
+        story: US4
+      T075:
+        fingerprint: fd405621e0bfccc5
+        piece: polish
+        parallel: true
+        story: ""
+      T076:
+        fingerprint: 09ee4bed683ee4c6
+        piece: polish
+        parallel: true
+        story: ""
+      T077:
+        fingerprint: ce7ec8937c3589fc
+        piece: polish
+        parallel: false
+        story: ""
+      T078:
+        fingerprint: 6ca8795c076aa89c
+        piece: polish
+        parallel: false
+        story: ""
+      T079:
+        fingerprint: dd5fb2a8ed093345
+        piece: polish
+        parallel: false
+        story: ""
+    acceptance:
+      US1/AC1:
+        hash: 07a3c331ec4e0ced1f0dead9342f6527ef36a92b3dae85d944bc57c75c95780c
+        quote: "**Given** the DJ is enabled with an interval of every 1 track and the queue has a next"
+      US1/AC2:
+        hash: 9ca27bbb8672ae9d3f929cf4cc7f5c22387477524dfac111c9a2c3e1e1a72f13
+        quote: "**Given** the DJ is enabled with an interval of every 3 tracks, **When** seven tracks"
+      US1/AC3:
+        hash: 603f8b69408fdf137ac9629f9453b258418dadd88888422a53f1332024b8bf37
+        quote: "**Given** the DJ is disabled, **When** tracks play, **Then** the DJ never speaks."
+      US1/AC4:
+        hash: 7812a1a8ee68be36a449be1ec6731cf7c941aec14b4abcc4e3a74879375c2992
+        quote: "**Given** the DJ cannot produce a line in time (for example, the voice or text service"
+      US1/AC5:
+        hash: 5a2c58720bc0e148c1b28105bd888787f02bad4f44bdca753f2c81fea41ab748
+        quote: "**Given** a member skips the current track while the DJ is speaking, **When** the skip"
+      US2/AC1:
+        hash: ae187daa5d39c5aa91a5974c42d0e450b1a55735201bec2a54bdf4986ee16668
+        quote: "**Given** the DJ is off, **When** a member enables it from either Discord or the"
+      US2/AC2:
+        hash: d7f64d770fde93939a53c8f799ea61a8b5636fb806365586d7c23f91af7f3cf6
+        quote: "**Given** the DJ is on, **When** a member sets the interval to \"every 4 tracks\", **Then**"
+      US2/AC3:
+        hash: 9827193dcbe0ecb2d3900756b02234057309627e99d05e8c6de5bde233b898b8
+        quote: "**Given** a member enters an interval outside the allowed range (FR-012), **When** they"
+      US2/AC4:
+        hash: be75c1f06cbe26fffb463dac979ef40df0982a3790228acdb3da26e71d9f695e
+        quote: "**Given** the DJ is enabled with a custom interval, **When** the bot restarts, **Then**"
+      US3/AC1:
+        hash: 89c6228fd23a1aea0dce4e82ae0d999585cda8d0ad0d4112158506782261cbc1
+        quote: "**Given** member A is in the voice channel and has played the upcoming track 3 or more"
+      US3/AC2:
+        hash: 23096920fb7b07c31d1301415b836c15093ecaeee5f53380ef73ef1b2d8b0440
+        quote: "**Given** member B has left the voice channel, **When** the DJ next speaks, **Then** it"
+      US3/AC3:
+        hash: 008c19d27b5c1ff15c7754d0e278d4ce607192228137cf8161ffd3883e674077
+        quote: "**Given** a member has opted out of personal shout-outs, **When** the DJ speaks while"
+      US3/AC4:
+        hash: 72c71c59ebc9fe04a00984590e2be46fbd0900187d632a4b89d04ebe354d5c3c
+        quote: "**Given** nobody present has relevant history with the upcoming track, **When** the DJ"
+      US4/AC1:
+        hash: 154645a69c6407022dbad73ad23806afd3dc73993b7eea759de8f808a71768ff
+        quote: "**Given** themed mode is off and the queue is empty, **When** a member starts themed"
+      US4/AC2:
+        hash: f6615b5a5e717da786454b5f9f2d7cff40ee287e7941b6871328130c747c6a00
+        quote: "**Given** themed mode is on with lookahead 5, **When** a track finishes and fewer than 5"
+      US4/AC3:
+        hash: 8dfeeb39ad3a3ea25e1003bd05b18460b2595b4f0317ff678118bfd15bfa59a8
+        quote: "**Given** themed mode is on, **When** a member queues their own song, **Then** that song"
+      US4/AC4:
+        hash: fbfbcb6bd848d8f76e3ef25b1a6b29e3d694394c4c21e534462dd67ddc66c77c
+        quote: "**Given** themed mode is on, **When** a member stops it, **Then** no further tracks are"
+      US4/AC5:
+        hash: 0af0e363c830c0aac9eacdb6f18e710ccd15cb94e720df20c25d3f53975f3032
+        quote: "**Given** a theme for which the DJ cannot find any playable tracks, **When** a member"
+      US4/AC6:
+        hash: 0bbae4fa21fdfc6854e588d2cece2bea51f48477a86ff42405ff0c294ebc0db2
+        quote: "**Given** the queue already has 3 upcoming member-queued tracks, **When** a member"
+      US4/AC7:
+        hash: a1bf9f6c56093e04ee310898ba4051b7de51fb7e1b43c025563737f337c4c3c8
+        quote: "**Given** themed mode is on, **When** a member changes the theme, **Then** tracks added"
+  grounded_at: 8333ca672c183de3d736a6e41886ab38b7bbcf93
+  grounding_docs:
+    - plan.md
+    - research.md
+    - data-model.md
+    - quickstart.md
+    - contracts/dj-api.md
+    - tasks.md

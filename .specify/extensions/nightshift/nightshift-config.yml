@@ -1,0 +1,61 @@
+# Spec Kit Nightshift project configuration.
+# Installed at .specify/extensions/nightshift/nightshift-config.yml.
+max_rounds: 3              # builder rounds per piece before it is parked
+wall_clock: 8h             # budget for one run
+phase_budget: 2h           # wall clock for one builder round
+review_budget: 1h          # wall clock for one critic call
+# Mirrors .github/workflows/ci.yml job by job (backend, test, web), in order. Each
+# check runs without a shell in a fresh checkout, so installs are checks too. CFLAGS
+# lets @discordjs/opus compile under GCC 14+ when no prebuilt binary matches; it is a
+# no-op where CI's compiler builds it cleanly. The docker job is left to ci.require.
+checks:
+  - id: install
+    argv: [env, CFLAGS=-Wno-error=incompatible-pointer-types, npm, ci]
+    timeout: 900
+  - id: lint
+    argv: [npm, run, lint]
+    timeout: 300
+  - id: format
+    argv: [npm, run, format:check]
+    timeout: 300
+  - id: test
+    argv: [npm, test]
+    timeout: 600
+  - id: web-install
+    argv: [npm, --prefix, web, ci]
+    timeout: 600
+  - id: web-lint
+    argv: [npm, --prefix, web, run, lint]
+    timeout: 300
+  - id: web-format
+    argv: [npm, --prefix, web, run, format:check]
+    timeout: 300
+  - id: web-build
+    argv: [npm, --prefix, web, run, build]
+    timeout: 600
+# The preview boots the production Express app plus Socket.io on 127.0.0.1:{port}
+# with the built web UI, but without Discord login (like CI's docker smoke test):
+# src/index.js only listens after client.login, which needs a real token. Placeholder
+# secrets satisfy validateEnv; DEVELOPER_MODE bypasses OAuth so the UI is usable.
+# Voice playback is not available in the preview. Cold start installs and builds.
+preview:
+  command:
+    - sh
+    - -c
+    - 'set -e; CFLAGS=-Wno-error=incompatible-pointer-types npm ci; npm --prefix web ci; npm --prefix web run build; DISCORD_TOKEN=preview APP_ID=preview GUILD_ID=preview DISCORD_CLIENT_SECRET=preview JWT_SECRET=preview-only OAUTH_REDIRECT_URI=http://127.0.0.1:{port}/callback WEB_URL=http://127.0.0.1:{port} TZ=Europe/Copenhagen DEVELOPER_MODE=true exec node --input-type=module -e "const {createServer} = await import(''http''); const {app} = await import(''./src/transports/http/index.js''); const {setupSocketServer} = await import(''./src/transports/realtime/socketServer.js''); const s = createServer(app); setupSocketServer(s); s.listen(Number(process.env.PORT), ''127.0.0.1'', () => console.log(''PREVIEW_LISTENING''));"'
+  health_url: "http://127.0.0.1:{port}/api/health"
+  health_timeout: 600
+cli:                       # the unmodified Claude Code CLI, signed in by subscription
+  builder: claude
+  critic: claude           # one fresh, read-only critic per review round
+ci:                        # D-CIWAIT: the repository's own GitHub checks on a phase PR
+  require: true            # wait for them (at least one must report) and merge only when all pass (false: skip)
+  wait_timeout: 30m        # then park the piece ci_timeout (also when no check ever registered)
+  poll_interval: 30s
+# min_free_mb:               # preflight: free MB in the temp dir (checks) and the repo
+#   warn: 1536
+#   refuse: 500
+#   probe: 32                # MB actually written in each (user quotas are invisible to df); 0: off
+# gate_paths: edits here fail the attempt (default: Makefile, .github/workflows/**,
+#   nightshift-config.yml, .specify/extensions/nightshift/**, .specify/delivery/**)
+# notify: your-github-login   # @mentioned on blocker questions (default: the gh user)

@@ -1,0 +1,20 @@
+# Spec Kit Nightshift delivery record: .specify/delivery/<feature-dir-name>.yml
+# Holds only what tasks.md lacks (design section 4). Pieces themselves are derived
+# from tasks.md every time and are never stored here.
+schema: 1
+feature: specs/000-example
+pieces:
+  us1:
+    loop: build            # build | fix
+    reason: "Behaviour is specified and the tasks are settled"
+    source: rule           # rule | agent | user
+    # quality_bar: .specify/delivery/<feature>/us1-bar.md   # optional (gauntlet style): a rubric,
+    #   approved examples or a reference, as text or a file under .specify/delivery/. The
+    #   critic then also judges the piece against it. Set by the user before approval.
+dependency_overrides: {}             # piece: [pieces it waits on], replaces the derived list
+protected_paths: []
+blockers: []                         # {piece, question, status: open|answered}
+issues:
+  parent: null
+  pieces: {}
+approval: null                       # written by ready go

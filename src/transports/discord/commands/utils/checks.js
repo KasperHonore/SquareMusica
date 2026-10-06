@@ -1,4 +1,5 @@
 import { isConnected } from '../../voiceManager.js';
+import { NOT_IN_VOICE_TEXT } from '../../../../services/dj/messages.js';
 
 /**
  * Check if bot is connected to voice, reply with error if not
@@ -8,7 +9,7 @@ import { isConnected } from '../../voiceManager.js';
 export async function requireVoiceConnection(interaction) {
   if (!isConnected(interaction.guildId)) {
     await interaction.reply({
-      content: "I'm not in a voice channel! Use `/join` to add me first.",
+      content: NOT_IN_VOICE_TEXT,
       ephemeral: true
     });
     return false;

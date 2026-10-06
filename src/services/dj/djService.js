@@ -188,7 +188,7 @@ export function setSettings(partial, actor = null) {
   }
   if (input.enabled !== undefined) {
     if (typeof input.enabled !== 'boolean') {
-      // contracts §2 has no code for this; see .nightshift/found.json.
+      // contracts/dj-api.md §2 defines no error code for a non-boolean `enabled`.
       throw new TypeError('enabled must be a boolean');
     }
     update.enabled = input.enabled;

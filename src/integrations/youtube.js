@@ -468,13 +468,19 @@ export async function getPcmStream(url) {
     if (cleanedUp) return;
     cleanedUp = true;
 
+    // Swap our source handler for a sink before tearing yt-dlp down: getStream's
+    // cleanup has already dropped its own listener, so any error the source
+    // emits from here on would otherwise be unhandled and crash the process.
     source.stream.removeListener('error', onSourceError);
+    source.stream.on('error', onLateSourceError);
     ffmpeg.removeListener('error', onProcessError);
     ffmpeg.removeListener('close', onProcessClose);
     output.removeListener('error', onOutputError);
     output.removeListener('close', onOutputClose);
 
-    source.cleanup(err);
+    // The error, if any, is surfaced once on the output stream below; the
+    // internal yt-dlp stream only needs to be closed.
+    source.cleanup();
 
     if (!ffmpeg.killed && ffmpeg.exitCode === null) {
       try {
@@ -494,6 +500,10 @@ export async function getPcmStream(url) {
   function onSourceError(err) {
     // getStream's watchdog or a yt-dlp failure: nothing more will arrive.
     cleanup(err);
+  }
+
+  function onLateSourceError(err) {
+    logger.debug('[Stream] yt-dlp stream error after PCM cleanup:', err.message);
   }
 
   function onProcessError(error) {

@@ -100,7 +100,8 @@ cutting the voice off on pause, stop, skip or queue clear is enforced in one pla
 
 Negative: when the DJ is configured, the transcode is our code's responsibility rather
 than the library's, so a regression there affects every track. The PCM path is covered
-by `test/core/audioMixer.test.js` and `test/core/player-overlay.test.js`, and
+by `test/core/audioMixer.test.js`, `test/core/player-overlay.test.js` and
+`test/integrations/youtube-pcm.test.js` (the transcode's cleanup, drain and watchdog), and
 quickstart checks it plays identically to the legacy path.
 
 ### Follow-up task list (actionable)

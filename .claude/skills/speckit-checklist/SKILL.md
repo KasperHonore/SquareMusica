@@ -1,15 +1,16 @@
 ---
-name: "speckit-checklist"
-description: "Generate a custom checklist for the current feature based on user requirements."
+name: speckit-checklist
+description: Generate a custom checklist for the current feature based on user requirements.
 argument-hint: "Domain or focus area for the checklist"
-compatibility: "Requires spec-kit project structure with .specify/ directory"
+compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: "github-spec-kit"
-  source: "templates/commands/checklist.md"
+  author: github-spec-kit
+  source: preset:claude-ask-questions
 user-invocable: true
 disable-model-invocation: false
 ---
 
+# Speckit Checklist Skill
 
 ## Checklist Purpose: "Unit Tests for English"
 
@@ -87,7 +88,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Execution Steps
 
-1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json --template checklist-template` from repo root and parse JSON for FEATURE_DIR, AVAILABLE_DOCS list, and TEMPLATE_CONTENT.
+1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root and parse JSON for FEATURE_DIR, AVAILABLE_DOCS list, and TEMPLATE_CONTENT.
    - All file paths must be absolute.
    - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 

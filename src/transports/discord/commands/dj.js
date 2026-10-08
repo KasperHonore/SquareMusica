@@ -125,8 +125,13 @@ export async function handleDj(interaction) {
           { id, name },
           { transport: 'discord', channelId: interaction.channelId }
         );
+        if (!state.theme) {
+          // The queue was cleared or playback stopped while the set was starting.
+          await interaction.editReply('Themed mode was stopped before it could start.');
+          return;
+        }
         await interaction.editReply(
-          `Themed mode is on: **${state.theme?.theme ?? description.trim()}**. Keeping ${state.lookahead} DJ picks queued.`
+          `Themed mode is on: **${state.theme.theme}**. Keeping ${state.lookahead} DJ picks queued.`
         );
         return;
       }

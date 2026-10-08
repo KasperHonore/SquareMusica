@@ -424,6 +424,31 @@ describe('djService: themed mode (US4, contracts §3)', () => {
     expect(llm.chatJson).not.toHaveBeenCalled();
   });
 
+  it('restarts after a stop while the kept picks still meet the lookahead (FR-021)', async () => {
+    await dj.startTheme({ theme: 'rock' }, ACTOR, ORIGIN);
+    await vi.advanceTimersByTimeAsync(0);
+    dj.stopTheme(ACTOR);
+    expect(mocks.queue.countUpcoming((t) => t.addedByDj)).toBe(5);
+
+    const state = await dj.startTheme({ theme: 'jazz' }, ACTOR, ORIGIN);
+    expect(state.theme).toMatchObject({ theme: 'jazz', status: 'running' });
+    expect(mocks.queue.prioritizeMemberTracks).toBe(true);
+  });
+
+  it('a clear during the first top-up reports theme: null and does not start playback', async () => {
+    mocks.emitter.addToQueue.mockImplementationOnce((track) => {
+      mocks.queue.add(track);
+      mocks.queue.clear();
+      mocks.emitter.onQueueCleared();
+      return true;
+    });
+    const events = djStateEvents();
+    const state = await dj.startTheme({ theme: 'rock' }, ACTOR, ORIGIN);
+    expect(state.theme).toBeNull();
+    expect(mocks.emitter.ensurePlaying).not.toHaveBeenCalled();
+    expect(events.filter((s) => s.theme !== null)).toHaveLength(0);
+  });
+
   it('works with commentary disabled (silent build)', async () => {
     expect(dj.getState().enabled).toBe(false);
     const state = await dj.startTheme({ theme: 'rock' }, ACTOR, ORIGIN);

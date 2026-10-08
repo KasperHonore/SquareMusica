@@ -168,6 +168,7 @@ export function init() {
     recordSuccess,
     recordFailure,
     recordUsage: () => recordUsage('themed_tracks'),
+    ensurePlaying: () => startPlayback(),
     onStatusChange: () => broadcast()
   });
 
@@ -393,16 +394,26 @@ export async function startTheme({ theme, lookahead } = {}, actor = null, origin
     clearTimeout(intro);
     if (queue) queue.prioritizeMemberTracks = false;
     if (error?.code === SERVICE_UNAVAILABLE) throw new DjError(SERVICE_UNAVAILABLE);
+    if (error?.code === NOT_IN_VOICE) throw new DjError(NOT_IN_VOICE);
+    if (error?.code === CAP_REACHED) throw new DjError(CAP_REACHED);
     throw new DjError(NO_TRACKS_FOR_THEME, "I couldn't find any tracks for that theme.");
   }
 
+  // A clear or stop during the first top-up already ended the session and
+  // broadcast it; report the state as it is (theme: null) (FR-024b).
+  if (!themeEngine.getSession()) return getState();
+
   logger.info('[DJ] Themed mode started', { theme: trimmed, by: actor?.id ?? null });
-  // Not awaited past the start: playback is the player's business (FR-008).
+  startPlayback();
+  broadcast();
+  return getState();
+}
+
+// Not awaited: playback is the player's business (FR-008).
+function startPlayback() {
   musicManager.ensurePlaying().catch((error) => {
     logger.warn('[DJ] Could not start playback for themed mode', { detail: error?.message });
   });
-  broadcast();
-  return getState();
 }
 
 /**

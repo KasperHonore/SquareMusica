@@ -278,6 +278,31 @@ describe('themeEngine: start failures (FR-029)', () => {
     expect(deps.recordFailure).toHaveBeenCalled();
   });
 
+  it('starts without an LLM call when kept DJ picks already meet the lookahead (FR-021)', async () => {
+    const { engine, queue, deps } = setup();
+    queue.add({ title: 'now', url: 'https://yt/now' });
+    for (let i = 0; i < 5; i++) {
+      queue.add({ title: `kept${i}`, url: `https://yt/kept${i}`, addedByDj: true });
+    }
+    const session = await engine.start({ theme: 'rock' });
+    expect(session).toMatchObject({ theme: 'rock', status: 'running' });
+    expect(engine.getSession()).toBe(session);
+    expect(chatJson).not.toHaveBeenCalled();
+    expect(deps.addToQueue).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['NOT_IN_VOICE', (s) => (s.connected = false)],
+    ['CAP_REACHED', (s) => (s.capReached = true)],
+    ['SERVICE_UNAVAILABLE', (s) => (s.canAttempt = false)]
+  ])('a start blocked by %s reports that reason, not NO_TRACKS_FOR_THEME', async (code, block) => {
+    const { engine, state } = setup();
+    block(state);
+    await expect(engine.start({ theme: 'rock' })).rejects.toMatchObject({ code });
+    expect(engine.getSession()).toBeNull();
+    expect(chatJson).not.toHaveBeenCalled();
+  });
+
   it('start resolves as soon as the first pick is in the queue (SC-005)', async () => {
     let release;
     const gate = new Promise((r) => {
@@ -358,6 +383,31 @@ describe('themeEngine: stalls and debounce', () => {
     chatJson.mockResolvedValue(newPicks(9, 'more'));
     await advance(ctx);
     expect(ctx.engine.getSession()).toMatchObject({ status: 'running' });
+  });
+
+  it('restarts playback when it refills a queue that ran dry during a stall (FR-022)', async () => {
+    const ctx = await started();
+    ctx.deps.ensurePlaying = vi.fn();
+    ctx.state.listeners = false;
+    await advance(ctx);
+    expect(ctx.engine.getSession()).toMatchObject({ status: 'stalled', reason: 'NO_LISTENERS' });
+
+    // The set plays out and Queue.next() empties the queue at its end.
+    ctx.queue.clear();
+    ctx.state.listeners = true;
+    chatJson.mockResolvedValue(newPicks(9, 'again'));
+    ctx.engine.recheck();
+    await ctx.settle();
+    expect(ctx.queue.length).toBeGreaterThan(0);
+    expect(ctx.deps.ensurePlaying).toHaveBeenCalledTimes(1);
+  });
+
+  it('the first top-up leaves starting playback to the caller', async () => {
+    const ctx = setup();
+    ctx.deps.ensurePlaying = vi.fn();
+    await ctx.engine.start({ theme: 'rock' });
+    await ctx.settle();
+    expect(ctx.deps.ensurePlaying).not.toHaveBeenCalled();
   });
 
   it('presence recheck stalls without waiting for a track', async () => {

@@ -79,6 +79,7 @@ function djTag(track) {
  * @param {() => void} deps.recordSuccess
  * @param {(kind: string, cause?: unknown) => void} deps.recordFailure
  * @param {() => void} deps.recordUsage - One themed track added
+ * @param {() => void} [deps.ensurePlaying] - Start playback if the player is idle
  * @param {(session: Object) => void} [deps.onStatusChange]
  */
 export function createThemeEngine(deps) {
@@ -288,8 +289,9 @@ export function createThemeEngine(deps) {
       }
       const count = needed();
       if (count === 0) {
+        // Already enough DJ picks upcoming, e.g. kept from an earlier session.
         setStatus('running');
-        return { added: 0 };
+        return { added: 0, satisfied: true };
       }
       if (!deps.canAttempt()) {
         setStatus('stalled', 'SERVICE_UNAVAILABLE');
@@ -299,6 +301,9 @@ export function createThemeEngine(deps) {
       let total = 0;
       const onAdded = () => {
         total++;
+        // A refill after the queue ran dry (e.g. resuming from a stall) must
+        // restart the player; the first top-up leaves that to the caller.
+        if (total === 1 && !initial) deps.ensurePlaying?.();
         signalFirst();
       };
 
@@ -375,7 +380,8 @@ export function createThemeEngine(deps) {
    * Start a session and run its first top-up. Resolves once the first pick is
    * in the queue (SC-005); the rest of the batch keeps resolving.
    * @returns {Promise<Object>} The session
-   * @throws {{ code: 'NO_TRACKS_FOR_THEME' | 'SERVICE_UNAVAILABLE' }} and no session remains
+   * @throws {{ code: 'NO_TRACKS_FOR_THEME' | 'SERVICE_UNAVAILABLE' | 'NOT_IN_VOICE' | 'CAP_REACHED' }}
+   *   and no session remains
    */
   async function start({ theme, startedBy = null, origin = null }) {
     clearTimers();
@@ -400,7 +406,8 @@ export function createThemeEngine(deps) {
     track(run.done);
     const outcome = await Promise.race([run.firstAdded.then(() => ({ added: 1 })), run.done]);
 
-    if (outcome.added > 0) {
+    // A lookahead already met by queued DJ picks is a successful start.
+    if (outcome.added > 0 || outcome.satisfied) {
       mine.started = true;
       return mine;
     }
@@ -408,7 +415,8 @@ export function createThemeEngine(deps) {
       session = null;
       clearTimers();
     }
-    const code = outcome.error ? 'SERVICE_UNAVAILABLE' : 'NO_TRACKS_FOR_THEME';
+    // NO_TRACKS_FOR_THEME only when the theme itself yielded nothing (FR-029).
+    const code = outcome.error ? 'SERVICE_UNAVAILABLE' : (outcome.blocked ?? 'NO_TRACKS_FOR_THEME');
     throw Object.assign(new Error(code), { code });
   }
 

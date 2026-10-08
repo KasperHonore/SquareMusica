@@ -1,8 +1,11 @@
 import { musicManager } from '../../core/musicManager.js';
 import { db } from '../../persistence/db.js';
+import { getPlayer, getQueue } from '../playback.js';
 import { getDjConfig, isDjConfigured } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { DjError, DJ_UNAVAILABLE, INVALID_INTERVAL, INVALID_LOOKAHEAD } from './errors.js';
+import { createLinePlanner } from './linePlanner.js';
+import { writeLine } from './lineWriter.js';
 
 /**
  * The AI DJ service: one API called by every transport (research R12). Only
@@ -32,6 +35,10 @@ const breaker = {
 // Daily caps, backed by dj_usage.
 let caps = null;
 let midnightTimer = null;
+
+// Line planner (R5) and the mediator listeners feeding it.
+let planner = null;
+let listeners = null;
 
 /** YYYY-MM-DD for the local day of `date`. Process TZ is the same zone SQLite's
  * 'localtime' uses (db.checkTimezone() verifies they agree), so this equals
@@ -77,6 +84,56 @@ function health() {
   return breaker.openUntil !== null ? 'degraded' : 'ok';
 }
 
+/**
+ * writeLine with the breaker and usage bookkeeping (R9). A line counts toward
+ * the cap once TTS succeeds, whether or not it is spoken.
+ */
+async function produceLine(ctx, recentSpoken) {
+  try {
+    const line = await writeLine(ctx, recentSpoken);
+    recordSuccess();
+    recordUsage('lines');
+    return line;
+  } catch (error) {
+    recordFailure(error?.kind ?? 'unknown', error);
+    throw error;
+  }
+}
+
+function startPlanner() {
+  planner = createLinePlanner({
+    getSettings: () => settings,
+    getVoiceContext: () => musicManager.getVoiceContext(),
+    getQueue: () => getQueue(),
+    getPlayer: () => getPlayer(),
+    produceLine,
+    canAttempt,
+    isBreakerOpen,
+    isCapReached: () => isCapReached('lines'),
+    // Shout-out opt-outs arrive with US3 (T048); until then nobody is named.
+    getOptOuts: () => db.getShoutoutOptOuts?.() ?? new Set()
+  });
+  listeners = {
+    'track:change': (track) => planner.onTrackChange(track),
+    'queue:update': () => planner.onQueueUpdate()
+  };
+  for (const [event, fn] of Object.entries(listeners)) musicManager.on(event, fn);
+}
+
+function stopPlanner() {
+  if (listeners) {
+    for (const [event, fn] of Object.entries(listeners)) musicManager.off(event, fn);
+  }
+  listeners = null;
+  planner?.shutdown();
+  planner = null;
+}
+
+/** The running planner, or null. For tests. */
+export function getPlanner() {
+  return planner;
+}
+
 function broadcast() {
   musicManager.emit('dj:state', getState());
 }
@@ -105,6 +162,7 @@ export function init() {
   initialised = true;
   musicManager.setGetDjState(getState);
   scheduleMidnightReset();
+  startPlanner();
   logger.info(
     `[DJ] Ready: enabled=${settings.enabled} interval=${settings.interval} lookahead=${settings.lookahead}`
   );
@@ -112,6 +170,7 @@ export function init() {
 
 /** Stop timers and forget state. For shutdown and tests. */
 export function shutdown() {
+  stopPlanner();
   if (midnightTimer) clearTimeout(midnightTimer);
   midnightTimer = null;
   initialised = false;
@@ -196,8 +255,14 @@ export function setSettings(partial, actor) {
     update.enabled = input.enabled;
   }
 
+  // FR-006: a new interval, or turning the DJ on, restarts the count.
+  const restartCount =
+    (update.interval !== undefined && update.interval !== settings.interval) ||
+    (update.enabled === true && settings.enabled === false);
+
   db.updateDjSettings(update);
   settings = { ...settings, ...update };
+  if (restartCount) planner?.resetCounter();
   logger.info(`[DJ] Settings changed by ${actor?.name ?? 'system'}:`, update);
   broadcast();
   return getState();

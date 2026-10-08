@@ -18,6 +18,7 @@ const LLM_TEMPERATURE = 0.9;
 export const SYSTEM_PROMPT = [
   'You are the SquareMusica radio DJ.',
   'Write ONE or TWO short, upbeat sentences to say over the start of the next song.',
+  'Always mention the next or the previous track and cite its fact id.',
   'Use ONLY the facts provided. Only name people listed under allowedNames.',
   'Never invent play counts, dates or connections.',
   'Never insult anyone, never use slurs, and never mention personal information beyond the provided facts.',
@@ -29,7 +30,8 @@ export const SYSTEM_PROMPT = [
 /**
  * A line that could not be produced. `kind` is reported to the breaker:
  * 'llm' (request or JSON failed), 'validation' (the model's line was rejected),
- * or the TtsError kind from integrations/elevenlabs.js.
+ * 'cancelled' (no longer needed before TTS; not a failure), or the TtsError
+ * kind from integrations/elevenlabs.js.
  */
 export class LineError extends Error {
   constructor(kind, message, cause) {
@@ -101,8 +103,53 @@ export function quantitiesIn(text) {
   return found;
 }
 
+// Abbreviations whose full stop does not end a sentence ("Mr. Brightside", "feat. X").
+const ABBREVIATIONS = /\b(mr|mrs|ms|dr|st|jr|sr|feat|ft|vs|vol|pt)\./gi;
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Track titles, artists and the theme from the context, longest first. Their
+ * punctuation and words are data, not the model's prose, so the sentence count
+ * and the content filter look at the line with them masked out.
+ */
+function contextNames(ctx) {
+  const names = new Set();
+  for (const track of [ctx.next, ctx.previous]) {
+    if (!track) continue;
+    if (track.title) names.add(String(track.title));
+    if (track.artist) {
+      names.add(String(track.artist));
+      for (const artist of String(track.artist).split(', ')) names.add(artist);
+    }
+  }
+  if (ctx.theme) names.add(String(ctx.theme));
+  return [...names].filter((name) => name.trim() !== '').sort((a, b) => b.length - a.length);
+}
+
+/** Whether the line names the next or previous track's title or artist. */
+function namesTrack(text, ctx) {
+  const lower = text.toLowerCase();
+  return [ctx.next, ctx.previous].some(
+    (track) =>
+      track &&
+      [track.title, track.artist].some((name) => name && lower.includes(String(name).toLowerCase()))
+  );
+}
+
+function maskNames(text, names) {
+  let masked = text;
+  for (const name of names) {
+    masked = masked.replace(new RegExp(escapeRegExp(name), 'gi'), 'NAME');
+  }
+  return masked;
+}
+
 function countSentences(text) {
   return text
+    .replace(ABBREVIATIONS, '$1')
     .split(/[.!?]+(?:\s+|$)/)
     .map((part) => part.trim())
     .filter(Boolean).length;
@@ -135,12 +182,17 @@ export function validateLine(output, ctx, recentSpoken = []) {
 
   const text = line.trim();
   if (text.length > MAX_LINE_CHARS) reject(`${text.length} characters`);
-  const sentences = countSentences(text);
+  const prose = maskNames(text, contextNames(ctx));
+  const sentences = countSentences(prose);
   if (sentences < 1 || sentences > MAX_SENTENCES) reject(`${sentences} sentences`);
 
   const factsById = new Map(ctx.facts.map((fact) => [fact.id, fact]));
   const unknown = factIds.filter((id) => !factsById.has(id));
   if (unknown.length > 0) reject(`unknown fact ids ${unknown.join(', ')}`);
+  // FR-004 / US1: every line is about the previous or next track.
+  const citesTrack = factIds.some((id) => factsById.get(id).kind === 'track');
+  if (!citesTrack && !namesTrack(text, ctx))
+    reject('does not reference the next or previous track');
 
   const allowed = new Set();
   for (const id of factIds) {
@@ -148,10 +200,10 @@ export function validateLine(output, ctx, recentSpoken = []) {
     for (const match of String(fact.text).matchAll(DIGITS)) allowed.add(Number(match[0]));
     if (typeof fact.value === 'number') allowed.add(fact.value);
   }
-  const unsupported = quantitiesIn(text).filter((n) => !allowed.has(n));
+  const unsupported = quantitiesIn(prose).filter((n) => !allowed.has(n));
   if (unsupported.length > 0) reject(`unsupported quantity ${unsupported.join(', ')}`);
 
-  if (!isClean(text)) reject('blocked term');
+  if (!isClean(prose)) reject('blocked term');
 
   const key = normalise(text);
   if (recentSpoken.slice(-REPEAT_WINDOW).some((spoken) => normalise(spoken) === key)) {
@@ -177,11 +229,14 @@ export function buildPayload(ctx, recentSpoken = []) {
  * Generate, validate and synthesize one line.
  * @param {Object} ctx - Listening Context from buildContext()
  * @param {string[]} [recentSpoken] - Last spoken texts, oldest first
+ * @param {Object} [options]
+ * @param {() => boolean} [options.isCancelled] - Checked before TTS, so a line
+ *   nobody will speak costs no speech credits
  * @returns {Promise<{ forKey: string, text: string, pcm: Buffer, factIds: string[],
  *   namedUserIds: string[], preparedAt: number }>}
  * @throws {LineError|Error} Always with a `kind`
  */
-export async function writeLine(ctx, recentSpoken = []) {
+export async function writeLine(ctx, recentSpoken = [], { isCancelled } = {}) {
   let output;
   try {
     output = await chatJson({
@@ -195,6 +250,7 @@ export async function writeLine(ctx, recentSpoken = []) {
   }
 
   const { text, factIds } = validateLine(output, ctx, recentSpoken);
+  if (isCancelled?.()) throw new LineError('cancelled', 'DJ line no longer needed');
 
   let pcm;
   try {

@@ -204,6 +204,14 @@ describe('breaker (R9)', () => {
     expect(emitted.at(-1).health).toBe('ok');
   });
 
+  it('a cancelled line is not a breaker failure', async () => {
+    writeLine.mockRejectedValue(Object.assign(new Error('cancelled'), { kind: 'cancelled' }));
+    await failingLine();
+    await failingLine();
+    await failingLine();
+    expect(djService.getState().health).toBe('ok');
+  });
+
   it('a quota failure keeps the breaker open for 30 min', async () => {
     writeLine.mockRejectedValue(Object.assign(new Error('quota'), { kind: 'quota' }));
     await failingLine();

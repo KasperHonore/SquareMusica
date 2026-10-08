@@ -88,14 +88,15 @@ function health() {
  * writeLine with the breaker and usage bookkeeping (R9). A line counts toward
  * the cap once TTS succeeds, whether or not it is spoken.
  */
-async function produceLine(ctx, recentSpoken) {
+async function produceLine(ctx, recentSpoken, options) {
   try {
-    const line = await writeLine(ctx, recentSpoken);
+    const line = await writeLine(ctx, recentSpoken, options);
     recordSuccess();
     recordUsage('lines');
     return line;
   } catch (error) {
-    recordFailure(error?.kind ?? 'unknown', error);
+    // A cancelled line was dropped by the planner; neither service failed.
+    if (error?.kind !== 'cancelled') recordFailure(error?.kind ?? 'unknown', error);
     throw error;
   }
 }

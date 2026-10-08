@@ -176,11 +176,14 @@ export function createLinePlanner(deps) {
     // `result` resolves to the line, or null when it could not be produced. A
     // discarded entry is never stored; a waiter that claimed it speaks it.
     const entry = { key, discarded: false, claimed: false, result: null };
+    // Skip TTS for a line that was discarded and that no waiter claimed.
+    const isCancelled = () => entry.discarded && !entry.claimed;
     entry.result = Promise.resolve()
-      .then(() => deps.produceLine(ctx, [...spoken]))
+      .then(() => deps.produceLine(ctx, [...spoken], { isCancelled }))
       .then(
         (line) => line,
         (error) => {
+          if (error?.kind === 'cancelled') return null; // already dropped as stale
           drop(error?.kind === 'validation' ? 'validation' : 'service', key);
           logger.debug(`[DJ] Preparation failed: ${error?.message}`);
           return null;
@@ -366,6 +369,13 @@ export function createLinePlanner(deps) {
   /** FR-006: the next line comes at the Nth transition after this call. */
   function resetCounter() {
     transitionsSinceSpoken = 0;
+    // A line prepared for a transition that is no longer due would never be
+    // spoken; drop it now so an in-flight one skips its TTS.
+    if ((prepared || (inflight && !inflight.discarded)) && !willBeDue()) {
+      drop('stale', prepared?.forKey ?? inflight.key);
+      discardPreparation();
+      attemptedKey = null; // not a failure: the target may be prepared again later
+    }
   }
 
   function shutdown() {

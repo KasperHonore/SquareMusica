@@ -66,6 +66,29 @@ describe('writeLine: accepted lines', () => {
     await expect(writeLine(context(), [])).resolves.toMatchObject({ text });
   });
 
+  it.each([
+    'That was Mr. Brightside. Now ABBA!',
+    'Dr. Dre feat. Snoop with Dancing Queen? Turn it up!'
+  ])('does not count abbreviation full stops as sentence ends: %s', async (text) => {
+    modelSays(text);
+    await expect(writeLine(context(), [])).resolves.toMatchObject({ text });
+  });
+
+  it('ignores digits inside a track title (not a quantity claim)', async () => {
+    const ctx = buildContext({ previous, next: { ...next, title: 'Greatest Hits Vol. 2' } });
+    const text = 'Up next, Greatest Hits Vol. 2 from ABBA. Enjoy!';
+    modelSays(text);
+    await expect(writeLine(ctx, [])).resolves.toMatchObject({ text });
+  });
+
+  it('ignores punctuation and blocked words inside track titles and artists', async () => {
+    const odd = { ...next, title: 'Is This It? Idiot!', channel: 'The Strokes' };
+    const ctx = buildContext({ previous, next: odd });
+    const text = 'Here comes Is This It? Idiot! by The Strokes. Enjoy!';
+    modelSays(text);
+    await expect(writeLine(ctx, [])).resolves.toMatchObject({ text });
+  });
+
   it.each(["Hey Kasper, this one's for you.", "Here's one more classic."])(
     'treats number words used as ordinary words as non-quantities: %s',
     async (text) => {
@@ -76,7 +99,7 @@ describe('writeLine: accepted lines', () => {
 
   it('accepts a quantity that equals a number in a cited fact', async () => {
     const fact = { id: 'f-count', kind: 'member', text: 'Kasper has played this track 7 times.' };
-    modelSays('Kasper has spun this seven times now.', ['f-count']);
+    modelSays('Kasper has spun Dancing Queen seven times now.', ['f-count']);
     // "spun ... seven times": "seven times" is a number word + count noun.
     await expect(writeLine(context([fact]), [])).resolves.toMatchObject({
       factIds: ['f-count']
@@ -149,6 +172,31 @@ describe('writeLine: rejected lines never reach TTS', () => {
     const fact = { id: 'f-count', kind: 'member', text: 'Kasper has played this track 7 times.' };
     modelSays('Kasper has played this seven times!', ['f-next']);
     await rejects(context([fact]));
+  });
+
+  it('rejects a line that cites no track fact (US1/AC1)', async () => {
+    modelSays("Let's keep the party going!", []);
+    await rejects();
+  });
+
+  it('accepts a line that names the next track without citing its fact', async () => {
+    const ctx = buildContext({ previous, next, theme: 'eighties' });
+    modelSays('Dancing Queen, eighties all night long!', ['f-theme']);
+    await expect(writeLine(ctx, [])).resolves.toMatchObject({ factIds: ['f-theme'] });
+  });
+
+  it('rejects a line that cites only a theme fact', async () => {
+    const ctx = buildContext({ previous, next, theme: 'eighties' });
+    modelSays('Eighties all night long!', ['f-theme']);
+    await rejects(ctx);
+  });
+
+  it('skips TTS when the line was cancelled after validation', async () => {
+    modelSays('Here is ABBA!');
+    await expect(writeLine(context(), [], { isCancelled: () => true })).rejects.toMatchObject({
+      kind: 'cancelled'
+    });
+    expect(synthesize).not.toHaveBeenCalled();
   });
 
   it('rejects a line containing a blocked term', async () => {

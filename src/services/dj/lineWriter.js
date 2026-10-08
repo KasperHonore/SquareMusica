@@ -13,6 +13,8 @@ const PROMPT_RECENT = 5;
 export const SYSTEM_PROMPT = [
   'You are the SquareMusica radio DJ, talking to friends in a Discord voice channel.',
   'Write ONE or TWO short, upbeat sentences to say over the start of the next song.',
+  'The line must mention the next track or the previous track (its title or artist)',
+  'and cite that track fact in factIds.',
   'Use ONLY the facts provided. Never invent play counts, dates, people or connections.',
   'Only name people listed under allowedNames; if it is empty, name nobody.',
   'Spell every number out as words. No emoji. No insults, slurs or harassment, and no',
@@ -129,6 +131,15 @@ function escapeRe(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Replace each known title or artist in `text` with a placeholder. */
+function maskPhrases(text, phrases, flags = 'gi') {
+  let masked = text;
+  for (const phrase of [...phrases].sort((a, b) => b.length - a.length)) {
+    if (phrase) masked = masked.replace(new RegExp(escapeRe(phrase), flags), 'X');
+  }
+  return masked;
+}
+
 /**
  * Sentence count. Terminators inside quotes, common abbreviations ("Mr."), and
  * known titles or artists ("P.O.D.") don't end a sentence.
@@ -136,11 +147,9 @@ function escapeRe(text) {
  * @param {string[]} [phrases] - titles and artists to mask first
  */
 export function countSentences(text, phrases = []) {
-  let masked = text;
-  for (const phrase of [...phrases].sort((a, b) => b.length - a.length)) {
-    if (phrase) masked = masked.replace(new RegExp(escapeRe(phrase), 'gi'), 'X');
-  }
-  masked = masked.replace(/"[^"]*"|“[^”]*”/g, 'X').replace(ABBREVIATIONS, 'X');
+  const masked = maskPhrases(text, phrases)
+    .replace(/"[^"]*"|“[^”]*”/g, 'X')
+    .replace(ABBREVIATIONS, 'X');
   const terminators = masked.match(/[.!?…]+(?=\s|$)/g) ?? [];
   const trailing = /[.!?…]\s*$/.test(masked);
   return terminators.length + (trailing ? 0 : 1);
@@ -173,20 +182,27 @@ export function validateLine(response, ctx, recentSpoken = []) {
   }
 
   if (text.length > MAX_CHARS) reject(`${text.length} characters`);
-  const phrases = [ctx.previous, ctx.next].flatMap((t) => (t ? [t.title, t.artist] : []));
-  const sentences = countSentences(text, phrases.filter(Boolean));
+  const phrases = [ctx.previous, ctx.next]
+    .flatMap((t) => (t ? [t.title, t.artist] : []))
+    .filter(Boolean);
+  const sentences = countSentences(text, phrases);
   if (sentences < 1 || sentences > MAX_SENTENCES) reject(`${sentences} sentences`);
 
   const factsById = new Map((ctx.facts ?? []).map((f) => [f.id, f]));
   const unknown = factIds.filter((id) => !factsById.has(id));
   if (unknown.length > 0) reject(`unknown fact ids ${unknown.join(', ')}`);
+  // US1/AC1: every line introduces the next track or looks back at the last one.
+  if (!factIds.some((id) => factsById.get(id).kind === 'track')) reject('cites no track fact');
 
   const allowed = new Set();
   for (const id of factIds) for (const n of factNumbers(factsById.get(id))) allowed.add(n);
   const unsupported = quantitiesIn(text).filter((q) => !allowed.has(q));
   if (unsupported.length > 0) reject(`unsupported quantity ${unsupported.join(', ')}`);
 
-  if (!isClean(text)) reject('content filter');
+  // Real titles and artists can contain a blocked word (e.g. "Gypsy"); the
+  // filter judges what the model added around them. Masking is case-sensitive
+  // so the same word used in passing, in lower case, is still caught.
+  if (!isClean(maskPhrases(text, phrases, 'g'))) reject('content filter');
 
   const key = normalise(text);
   if (recentSpoken.slice(-REPEAT_WINDOW).some((line) => normalise(line) === key)) {

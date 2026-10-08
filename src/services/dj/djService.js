@@ -99,7 +99,7 @@ function createPlanner() {
     onLineFailure: (kind, error) => {
       // A rejected line is the model's fault, not an outage, but it still
       // counts toward the breaker (contracts §5a).
-      recordFailure(kind === 'quota' ? 'quota' : kind, error);
+      recordFailure(kind, error);
     }
   });
 }

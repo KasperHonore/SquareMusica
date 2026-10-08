@@ -1,4 +1,4 @@
-import { buildContext, trackKey } from './context.js';
+import { buildContext, keyMatches, trackKey } from './context.js';
 import { logger } from '../../utils/logger.js';
 
 // When DJ lines are prepared and spoken (research R5). Lines are written during
@@ -10,6 +10,10 @@ import { logger } from '../../utils/logger.js';
 const PREPARE_LEAD_MS = 30 * 1000;
 const SPEAK_GRACE_MS = 2000;
 const SPOKEN_MEMORY = 20;
+// While the preparation window is open but the DJ must stay quiet (paused, no
+// listeners, breaker open, cap), re-check this often: resuming, someone joining
+// or the breaker closing emits no queue:update.
+const PREPARE_RETRY_MS = 10 * 1000;
 
 /**
  * @param {Object} deps
@@ -43,8 +47,9 @@ export function createLinePlanner(deps) {
   let prepared = null; // a finished DJ Line waiting for its track
   let inflight = null; // { forKey, cancelled }
   let pendingPrepare = false;
-  let awaiting = null; // { key, timer }: a due transition waiting on `inflight`
+  let awaiting = null; // { key, track, timer }: a due transition waiting on `inflight`
   let prepTimer = null;
+  let retryTimer = null;
   let prepWindowOpen = false;
   let attemptedKey = null; // one attempt per predicted track per window
   const spoken = [];
@@ -108,21 +113,49 @@ export function createLinePlanner(deps) {
     }
   }
 
+  function clearRetry() {
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+
+  function scheduleRetry() {
+    if (retryTimer) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      prepare();
+    }, PREPARE_RETRY_MS);
+    retryTimer.unref?.();
+  }
+
+  /**
+   * True while the queue has advanced but the player has not reported the new
+   * track yet (tryPlayWithFallback calls queue.next() and then awaits
+   * play()). In that window peekNext() already looks one track too far ahead.
+   */
+  function isSwitching() {
+    const current = getQueue()?.getCurrent?.() ?? null;
+    if (!current || !currentTrack || current === currentTrack) return false;
+    return !keyMatches(trackKey(currentTrack), current);
+  }
+
   function prepare() {
     if (inflight) {
       pendingPrepare = true;
       return;
     }
-    if (!prepWindowOpen) return;
+    if (!prepWindowOpen || !currentTrack || isSwitching()) return;
 
     const queue = getQueue();
     const next = queue?.peekNext?.() ?? null;
     if (!next || !nextIsDue()) return;
     const key = trackKey(next);
-    if (prepared?.forKey === key || attemptedKey === key) return;
-    if (silenceReason({ forPreparation: true })) return;
+    if (keyMatches(prepared?.forKey, next) || keyMatches(attemptedKey, next)) return;
     // Last gate: an open breaker refuses, and a half-open one lets this through.
-    if (!canAttempt()) return;
+    if (silenceReason({ forPreparation: true }) || !canAttempt()) {
+      scheduleRetry();
+      return;
+    }
+    clearRetry();
 
     prepared = null;
     attemptedKey = key;
@@ -145,9 +178,10 @@ export function createLinePlanner(deps) {
           const ms = Date.now() - startedAt;
           if (job.cancelled) return drop('stale', key);
           logger.info(`[DJ] Line prepared key=${key} chars=${line.text.length} ms=${ms}`);
-          if (awaiting?.key === key) {
+          if (awaiting && keyMatches(key, awaiting.track)) {
+            const spokenKey = awaiting.key;
             clearAwaiting();
-            speak(line, key);
+            speak(line, spokenKey);
           } else {
             prepared = line;
           }
@@ -156,7 +190,7 @@ export function createLinePlanner(deps) {
           const kind = error?.kind ?? 'llm';
           onLineFailure(kind, error);
           const reason = kind === 'validation' ? 'validation' : 'service';
-          if (awaiting?.key === key) clearAwaiting();
+          if (awaiting && keyMatches(key, awaiting.track)) clearAwaiting();
           if (!job.cancelled) drop(reason, key, ` (${error?.message ?? error})`);
         }
       )
@@ -173,6 +207,7 @@ export function createLinePlanner(deps) {
   function schedulePreparation(track) {
     if (prepTimer) clearTimeout(prepTimer);
     prepTimer = null;
+    clearRetry();
     prepWindowOpen = false;
     attemptedKey = null;
     const durationMs = Number(track.duration) > 0 ? Number(track.duration) * 1000 : 0;
@@ -205,6 +240,7 @@ export function createLinePlanner(deps) {
       cancelInflight();
       if (prepTimer) clearTimeout(prepTimer);
       prepTimer = null;
+      clearRetry();
       prepWindowOpen = false;
       return;
     }
@@ -223,16 +259,17 @@ export function createLinePlanner(deps) {
           drop(reason, key);
         } else {
           daily.due++;
-          if (line?.forKey === key) {
+          if (line && keyMatches(line.forKey, track)) {
             speak(line, key);
-          } else if (inflight && !inflight.cancelled && inflight.forKey === key) {
+          } else if (inflight && !inflight.cancelled && keyMatches(inflight.forKey, track)) {
             // Never wait on the track: it is already playing. Speak if the line
             // lands within the FR-003 window, otherwise drop it.
             awaiting = {
               key,
+              track,
               timer: setTimeout(() => {
                 awaiting = null;
-                if (inflight?.forKey === key) inflight.cancelled = true;
+                if (inflight && keyMatches(inflight.forKey, track)) inflight.cancelled = true;
                 drop('late', key);
               }, SPEAK_GRACE_MS)
             };
@@ -245,22 +282,24 @@ export function createLinePlanner(deps) {
     }
 
     // Anything prepared or in flight for another track is stale now.
-    if (inflight && inflight.forKey !== key && !inflight.cancelled) cancelInflight();
+    if (inflight && !inflight.cancelled && !keyMatches(inflight.forKey, track)) cancelInflight();
     schedulePreparation(track);
   }
 
   /** Mediator `queue:update`: re-prepare when the predicted next track changed. */
   function onQueueUpdate() {
-    if (!currentTrack) return;
-    const predicted = trackKey(getQueue()?.peekNext?.() ?? null);
-    if (prepared && prepared.forKey !== predicted) {
+    // Mid-switch the track about to start is not peekNext(); trackStart settles
+    // whether the prepared line still fits.
+    if (!currentTrack || isSwitching()) return;
+    const next = getQueue()?.peekNext?.() ?? null;
+    if (prepared && !keyMatches(prepared.forKey, next)) {
       drop('stale', prepared.forKey, ' (queue changed)');
       prepared = null;
     }
-    if (inflight && !inflight.cancelled && inflight.forKey !== predicted && !awaiting) {
+    if (inflight && !inflight.cancelled && !keyMatches(inflight.forKey, next) && !awaiting) {
       cancelInflight();
     }
-    if (prepWindowOpen && currentTrack && !prepared && predicted !== attemptedKey) prepare();
+    if (prepWindowOpen && !prepared && !keyMatches(attemptedKey, next)) prepare();
   }
 
   /** Restart the interval count (setting changes, FR-006). */
@@ -278,6 +317,7 @@ export function createLinePlanner(deps) {
 
   function stop() {
     clearAwaiting();
+    clearRetry();
     if (prepTimer) clearTimeout(prepTimer);
     prepTimer = null;
     cancelInflight();

@@ -16,6 +16,20 @@ export function trackKey(track) {
   return `${track.title}|${addedAt}`;
 }
 
+/**
+ * Whether `key` (a trackKey() taken earlier) still names `track`. A lazily
+ * resolved Spotify entry is keyed by its spotifyId until resolution sets `url`,
+ * so the key taken while preparing a line can differ from the key at speak time;
+ * both identities are accepted.
+ * @param {string|null} key
+ * @param {Object|null} track
+ * @returns {boolean}
+ */
+export function keyMatches(key, track) {
+  if (!key || !track) return false;
+  return key === trackKey(track) || key === track.spotifyData?.spotifyId;
+}
+
 function artistOf(track) {
   return track.spotifyData?.artists?.[0] ?? track.channel ?? null;
 }

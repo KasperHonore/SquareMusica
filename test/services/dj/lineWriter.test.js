@@ -5,7 +5,7 @@ vi.mock('../../../src/integrations/elevenlabs.js', () => ({ synthesize: vi.fn() 
 
 import { chatJson } from '../../../src/integrations/llm.js';
 import { synthesize } from '../../../src/integrations/elevenlabs.js';
-import { writeLine } from '../../../src/services/dj/lineWriter.js';
+import { writeLine, SYSTEM_PROMPT } from '../../../src/services/dj/lineWriter.js';
 import { buildContext } from '../../../src/services/dj/context.js';
 
 const PCM = Buffer.alloc(3840);
@@ -77,6 +77,14 @@ describe('writeLine rejects, and never calls synthesize', () => {
     expect(synthesize).not.toHaveBeenCalled();
   });
 
+  it('a line that cites no track fact (US1/AC1)', async () => {
+    reply("Let's keep the party going!", []);
+    await expect(writeLine(ctxWith())).rejects.toMatchObject({ kind: 'validation' });
+    reply("Let's keep the party going!", ['m1']);
+    await expect(writeLine(ctxWith(facts))).rejects.toMatchObject({ kind: 'validation' });
+    expect(synthesize).not.toHaveBeenCalled();
+  });
+
   it('an exact repeat of any of the last 20 spoken lines', async () => {
     const recent = Array.from({ length: 20 }, (_, i) => `Line number ${i}.`);
     recent[0] = 'Here comes ABBA.';
@@ -96,6 +104,20 @@ describe('writeLine rejects, and never calls synthesize', () => {
     chatJson.mockResolvedValueOnce({ text: 'nope' });
     await expect(writeLine(ctxWith())).rejects.toMatchObject({ kind: 'validation' });
     expect(synthesize).not.toHaveBeenCalled();
+  });
+});
+
+describe('content filter and track names', () => {
+  it('accepts a real title containing a blocked word, but not the word outside it', async () => {
+    const ctx = buildContext({ previous, next: { title: 'Gypsy', url: 'u', channel: 'Shakira' } });
+    reply('Here is Gypsy by Shakira!', ['f2']);
+    await expect(writeLine(ctx)).resolves.toMatchObject({ text: 'Here is Gypsy by Shakira!' });
+    reply('Here is Gypsy by Shakira, for every gypsy out there!', ['f2']);
+    await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+  });
+
+  it('the system prompt requires mentioning the next or previous track', () => {
+    expect(SYSTEM_PROMPT).toMatch(/must mention the next track or the previous track/);
   });
 });
 

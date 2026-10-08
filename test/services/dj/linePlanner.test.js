@@ -5,7 +5,7 @@ vi.mock('../../../src/utils/logger.js', () => ({
 }));
 
 import { createLinePlanner } from '../../../src/services/dj/linePlanner.js';
-import { trackKey } from '../../../src/services/dj/context.js';
+import { keyMatches, trackKey } from '../../../src/services/dj/context.js';
 import { Queue } from '../../../src/core/queue.js';
 import { logger } from '../../../src/utils/logger.js';
 
@@ -277,6 +277,41 @@ describe('prediction and scheduling', () => {
   });
 });
 
+describe('queue identity across the switch and resolution', () => {
+  it('a queue:update between queue.next() and trackStart keeps the prepared line', async () => {
+    startQueue([track('a', 10), track('b', 10), track('c', 10)]);
+    await flush();
+    expect(planner.getPrepared().forKey).toBe('https://y/b');
+    // tryPlayWithFallback: queue.next() runs, then play() is awaited.
+    const started = queue.next();
+    planner.onQueueUpdate(); // e.g. resolution:complete while play() resolves
+    await flush();
+    expect(writeLine).toHaveBeenCalledOnce();
+    planner.onTrackChange(started);
+    expect(player.overlay).toHaveBeenCalledOnce();
+    expect(logger.info).not.toHaveBeenCalledWith(expect.stringContaining('Line dropped'));
+  });
+
+  it('a Spotify track resolving after its line was prepared keeps the line', async () => {
+    const spotify = {
+      title: 'b',
+      url: null,
+      duration: 10,
+      spotifyData: { spotifyId: 'sp-b' }
+    };
+    startQueue([track('a', 10), spotify]);
+    await flush();
+    expect(planner.getPrepared().forKey).toBe('sp-b');
+    spotify.url = 'https://y/resolved-b'; // resolution:complete
+    planner.onQueueUpdate();
+    await flush();
+    expect(writeLine).toHaveBeenCalledOnce();
+    expect(planner.getPrepared()).not.toBeNull();
+    advance();
+    expect(player.overlay).toHaveBeenCalledOnce();
+  });
+});
+
 describe('silence conditions (R5 step 5)', () => {
   it.each([
     ['disabled', () => (settings.enabled = false)],
@@ -290,6 +325,18 @@ describe('silence conditions (R5 step 5)', () => {
     startQueue([track('a', 10), track('b', 10)]);
     await flush();
     expect(writeLine).not.toHaveBeenCalled();
+  });
+
+  it('preparation is retried once a silence condition clears mid-window', async () => {
+    player.isPaused.mockReturnValue(true);
+    startQueue([track('a', 10), track('b', 10)]);
+    await flush();
+    expect(writeLine).not.toHaveBeenCalled();
+    player.isPaused.mockReturnValue(false); // resume emits no queue:update
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(writeLine).toHaveBeenCalledOnce();
+    advance();
+    expect(player.overlay).toHaveBeenCalledOnce();
   });
 
   it('no preparation when the queue has no next track', async () => {
@@ -396,5 +443,13 @@ describe('trackKey', () => {
     expect(trackKey({ url: null, spotifyData: { spotifyId: 's' } })).toBe('s');
     const addedAt = new Date('2026-10-08T10:00:00Z');
     expect(trackKey({ url: null, title: 'T', addedAt })).toBe(`T|${addedAt.toISOString()}`);
+  });
+
+  it('keyMatches accepts the pre-resolution spotifyId key once url is set', () => {
+    const t = { url: 'u', spotifyData: { spotifyId: 's' } };
+    expect(keyMatches('s', t)).toBe(true);
+    expect(keyMatches('u', t)).toBe(true);
+    expect(keyMatches('x', t)).toBe(false);
+    expect(keyMatches(null, t)).toBe(false);
   });
 });

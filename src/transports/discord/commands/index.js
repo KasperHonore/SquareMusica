@@ -11,6 +11,7 @@ import {
 } from './queue.js';
 import { handleLoop } from './settings.js';
 import { handleWebUI } from './utility.js';
+import { handleDj } from './dj.js';
 
 export function registerAllCommands() {
   // Voice
@@ -33,6 +34,9 @@ export function registerAllCommands() {
 
   // Settings
   registerCommand('loop', handleLoop);
+
+  // AI DJ
+  registerCommand('dj', handleDj);
 
   // Utility
   registerCommand('webui', handleWebUI);

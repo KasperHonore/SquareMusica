@@ -20,6 +20,8 @@ import {
   createStatsEvent,
   captureTrack
 } from '../../shared/statsEvents.js';
+import * as djService from '../../services/dj/djService.js';
+import { describeDjError, pickDjSettings } from '../../services/dj/messages.js';
 import { logger } from '../../utils/logger.js';
 
 // Minimum interval (ms) between accepted events of a given type. Lightweight
@@ -28,7 +30,8 @@ import { logger } from '../../utils/logger.js';
 // open tabs can't multiply their budget by the number of connections.
 const THROTTLE_INTERVALS_MS = {
   'queue:add': 1000,
-  'voice:join': 3000
+  'voice:join': 3000,
+  dj: 1000
 };
 
 // Longest throttle window. An entry older than this can never trigger a denial,
@@ -364,6 +367,54 @@ export function handleVoiceLeave(socket) {
     } catch (err) {
       logger.error('Voice leave error:', err);
       socket.emit('error', { message: 'Failed to leave the voice channel. Please try again.' });
+    }
+  };
+}
+
+/**
+ * Report a failed DJ call to the requesting socket. Coded errors map through
+ * the shared table (contracts §2) so the text matches Discord and HTTP.
+ * @param {Socket} socket
+ * @param {unknown} error
+ */
+function emitDjError(socket, error) {
+  const mapped = describeDjError(error, djService.getStateOrUnavailable());
+  if (mapped) {
+    socket.emit('error', { code: mapped.code, message: mapped.message });
+    return;
+  }
+  if (error instanceof TypeError) {
+    socket.emit('error', { code: 'INVALID_REQUEST', message: error.message });
+    return;
+  }
+  logger.error('DJ settings error:', error);
+  socket.emit('error', { message: 'Failed to change the DJ settings. Please try again.' });
+}
+
+/**
+ * Handle DJ settings changes ({ enabled?, interval?, lookahead? }) from web
+ * clients. The resulting state reaches every client through the single
+ * `dj:state` broadcast djService makes, so nothing is acked here.
+ * @param {Socket} socket - Socket.io socket instance
+ * @returns {Function} Event handler
+ */
+export function handleDjSettings(socket) {
+  return (payload) => {
+    if (isThrottled(socket, 'dj')) {
+      socket.emit('error', {
+        message: 'You are changing DJ settings too quickly. Please slow down.'
+      });
+      return;
+    }
+
+    try {
+      const actor = {
+        id: socket.user?.discord_id ?? null,
+        name: socket.user?.username ?? 'Web User'
+      };
+      djService.setSettings(pickDjSettings(payload), actor);
+    } catch (err) {
+      emitDjError(socket, err);
     }
   };
 }

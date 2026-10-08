@@ -26,6 +26,8 @@ export function useSocket() {
   const [historyVersion, setHistoryVersion] = useState(0);
   const [botInfo, setBotInfo] = useState(null);
   const [playlists, setPlaylists] = useState([]);
+  // DjState (contracts §1); { available: false } until the server says otherwise.
+  const [djState, setDjState] = useState({ available: false });
 
   useEffect(() => {
     if (!user) return;
@@ -99,6 +101,13 @@ export function useSocket() {
       if (Array.isArray(state.playlists)) {
         setPlaylists(state.playlists);
       }
+      if (state.dj) {
+        setDjState(state.dj);
+      }
+    });
+
+    newSocket.on('dj:state', (state) => {
+      setDjState(state || { available: false });
     });
 
     newSocket.on('playlists:update', (updatedPlaylists) => {
@@ -182,6 +191,15 @@ export function useSocket() {
     [socket]
   );
 
+  // Any subset of { enabled, interval, lookahead }. The new state arrives back
+  // through the dj:state broadcast, so every open dashboard converges.
+  const setDjSettings = useCallback(
+    (partial) => {
+      socket?.emit('dj:settings', partial);
+    },
+    [socket]
+  );
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -202,6 +220,7 @@ export function useSocket() {
     historyVersion,
     botInfo,
     playlists,
+    djState,
     error,
     notice,
     addToQueue,
@@ -212,6 +231,7 @@ export function useSocket() {
     voiceLeave,
     createPlaylist,
     deletePlaylist,
+    setDjSettings,
     clearError,
     clearNotice
   };

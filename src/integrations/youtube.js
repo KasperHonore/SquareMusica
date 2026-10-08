@@ -437,6 +437,8 @@ const PCM_ARGS = [
  * @param {string} url - YouTube URL
  * @returns {Promise<Object>} { stream, type: StreamType.Raw, cleanup }
  */
+const noop = () => {};
+
 export async function getPcmStream(url) {
   const source = await getStream(url);
   const ffmpeg = spawn(FFMPEG_PATH, PCM_ARGS);
@@ -448,12 +450,18 @@ export async function getPcmStream(url) {
     cleanedUp = true;
 
     source.stream.removeListener('error', onSourceError);
+    // Nothing else listens for 'error' on the source once onSourceError is gone
+    // (pipe() adds no error listener), so swallow any late error rather than
+    // let it reach the process-level uncaughtException handler.
+    source.stream.on('error', noop);
     ffmpeg.removeListener('error', onProcessError);
     ffmpeg.removeListener('close', onProcessClose);
     stream.removeListener('error', onStreamError);
     stream.removeListener('close', onStreamClose);
 
-    source.cleanup(err);
+    // The error is reported on our output stream below; the source only needs
+    // tearing down.
+    source.cleanup();
 
     if (!ffmpeg.killed && ffmpeg.exitCode === null) {
       try {

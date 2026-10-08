@@ -142,9 +142,15 @@ class MusicPlayer extends EventEmitter {
       let resource;
       if (this._mixingEnabled) {
         const streamResult = await getPcmStream(track.url);
-        this._currentCleanup = streamResult.cleanup || null;
         // One mixer per track, so an overlay can never carry into the next one.
         const mixer = new DuckingMixer();
+        // The mixer is torn down with the stream it reads from, so a track
+        // switch or stop releases both through the same idempotent cleanup.
+        this._currentCleanup = () => {
+          streamResult.stream.unpipe(mixer);
+          if (!mixer.destroyed) mixer.destroy();
+          streamResult.cleanup?.();
+        };
         streamResult.stream.on('error', (err) => mixer.destroy(err));
         streamResult.stream.pipe(mixer);
         this._mixer = mixer;

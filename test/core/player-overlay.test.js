@@ -127,6 +127,22 @@ describe('MusicPlayer mixing path (ADR-002)', () => {
     expect(first).not.toBe(second);
   });
 
+  it('a track switch or stop destroys the previous mixer and runs the stream cleanup', async () => {
+    const player = new MusicPlayer();
+    player.setMixingEnabled(true);
+    await player.play(track('a'), connection);
+    const [first] = createAudioResource.mock.calls[0];
+    const firstCleanup = (await getPcmStream.mock.results[0].value).cleanup;
+
+    await player.play(track('b'), connection);
+    expect(first.destroyed).toBe(true);
+    expect(firstCleanup).toHaveBeenCalledOnce();
+
+    const [second] = createAudioResource.mock.calls[1];
+    player.stop();
+    expect(second.destroyed).toBe(true);
+  });
+
   it('overlay() returns false when nothing is playing or when paused', async () => {
     const player = new MusicPlayer();
     player.setMixingEnabled(true);

@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import { PassThrough } from 'stream';
 import { existsSync } from 'fs';
 import { StreamType } from '@discordjs/voice';
+import ffmpegStatic from 'ffmpeg-static';
 import { logger } from '../utils/logger.js';
 
 const execFileAsync = promisify(execFile);
@@ -406,6 +407,125 @@ export async function getStream(url) {
     // to Opus, normalizing whatever container yt-dlp produced. Do not switch this
     // back to WebmOpus without restricting the format selector to webm/opus only.
     type: StreamType.Arbitrary,
+    cleanup
+  };
+}
+
+// Same resolution order prism-media uses inside @discordjs/voice: the bundled
+// ffmpeg-static binary, else ffmpeg on PATH (the Docker image installs one).
+const FFMPEG_PATH = ffmpegStatic && existsSync(ffmpegStatic) ? ffmpegStatic : 'ffmpeg';
+
+const PCM_FFMPEG_ARGS = [
+  '-hide_banner',
+  '-loglevel',
+  'error',
+  '-i',
+  'pipe:0',
+  '-f',
+  's16le',
+  '-ar',
+  '48000',
+  '-ac',
+  '2',
+  'pipe:1'
+];
+
+/**
+ * Get a 48 kHz s16le stereo PCM stream for playback through the DJ mixer
+ * (research R1/R2, ADR-002). Wraps getStream() in our own FFmpeg child, doing
+ * the transcode @discordjs/voice would otherwise do internally for
+ * StreamType.Arbitrary. getStream's watchdog and drain semantics are unchanged;
+ * the FFmpeg kill joins the same idempotent cleanup.
+ *
+ * @param {string} url - YouTube URL
+ * @returns {Promise<Object>} { stream, type: StreamType.Raw, cleanup }
+ */
+export async function getPcmStream(url) {
+  const source = await getStream(url);
+  const ffmpeg = spawn(FFMPEG_PATH, PCM_FFMPEG_ARGS);
+  const stream = new PassThrough();
+
+  let cleanedUp = false;
+
+  const cleanup = (err) => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+
+    ffmpeg.removeListener('error', onProcessError);
+    ffmpeg.removeListener('close', onProcessClose);
+    stream.removeListener('error', onStreamError);
+    stream.removeListener('close', onStreamClose);
+
+    // Tear down the yt-dlp side first so it stops feeding FFmpeg's stdin.
+    source.cleanup?.(err);
+
+    if (ffmpeg.exitCode === null && !ffmpeg.killed) {
+      try {
+        ffmpeg.kill('SIGKILL');
+        logger.debug('[Stream] ffmpeg process killed via cleanup');
+      } catch (killErr) {
+        logger.debug('[Stream] ffmpeg kill skipped (already exited):', killErr.message);
+      }
+    }
+
+    if (!stream.destroyed) {
+      stream.destroy(err || undefined);
+      logger.debug('[Stream] PCM PassThrough destroyed via cleanup');
+    }
+  };
+
+  function onProcessError(error) {
+    logger.error('ffmpeg process error:', error);
+    cleanup(error);
+  }
+
+  function onProcessClose(code) {
+    if (code !== 0 && code !== null) {
+      logger.error(`ffmpeg exited with code ${code}`);
+    }
+    // As with yt-dlp: a normal exit lets buffered PCM drain; the stream's own
+    // 'close' runs cleanup afterwards.
+  }
+
+  function onStreamError(err) {
+    logger.debug('[Stream] PCM PassThrough error (expected during cleanup):', err.message);
+    cleanup(err);
+  }
+
+  function onStreamClose() {
+    logger.debug('[Stream] PCM PassThrough closed');
+    cleanup();
+  }
+
+  try {
+    // EPIPE on stdin is expected when FFmpeg exits or is killed first.
+    ffmpeg.stdin.on('error', (err) => {
+      logger.debug('[Stream] ffmpeg stdin error (expected during cleanup):', err.message);
+    });
+    // yt-dlp failures (watchdog, crash) destroy its stream; carry that forward.
+    source.stream.on('error', (err) => cleanup(err));
+
+    source.stream.pipe(ffmpeg.stdin);
+    ffmpeg.stdout.pipe(stream);
+
+    ffmpeg.stderr.on('data', (data) => {
+      logger.error('ffmpeg stderr:', data.toString());
+    });
+
+    ffmpeg.on('error', onProcessError);
+    ffmpeg.on('close', onProcessClose);
+    stream.on('error', onStreamError);
+    stream.on('close', onStreamClose);
+  } catch (setupError) {
+    logger.error('[Stream] PCM setup failed; tearing down ffmpeg and yt-dlp:', setupError);
+    cleanup(setupError);
+    throw setupError;
+  }
+
+  return {
+    stream,
+    // Raw => @discordjs/voice only Opus-encodes; our FFmpeg already made PCM.
+    type: StreamType.Raw,
     cleanup
   };
 }

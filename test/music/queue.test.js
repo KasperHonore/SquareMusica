@@ -485,3 +485,56 @@ describe('Queue', () => {
     });
   });
 });
+
+describe('Queue.peekNext() (side-effect free)', () => {
+  let queue;
+
+  beforeEach(() => {
+    queue = new Queue();
+  });
+
+  it('returns null on an empty queue', () => {
+    expect(queue.peekNext()).toBeNull();
+  });
+
+  it('loop off: returns the following entry, or null at the last index', () => {
+    seed(queue, ['a', 'b', 'c'], 0);
+    expect(queue.peekNext().id).toBe('b');
+    expect(queue.currentIndex).toBe(0);
+
+    queue.currentIndex = 2;
+    expect(queue.peekNext()).toBeNull();
+    expect(queue.currentIndex).toBe(2);
+    // Unlike next(), peeking at the end never empties the queue.
+    expect(queue.length).toBe(3);
+  });
+
+  it('loop track: returns the current entry', () => {
+    seed(queue, ['a', 'b'], 1);
+    queue.loopMode = 'track';
+    expect(queue.peekNext().id).toBe('b');
+    expect(queue.currentIndex).toBe(1);
+  });
+
+  it('loop queue: wraps to the first entry at the last index', () => {
+    seed(queue, ['a', 'b', 'c'], 2);
+    queue.loopMode = 'queue';
+    expect(queue.peekNext().id).toBe('a');
+    expect(queue.currentIndex).toBe(2);
+
+    queue.currentIndex = 0;
+    expect(queue.peekNext().id).toBe('b');
+  });
+
+  it('never touches loopReplay flags', () => {
+    seed(queue, ['a', 'b'], 0);
+    queue.tracks[0].hasPlayed = true;
+    queue.tracks[1].hasPlayed = true;
+    queue.loopMode = 'queue';
+    queue.peekNext();
+    queue.currentIndex = 1;
+    queue.peekNext();
+    expect('loopReplay' in queue.tracks[0]).toBe(false);
+    expect('loopReplay' in queue.tracks[1]).toBe(false);
+  });
+});

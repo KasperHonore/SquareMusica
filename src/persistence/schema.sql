@@ -80,3 +80,27 @@ CREATE INDEX IF NOT EXISTS idx_history_requested_by_id ON history(requested_by_i
 CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_actor ON events(actor_id);
 CREATE INDEX IF NOT EXISTS idx_events_target ON events(target_user_id);
+
+-- AI DJ (feature 002). New tables only, so no migrate() step is needed.
+-- dj_settings is a single row (id = 1); the CHECKs mirror the service's own
+-- validation (FR-012, FR-023) so a bad value can never be persisted.
+CREATE TABLE IF NOT EXISTS dj_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  enabled INTEGER NOT NULL DEFAULT 0,
+  interval INTEGER NOT NULL DEFAULT 3 CHECK (interval BETWEEN 1 AND 10),
+  lookahead INTEGER NOT NULL DEFAULT 5 CHECK (lookahead IN (5, 10)),
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Members who opted out of personal shout-outs, keyed by Discord user id.
+CREATE TABLE IF NOT EXISTS dj_shoutout_optouts (
+  user_id TEXT PRIMARY KEY,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Daily usage against the operator caps. day is date('now','localtime').
+CREATE TABLE IF NOT EXISTS dj_usage (
+  day TEXT PRIMARY KEY,
+  lines INTEGER NOT NULL DEFAULT 0,
+  themed_tracks INTEGER NOT NULL DEFAULT 0
+);

@@ -1,10 +1,17 @@
 import 'dotenv/config';
-import { validateEnv, validateTimezone } from './config/env.js';
+import {
+  validateEnv,
+  validateTimezone,
+  djRequiredVars,
+  validateDjFormats,
+  isDjConfigured
+} from './config/env.js';
 
 // Fail fast with one aggregated error if any required config is missing.
 // This runs BEFORE the rest of the app is imported (those modules open the
 // database, build the Discord client, etc. as import-time side effects), so a
 // misconfiguration surfaces as a clear message instead of an unrelated crash.
+// The DJ group is all-or-nothing: if any of it is set, all four are required.
 validateEnv([
   'DISCORD_TOKEN',
   'APP_ID',
@@ -12,10 +19,12 @@ validateEnv([
   'DISCORD_CLIENT_SECRET',
   'JWT_SECRET',
   'OAUTH_REDIRECT_URI',
-  'TZ'
+  'TZ',
+  ...djRequiredVars()
 ]);
 // TZ must also be a real zone: an unknown one silently becomes UTC in SQLite.
 validateTimezone();
+validateDjFormats();
 
 // Loaded dynamically (after validation) so their side effects don't run on a
 // misconfigured environment. Static imports would be hoisted above the check.
@@ -48,8 +57,17 @@ setupCommandHandler();
 registerAllCommands();
 
 // Initialize player and queue so web UI can detect voice connection state
-getPlayer();
+const player = getPlayer();
 getQueue();
+
+// The AI DJ is only constructed when configured (FR-030). Unconfigured, the
+// player keeps its legacy audio path and nothing DJ-related exists.
+let djService = null;
+if (isDjConfigured()) {
+  player.setMixingEnabled(true);
+  djService = await import('./services/dj/djService.js');
+  djService.init();
+}
 
 // Start servers
 async function start() {
@@ -72,6 +90,7 @@ async function start() {
 process.on('SIGINT', () => {
   logger.info('Shutting down...');
   shutdownSocketServer();
+  djService?.shutdown();
   db.close();
   client.destroy();
   httpServer.close(() => {
@@ -83,6 +102,7 @@ process.on('SIGINT', () => {
 process.on('SIGTERM', () => {
   logger.info('Received SIGTERM, shutting down...');
   shutdownSocketServer();
+  djService?.shutdown();
   db.close();
   client.destroy();
   httpServer.close(() => {

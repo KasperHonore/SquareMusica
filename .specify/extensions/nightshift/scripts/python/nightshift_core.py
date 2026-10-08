@@ -20,7 +20,7 @@ from typing import Any
 
 # The extension version; keep equal to ``extension.version`` in extension.yml
 # (tests/test_version.py). Bump both on every change a consumer should pick up.
-VERSION = "2.0.4"
+VERSION = "2.0.5"
 SCHEMA_VERSION = 1
 MARKER_PREFIX = "speckit-nightshift:"
 

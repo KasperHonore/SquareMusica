@@ -27,7 +27,7 @@ else; the script adopts, retries or refuses (`review` and `verdict` re-enter thr
   `S/postconditions.py --base B --worktree W`, then, if it passed,
   `S/checks.py --sha <worktree HEAD>`. Non-blocking breakage the builder reported
   (`found_pending`): `S/found.py file --title T`.
-- `review`: `S/verdict.py inputs --sha S --checkout W`, `S/phase.py review`,
+- `review` (also after a rejected critic answer: same SHA): `S/verdict.py inputs --sha S --checkout W`, `S/phase.py review`,
   `S/verdict.py review --sha S --file F`.
 - `merge`: `S/phase_merge.py open-pr`, `merge --sha S`, then `combined`.
 - `block` or `park`: stop.

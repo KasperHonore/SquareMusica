@@ -10,6 +10,8 @@ anything. The script compares the tree before and after your review and rejects 
 review if it changed. The checks are already green at `{{sha}}`; your job is what they
 cannot judge.
 
+{{rejection}}
+
 ## The bar (frozen and verbatim; judge against it, never reinterpret or weaken it)
 {{bar}}
 

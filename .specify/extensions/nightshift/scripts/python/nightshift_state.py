@@ -38,7 +38,7 @@ SUB_STATUSES = ("not_run", "passed", "failed", "rejected", "not_checked")
 SUB_FIELDS = ("builder", "checks", "verdict")
 STOP_REASONS = ("awaiting_acceptance", "partial_awaiting_acceptance", "no_ready_work",
                 "budget_exhausted", "interrupted", "environment_failure", "safety_stop")
-PARK_REASONS = ("max_rounds", "stagnation", "no_progress", "builder_blocked", "gate_tampered",
+PARK_REASONS = ("max_rounds", "stagnation", "no_progress", "review_rejected", "builder_blocked", "gate_tampered",
                 "combined_checks_failed", "timeout",
                 "checks_failed", "ci_failed", "ci_timeout")
 BLOCK_REASONS = ("decision_needed", "clarification", "dependency_blocked", "needs_kasper")

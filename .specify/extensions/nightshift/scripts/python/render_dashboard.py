@@ -113,6 +113,7 @@ REASON_WORDS = {
     "max_rounds": "it used all its review rounds without approval",
     "stagnation": "the same problem came back round after round",
     "no_progress": "rounds stopped making progress",
+    "review_rejected": "the critic's answers were rejected and it was asked again without success",
     "builder_blocked": "the builder could not continue",
     "gate_tampered": "the builder changed checks or config it may not touch",
     "combined_checks_failed": "it broke the checks once merged with the rest, so it was reverted",
@@ -352,6 +353,7 @@ def round_table(rounds: list[dict[str, Any]]) -> str:
     rows = []
     for r in rounds:
         verdict = {"approve": ("Approved", "t-ok"), "changes": ("Changes asked", "t-warn"),
+                   "rejected": ("Review rejected", "t-warn"),
                    "decision_needed": ("Question for you", "t-bad")}.get(r["verdict"] or "", (r["verdict"] or "not yet", ""))
         checks = {"passed": ("Passed", "t-ok"), "failed": ("Failed", "t-bad")}.get(r["checks"] or "", ("not yet", ""))
         mins = f"{r['duration_s'] / 60:.0f} min" if isinstance(r["duration_s"], (int, float)) else "-"
@@ -624,6 +626,7 @@ def say(e: dict[str, Any], labels: dict[str, str]) -> str:
         ("checks", "failed"): f"{who}: automated checks failed, going back to the builder",
         ("verdict", "approve"): f"{who}: the critic approved",
         ("verdict", "changes"): f"{who}: the critic asked for changes",
+        ("verdict", "rejected"): f"{who}: the critic's answer was rejected; asking it again",
         ("verdict", "decision_needed"): f"{who}: the critic found a product question",
         ("merge", "merged"): f"{who}: merged into the feature branch",
         ("combined", "passed"): f"Everything merged so far passes together (after {who})",

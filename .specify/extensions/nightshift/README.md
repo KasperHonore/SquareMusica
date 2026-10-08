@@ -209,6 +209,14 @@ NIGHTSHIFT_SPECIFY=/path/to/specify python3 -m unittest discover -s tests -t .
   [docs/field-reports/](docs/field-reports/). Spike reports: [docs/spikes/](docs/spikes/).
 - [AGENTS.md](AGENTS.md): instructions for agents working in this repository.
 
+## Changes in 2.0.5 (2026-10-08)
+
+- A rejected critic answer leads to one fresh review of the same SHA, told why it was
+  rejected, not to a builder round. A second rejection, or a critic that changed the tree,
+  parks the piece `review_rejected`. Rejections no longer count as rounds or toward
+  stagnation. Before, one extra key in a finding cost a builder round with "_None._" to
+  repair (SquareMusica 002 us1, 2.0.4).
+
 ## Changes in 2.0.4 (2026-10-08)
 
 - A round's findings stay in the run state (`round_findings`). A second `verdict.py next`

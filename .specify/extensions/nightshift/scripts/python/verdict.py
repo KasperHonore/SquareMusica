@@ -23,7 +23,10 @@ What this script enforces, all **mechanical**:
   write tools is behavioural (its flags in ``phase.py``).
 - **Shape**: one JSON object with exactly the known fields and one criterion per bar
   ref. A prose preamble without ``{`` and one ``json`` fence are tolerated and logged
-  (D23). A rejected answer is a failed review, never approval.
+  (D23). A rejected answer is a failed review, never approval. It is the critic's
+  failure, not the builder's: ``next`` asks a fresh critic at the same SHA (told why),
+  at most ``MAX_REREVIEWS`` times per round, then parks ``review_rejected``. It costs no
+  builder round and never counts toward stagnation (live 2026-10-08).
 - **Decision**: ``decision_needed`` blocks the piece (P6); a failing criterion or a
   blocker/major finding asks for changes; otherwise approve. Only findings the builder
   has not seen go back to it; ``max_rounds`` or the same blockers twice park the piece.
@@ -55,6 +58,7 @@ import nightshift_state as st  # noqa: E402
 
 SEVERITIES = ("blocker", "major", "minor", "nit")
 BLOCKING = ("blocker", "major")
+MAX_REREVIEWS = 1
 ANSWER = {"sha": str, "criteria": list, "findings": list, "biggest_gap": str, "decision_needed": (str, type(None))}
 
 
@@ -151,6 +155,15 @@ def check_answer(data: Any, sha: str, bar: dict[str, Any]) -> None:
         raise Rejected("skips-criterion", f"criteria {sorted(refs)} do not match the frozen bar {sorted(want)}")
 
 
+def rejections(p: dict[str, Any], sha: str | None) -> dict[str, Any]:
+    """The rejected reviews of the current round at ``sha``, and how many fresh reviews
+    ``next`` has handed out for them."""
+    rec = p.get("rejected_reviews") or {}
+    if rec.get("round") == p["round"] and rec.get("sha") == sha:
+        return rec
+    return {"round": p["round"], "sha": sha, "rejections": [], "rereviews": 0}
+
+
 def fingerprint(f: dict[str, Any]) -> str:
     """Stable identity across rounds: critics renumber and reword, so not an id."""
     if f.get("fingerprint"):
@@ -224,8 +237,12 @@ def inputs(c: Ctx, sha_rev: str, base_rev: str | None, checkout: Path) -> dict[s
     (ev / "diff.patch").write_text(git(checkout, "diff", base, sha), encoding="utf-8")
     files = git(checkout, "diff", "--name-status", "--no-renames", base, sha).split("\n")
     (ev / "tree-before.json").write_text(json.dumps({**tree_token(checkout), "checkout": str(checkout)}), encoding="utf-8")
+    last = (rejections(p, sha)["rejections"] or [None])[-1]
+    rejection = (f"## Your previous answer was rejected\n{last['reason']}: {last['detail']}\n"
+                 "Answer again, in exactly the shape under Output.") if last else ""
     prompt = core.render_template(c.root, "prompt-critic.md", {
         "sha": sha, "base": base, "piece": c.key, "feature": core.feature_id(c.root, c.fdir), "evidence_dir": str(ev),
+        "rejection": rejection,
         "bar": model.bar_markdown(bar), "diff": str(ev / "diff.patch"),
         "files": "\n".join(f"- `{ln.split(chr(9))[-1]}` ({ln[0]})" for ln in files if ln.strip()) or "(no files changed)",
         "criteria": json.dumps([{"ref": s["ref"], "result": "pass|fail", "evidence": "..."} for s in bar["scenarios"]])})
@@ -258,7 +275,9 @@ def review(c: Ctx, sha_rev: str, path: Path) -> dict[str, Any]:
     if bar_hash != p.get("bar_hash"):
         raise core.NightshiftError(f"{c.key}: review inputs are stale; run `verdict.py inputs` again")
     step = f"{c.key}:{p['round']}:verdict"
-    step_inputs = {"sha": sha, "bar_hash": bar_hash,
+    rejected = rejections(p, sha)
+    # ``attempt``: a fresh review's answer is recorded even when it is the same bytes.
+    step_inputs = {"sha": sha, "bar_hash": bar_hash, "attempt": rejected["rereviews"],
                    "answer": hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None}
     done = st.step_done(c.state, step, step_inputs)
     if done:
@@ -287,7 +306,7 @@ def review(c: Ctx, sha_rev: str, path: Path) -> dict[str, Any]:
     blockers: list[str] = []
     question = None
     if data is None:
-        result, reason, blockers = "changes", "review_rejected", [f"review_rejected:{critic['reason']}"]
+        result, reason = "rejected", "review_rejected"
     elif data["decision_needed"]:
         result, reason, question = "decision_needed", "decision_needed", data["decision_needed"].strip()
     else:
@@ -303,7 +322,10 @@ def review(c: Ctx, sha_rev: str, path: Path) -> dict[str, Any]:
               "biggest_gap": data["biggest_gap"] if data else None, "question": question}
     (ev / "verdict.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     st.set_sub(c.state, c.key, "verdict", "passed" if result == "approve" else "rejected" if data is None else "failed")
-    if result == "changes":
+    if result == "rejected":
+        rejected["rejections"].append({"reason": critic["reason"], "detail": critic["detail"]})
+        p["rejected_reviews"] = rejected
+    elif result == "changes":
         p["blocker_history"].append({"round": p["round"], "sha": sha, "source": "review", "blockers": blockers})
     elif result == "approve":
         st.transition(c.state, c.key, "merging")
@@ -325,10 +347,10 @@ def review(c: Ctx, sha_rev: str, path: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _park(c: Ctx, reason: str, sha: str | None) -> dict[str, Any]:
+def _park(c: Ctx, reason: str, sha: str | None, detail: str = "") -> dict[str, Any]:
     st.transition(c.state, c.key, "parked", reason=reason)
     c.save()
-    c.log("next", "parked", sha, reason)
+    c.log("next", "parked", sha, f"{reason}: {detail}" if detail else reason)
     return {"action": "park", "reason": reason, "unseen_findings": []}
 
 
@@ -366,6 +388,23 @@ def _repair(c: Ctx, source: str, blockers: list[str], findings: list[dict[str, A
     return _build(c, f"{source}_failed", findings, sha)
 
 
+def _rereview(c: Ctx, sha: str) -> dict[str, Any]:
+    """A rejected review: a fresh critic at the same SHA, or park. Idempotent until the
+    next answer is recorded. A critic that wrote to the tree broke its read-only boundary,
+    so that tree is never judged again (Kasper 2026-10-08)."""
+    rec = rejections(c.p, sha)
+    last = rec["rejections"][-1]
+    if last["reason"] == "mutates-tree" or len(rec["rejections"]) > MAX_REREVIEWS:
+        return _park(c, "review_rejected", sha, f"{len(rec['rejections'])} rejected review(s); "
+                     f"last {last['reason']}: {last['detail']}")
+    if rec["rereviews"] < len(rec["rejections"]):
+        rec["rereviews"] += 1
+        c.p["rejected_reviews"] = rec
+        c.save()
+        c.log("next", "review", sha, f"fresh review after a rejected answer ({last['reason']})")
+    return {"action": "review", "reason": "review_rejected", "unseen_findings": []}
+
+
 def next_step(c: Ctx) -> dict[str, Any]:
     approved = ((c.record.get("pieces") or {}).get(c.key) or {}).get("loop")
     if approved and approved != c.p["loop"]:
@@ -398,6 +437,8 @@ def next_step(c: Ctx) -> dict[str, Any]:
         verdict = json.loads(vpath.read_text(encoding="utf-8")) if sha and vpath.is_file() else None
         if not verdict or verdict.get("bar_hash") != p.get("bar_hash") or p["verdict"] == "not_run":
             return {"action": "review", "reason": "verdict_missing_or_invalid", "unseen_findings": []}
+        if verdict["result"] == "rejected":
+            return _rereview(c, sha)
         if stagnated(p["blocker_history"]):
             return _park(c, "stagnation", sha)
         if st.rounds_used(p) >= int(c.cfg.get("max_rounds") or 3):

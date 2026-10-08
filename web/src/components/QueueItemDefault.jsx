@@ -1,6 +1,7 @@
 import { formatTime } from '../utils/formatTime';
 import { Remove } from './icons';
 import { UserAvatar } from './UserAvatar';
+import { DjBadge } from './dj/DjBadge';
 
 /**
  * QueueItemDefault - original center-panel queue item layout.
@@ -94,16 +95,22 @@ export function QueueItemDefault({
             </>
           )}
         </div>
-        {track.requestedBy && (
+        {track.addedByDj ? (
           <div className="flex items-center gap-1.5 text-xs mt-1 text-text-muted">
-            <UserAvatar
-              userId={track.requestedById}
-              avatarHash={track.requestedByAvatar}
-              username={track.requestedBy}
-              size={14}
-            />
-            <span className="truncate">{track.requestedBy}</span>
+            <DjBadge size={11} />
           </div>
+        ) : (
+          track.requestedBy && (
+            <div className="flex items-center gap-1.5 text-xs mt-1 text-text-muted">
+              <UserAvatar
+                userId={track.requestedById}
+                avatarHash={track.requestedByAvatar}
+                username={track.requestedBy}
+                size={14}
+              />
+              <span className="truncate">{track.requestedBy}</span>
+            </div>
+          )
         )}
       </div>
 

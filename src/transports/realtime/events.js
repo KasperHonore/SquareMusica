@@ -28,5 +28,7 @@ export const ClientEvents = {
   PLAYLIST_CREATE: 'playlist:create',
   PLAYLIST_DELETE: 'playlist:delete',
   DJ_SETTINGS: 'dj:settings',
-  DJ_SHOUTOUTS: 'dj:shoutouts'
+  DJ_SHOUTOUTS: 'dj:shoutouts',
+  DJ_THEME_START: 'dj:theme:start',
+  DJ_THEME_STOP: 'dj:theme:stop'
 };

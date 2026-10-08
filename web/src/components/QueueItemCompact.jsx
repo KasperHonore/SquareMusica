@@ -1,5 +1,6 @@
 import { formatTime } from '../utils/formatTime';
 import { UserAvatar } from './UserAvatar';
+import { DjBadge } from './dj/DjBadge';
 
 /**
  * QueueItemCompact - right-panel (Wave-style) compact queue item layout.
@@ -122,19 +123,25 @@ export function QueueItemCompact({
             ? track.spotifyData.artists.join(', ')
             : track.artist || ''}
         </div>
-        {track.requestedBy && (
-          <div
-            className="flex items-center gap-1 mt-0.5"
-            style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}
-          >
-            <UserAvatar
-              userId={track.requestedById}
-              avatarHash={track.requestedByAvatar}
-              username={track.requestedBy}
-              size={12}
-            />
-            <span className="truncate">{track.requestedBy}</span>
+        {track.addedByDj ? (
+          <div className="flex items-center gap-1 mt-0.5">
+            <DjBadge size={9} />
           </div>
+        ) : (
+          track.requestedBy && (
+            <div
+              className="flex items-center gap-1 mt-0.5"
+              style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}
+            >
+              <UserAvatar
+                userId={track.requestedById}
+                avatarHash={track.requestedByAvatar}
+                username={track.requestedBy}
+                size={12}
+              />
+              <span className="truncate">{track.requestedBy}</span>
+            </div>
+          )
         )}
       </div>
 

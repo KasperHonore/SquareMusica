@@ -545,3 +545,114 @@ describe('Queue', () => {
     });
   });
 });
+
+describe('themed-mode ordering (FR-024, research R8)', () => {
+  let queue;
+  const member = (id) => ({ id });
+  const pick = (id) => ({ id, addedByDj: true });
+  const ids = () => queue.tracks.map((x) => x.id);
+
+  beforeEach(() => {
+    queue = new Queue();
+  });
+
+  describe('insertAt', () => {
+    it('clamps below to just after the current track and stamps addedAt', () => {
+      seed(queue, ['a', 'b', 'c'], 1);
+      expect(queue.insertAt(0, member('x'))).toBe(2);
+      expect(ids()).toEqual(['a', 'b', 'x', 'c']);
+      expect(queue.tracks[2].addedAt).toBeInstanceOf(Date);
+    });
+
+    it('clamps above to the end', () => {
+      seed(queue, ['a', 'b'], 0);
+      expect(queue.insertAt(99, member('x'))).toBe(2);
+      expect(ids()).toEqual(['a', 'b', 'x']);
+    });
+
+    it('inserts at an index inside the range', () => {
+      seed(queue, ['a', 'b', 'c', 'd'], 0);
+      expect(queue.insertAt(2, member('x'))).toBe(2);
+      expect(ids()).toEqual(['a', 'b', 'x', 'c', 'd']);
+    });
+
+    it('on an empty queue the track becomes the current one', () => {
+      queue.currentIndex = 4;
+      expect(queue.insertAt(3, member('x'))).toBe(0);
+      expect(queue.currentIndex).toBe(0);
+      expect(ids()).toEqual(['x']);
+    });
+  });
+
+  describe('add with prioritizeMemberTracks', () => {
+    it('inserts a member track before the first upcoming DJ pick', () => {
+      queue.tracks = [member('now'), pick('p1'), pick('p2')];
+      queue.prioritizeMemberTracks = true;
+      queue.add(member('m1'));
+      expect(ids()).toEqual(['now', 'm1', 'p1', 'p2']);
+      expect(queue.tracks[1].addedAt).toBeInstanceOf(Date);
+    });
+
+    it('keeps several member adds in FIFO order ahead of the picks', () => {
+      queue.tracks = [member('now'), pick('p1'), pick('p2')];
+      queue.prioritizeMemberTracks = true;
+      queue.add(member('m1'));
+      queue.add(member('m2'));
+      queue.add(member('m3'));
+      expect(ids()).toEqual(['now', 'm1', 'm2', 'm3', 'p1', 'p2']);
+    });
+
+    it('a DJ pick that is playing now does not count as upcoming', () => {
+      queue.tracks = [pick('p0'), member('m0'), pick('p1')];
+      queue.currentIndex = 0;
+      queue.prioritizeMemberTracks = true;
+      queue.add(member('m1'));
+      expect(ids()).toEqual(['p0', 'm0', 'm1', 'p1']);
+    });
+
+    it('a DJ pick is still appended', () => {
+      queue.tracks = [member('now'), pick('p1')];
+      queue.prioritizeMemberTracks = true;
+      queue.add(pick('p2'));
+      expect(ids()).toEqual(['now', 'p1', 'p2']);
+    });
+
+    it('appends when no DJ pick is upcoming', () => {
+      queue.tracks = [member('now')];
+      queue.prioritizeMemberTracks = true;
+      queue.add(member('m1'));
+      expect(ids()).toEqual(['now', 'm1']);
+    });
+
+    it('with the flag off add() appends as today, even behind DJ picks', () => {
+      queue.tracks = [member('now'), pick('p1'), pick('p2')];
+      queue.add(member('m1'));
+      expect(ids()).toEqual(['now', 'p1', 'p2', 'm1']);
+    });
+
+    it('addedByDj survives on the stored entries', () => {
+      queue.add(pick('p1'));
+      expect(queue.getAll()[0].addedByDj).toBe(true);
+    });
+  });
+
+  describe('countUpcoming', () => {
+    it('counts only entries after currentIndex', () => {
+      queue.tracks = [pick('p0'), pick('p1'), member('m'), pick('p2')];
+      queue.currentIndex = 1;
+      expect(queue.countUpcoming((x) => x.addedByDj)).toBe(1);
+      queue.currentIndex = 0;
+      expect(queue.countUpcoming((x) => x.addedByDj)).toBe(2);
+    });
+
+    it('is zero on an empty queue', () => {
+      expect(queue.countUpcoming(() => true)).toBe(0);
+    });
+  });
+
+  describe('shuffle flag (FR-024a)', () => {
+    it('prioritizeMemberTracks defaults to false', () => {
+      expect(queue.prioritizeMemberTracks).toBe(false);
+    });
+  });
+});

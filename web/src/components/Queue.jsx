@@ -35,6 +35,7 @@ export function Queue({
   onReorder,
   onRemove,
   onShuffle,
+  shuffleDisabled = false,
   onClear,
   resolutionStats,
   isRightPanel = false
@@ -103,6 +104,7 @@ export function Queue({
         hasUnresolved={hasUnresolved}
         isRightPanel={isRightPanel}
         onShuffle={onShuffle}
+        shuffleDisabled={shuffleDisabled}
         onClear={onClear}
       />
 

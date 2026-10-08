@@ -16,7 +16,8 @@ export function RightPanel() {
     upcomingTracks,
     reorderUpcoming,
     removeUpcoming,
-    resolutionStats
+    resolutionStats,
+    djState
   } = useSocketContext();
 
   return (
@@ -44,6 +45,7 @@ export function RightPanel() {
           onReorder={reorderUpcoming}
           onRemove={removeUpcoming}
           onShuffle={() => playerControl('shuffle')}
+          shuffleDisabled={Boolean(djState?.theme)}
           onClear={() => playerControl('clear')}
           resolutionStats={resolutionStats}
           isRightPanel

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSocketContext } from '../context/SocketContext';
 import { ListenerList } from '../components/dj/ListenerList';
+import { ThemeControl } from '../components/dj/ThemeControl';
 
 const INTERVALS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const LOOKAHEADS = [5, 10];
@@ -20,8 +21,16 @@ function resetTime(resetsAt) {
  * (FR-001a).
  */
 export function Dj() {
-  const { djState, setDjSettings, listeners, shoutoutsEnabled, setShoutoutsEnabled, setShoutouts } =
-    useSocketContext();
+  const {
+    djState,
+    setDjSettings,
+    listeners,
+    shoutoutsEnabled,
+    setShoutoutsEnabled,
+    setShoutouts,
+    startTheme,
+    stopTheme
+  } = useSocketContext();
   const [shoutoutsError, setShoutoutsError] = useState(null);
   const available = djState?.available === true;
 
@@ -115,6 +124,16 @@ export function Dj() {
             ))}
           </div>
         </Row>
+      </section>
+
+      <section>
+        <SectionHeading>Themed mode</SectionHeading>
+        <ThemeControl
+          themeState={djState.theme}
+          lookahead={lookahead}
+          onStart={startTheme}
+          onStop={stopTheme}
+        />
       </section>
 
       <section>

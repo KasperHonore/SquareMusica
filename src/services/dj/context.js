@@ -246,9 +246,9 @@ export function addMemberFacts(ctx, { previousTrack = null, nextTrack, store = n
 
 /**
  * Build the Listening Context for the transition into `next`.
- * @param {{ previous: Object|null, next: Object, theme?: string|null,
+ * @param {{ previous: Object|null, next: Object, theme?: string|null, intro?: boolean,
  *   present?: Array, recentLines?: string[], store?: Object|null }} params
- *   `present` is getVoiceContext().connectedUsers; `store` is the db (opt-outs
+ *   `intro` makes this the themed-mode intro to `theme` (FR-028). `present` is getVoiceContext().connectedUsers; `store` is the db (opt-outs
  *   and history reads). Without a store no member or group facts are added and
  *   every present member is forbidden.
  * @returns {Object}
@@ -257,6 +257,7 @@ export function buildContext({
   previous,
   next,
   theme = null,
+  intro = false,
   present = [],
   recentLines = [],
   store = null
@@ -287,6 +288,7 @@ export function buildContext({
       previous: previous ? trackFact(previous, 't1') : null,
       next: trackFact(next, 't2'),
       theme,
+      intro: Boolean(intro && theme),
       present: members,
       allowedNames: [],
       allowedMembers: [],

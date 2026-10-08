@@ -11,6 +11,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // The counted-play predicate: the one definition of which history rows feed the
 // DJ stats page. Written against the `h` alias every stats query uses.
 const COUNTED_PLAY = 'h.requested_by_id IS NOT NULL AND h.is_loop_replay = 0';
+// The name themed-mode picks are recorded under (FR-027).
+export const DJ_REQUESTER = 'SquareMusica DJ';
 
 export class DatabaseManager {
   /**
@@ -125,6 +127,14 @@ export class DatabaseManager {
       logger.info('[Database] Migrated: added artist to history table');
     }
 
+    // Themed-mode picks are attributed to the DJ (FR-027). requested_by_id NULL
+    // already keeps them out of COUNTED_PLAY; this says why. Old rows read 0.
+    const hasAddedByDj = tableInfo.some((col) => col.name === 'added_by_dj');
+    if (!hasAddedByDj) {
+      this.db.exec('ALTER TABLE history ADD COLUMN added_by_dj INTEGER NOT NULL DEFAULT 0');
+      logger.info('[Database] Migrated: added added_by_dj to history table');
+    }
+
     // Also declared in schema.sql, for the fresh-install path this method returns
     // early on. IF NOT EXISTS keeps both paths idempotent.
     this.db.exec(
@@ -193,7 +203,7 @@ export class DatabaseManager {
   }
 
   // History methods
-  addToHistory(track, guildId = null, { loopReplay = false } = {}) {
+  addToHistory(track, guildId = null, { loopReplay = false, addedByDj = false } = {}) {
     try {
       if (!track?.title || !track?.url) {
         logger.warn('[Database] addToHistory: Missing required track fields', {
@@ -202,8 +212,10 @@ export class DatabaseManager {
         });
         return;
       }
+      // A DJ pick is never a member's play (FR-027), whatever the entry says.
+      const byDj = addedByDj || track.addedByDj === true;
       const stmt = this.db.prepare(
-        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar, is_loop_replay, artist) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar, is_loop_replay, artist, added_by_dj) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       );
       stmt.run(
         guildId,
@@ -211,11 +223,12 @@ export class DatabaseManager {
         track.url,
         track.duration || 0,
         track.thumbnail || null,
-        track.requestedBy || 'Unknown',
-        track.requestedById || null,
-        track.requestedByAvatar || null,
+        byDj ? DJ_REQUESTER : track.requestedBy || 'Unknown',
+        byDj ? null : track.requestedById || null,
+        byDj ? null : track.requestedByAvatar || null,
         loopReplay ? 1 : 0,
-        track.spotifyData?.artists?.[0] ?? track.channel ?? null
+        track.spotifyData?.artists?.[0] ?? track.artist ?? track.channel ?? null,
+        byDj ? 1 : 0
       );
     } catch (error) {
       logger.error('[Database] addToHistory failed:', error.message, { track: track?.title });
@@ -571,7 +584,8 @@ export class DatabaseManager {
       eventType: 'skip',
       groupColumn: 'target_user_id',
       nameColumn: 'target_user_name',
-      extraPredicate: 'e.target_user_id <> e.actor_id',
+      // A skipped DJ pick has no target member; "the DJ" is never a winner.
+      extraPredicate: 'e.target_user_id IS NOT NULL AND e.target_user_id <> e.actor_id',
       // events records no avatar for the target, only for the actor, and the
       // actor here is the person doing the skipping. The victim's own avatar
       // comes from the plays they queued.
@@ -746,6 +760,32 @@ export class DatabaseManager {
          ORDER BY count DESC, MIN(h.played_at) ASC, h.requested_by_id ASC`
       )
       .all(url, ...userIds);
+  }
+
+  /**
+   * Most-played tracks, as history candidates for themed picks (research R8).
+   * Counted plays only, so loop replays and DJ picks never feed back in.
+   * @param {{ userIds?: string[], limit: number }} params - `userIds` limits the
+   *   count to plays those members queued; omitted means the whole server
+   * @returns {Array<{ url: string, title: string, artist: string|null, count: number,
+   *   duration: number, thumbnail: string|null }>}
+   */
+  getTopTracks({ userIds, limit = 20 } = {}) {
+    if (Array.isArray(userIds) && userIds.length === 0) return [];
+    const byUsers = Array.isArray(userIds);
+    const placeholders = byUsers ? userIds.map(() => '?').join(', ') : '';
+    return this.db
+      .prepare(
+        `SELECT h.url AS url, MAX(h.title) AS title, MAX(h.artist) AS artist,
+                COUNT(*) AS count, MAX(h.duration) AS duration, MAX(h.thumbnail) AS thumbnail
+         FROM history h
+         WHERE ${COUNTED_PLAY} AND h.added_by_dj = 0
+           ${byUsers ? `AND h.requested_by_id IN (${placeholders})` : ''}
+         GROUP BY h.url
+         ORDER BY count DESC, MIN(h.played_at) ASC, h.url ASC
+         LIMIT ?`
+      )
+      .all(...(byUsers ? userIds : []), Math.max(1, Math.trunc(Number(limit) || 1)));
   }
 
   /**

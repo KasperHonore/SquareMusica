@@ -322,3 +322,78 @@ describe('musicManager.ensurePlaying() goes through advanceAndPlay', () => {
     expect(changes).toEqual([['track:change', null]]);
   });
 });
+
+describe('musicManager themed-mode seams (FR-024a, FR-024b)', () => {
+  let updates;
+  const onUpdate = (payload) => updates.push(payload);
+
+  function wire(ids, currentIndex = 0) {
+    const queue = new Queue();
+    queue.tracks = ids.map((id) => ({ id }));
+    queue.currentIndex = currentIndex;
+    musicManager.queue = queue;
+    musicManager.player = {
+      cancelOverlay: vi.fn(),
+      stop: vi.fn(),
+      isPlaying: vi.fn(() => true),
+      isPaused: vi.fn(() => false),
+      getPosition: vi.fn(() => 0)
+    };
+    return queue;
+  }
+
+  beforeEach(() => {
+    updates = [];
+    musicManager.on('queue:update', onUpdate);
+  });
+
+  afterEach(() => {
+    musicManager.off('queue:update', onUpdate);
+    musicManager.setOnQueueCleared(null);
+  });
+
+  it('shuffleQueue() refuses while prioritizeMemberTracks is set and emits nothing', () => {
+    const queue = wire(['a', 'b', 'c', 'd', 'e'], 1);
+    queue.prioritizeMemberTracks = true;
+    const before = queue.tracks.slice();
+    expect(musicManager.shuffleQueue()).toEqual({
+      shuffled: false,
+      reason: 'THEMED_MODE_ACTIVE'
+    });
+    expect(queue.tracks).toEqual(before);
+    expect(queue.currentIndex).toBe(1);
+    expect(updates).toHaveLength(0);
+  });
+
+  it('shuffleQueue() shuffles and emits one queue:update with the flag off', () => {
+    const queue = wire(['a', 'b', 'c']);
+    const spy = vi.spyOn(queue, 'shuffle');
+    expect(musicManager.shuffleQueue()).toEqual({ shuffled: true });
+    expect(spy).toHaveBeenCalledOnce();
+    expect(updates).toHaveLength(1);
+  });
+
+  for (const method of ['clearQueue', 'clearUpcomingQueue', 'clearAllButCurrent', 'stop']) {
+    it(`${method}() calls the clear hook once, before its queue:update`, () => {
+      wire(['a', 'b', 'c']);
+      const order = [];
+      const hook = vi.fn(() => order.push('hook'));
+      const listener = () => order.push('update');
+      musicManager.on('queue:update', listener);
+      musicManager.setOnQueueCleared(hook);
+      try {
+        musicManager[method]();
+      } finally {
+        musicManager.off('queue:update', listener);
+      }
+      expect(hook).toHaveBeenCalledOnce();
+      expect(order[0]).toBe('hook');
+      expect(order).toContain('update');
+    });
+
+    it(`${method}() does not throw without a hook`, () => {
+      wire(['a', 'b']);
+      expect(() => musicManager[method]()).not.toThrow();
+    });
+  }
+});

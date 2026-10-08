@@ -24,6 +24,21 @@ export const SYSTEM_PROMPT = [
   'the facts the line uses.'
 ].join(' ');
 
+// Themed intro (FR-028): same rules, but the line opens the set for the theme.
+export const INTRO_SYSTEM_PROMPT = [
+  'You are the SquareMusica radio DJ, talking to friends in a Discord voice channel.',
+  'A themed set is starting (or its theme just changed). Write ONE or TWO short, upbeat',
+  'sentences introducing the theme, said over the start of the next song; you may also',
+  'introduce that song. Cite the theme fact in factIds.',
+  'Use ONLY the facts provided. Never invent play counts, dates, people or connections.',
+  'Only name people listed under allowedNames; if it is empty, name nobody.',
+  'Spell every number out as words. No emoji. No insults, slurs or harassment, and no',
+  'personal information beyond the provided facts.',
+  'Do not repeat or closely paraphrase anything in recentLines.',
+  'Return JSON: {"line": string, "factIds": string[]} where factIds lists the ids of',
+  'the facts the line uses.'
+].join(' ');
+
 /** Error thrown by writeLine(); `kind` feeds the DJ circuit breaker. */
 export class LineError extends Error {
   /**
@@ -287,6 +302,7 @@ export function validateLine(response, ctx, recentSpoken = []) {
   if (text.length > MAX_CHARS) reject(`${text.length} characters`);
   const phrases = [ctx.previous, ctx.next]
     .flatMap((t) => (t ? [t.title, t.artist] : []))
+    .concat(ctx.theme ? [ctx.theme] : [])
     .filter(Boolean);
   const sentences = countSentences(text, phrases);
   if (sentences < 1 || sentences > MAX_SENTENCES) reject(`${sentences} sentences`);
@@ -294,8 +310,13 @@ export function validateLine(response, ctx, recentSpoken = []) {
   const factsById = new Map((ctx.facts ?? []).map((f) => [f.id, f]));
   const unknown = factIds.filter((id) => !factsById.has(id));
   if (unknown.length > 0) reject(`unknown fact ids ${unknown.join(', ')}`);
-  // US1/AC1: every line introduces the next track or looks back at the last one.
-  if (!factIds.some((id) => factsById.get(id).kind === 'track')) reject('cites no track fact');
+  if (ctx.intro) {
+    // FR-028: the themed intro is about the theme.
+    if (!factIds.some((id) => factsById.get(id).kind === 'theme')) reject('cites no theme fact');
+  } else if (!factIds.some((id) => factsById.get(id).kind === 'track')) {
+    // US1/AC1: every line introduces the next track or looks back at the last one.
+    reject('cites no track fact');
+  }
 
   const allowed = new Set();
   for (const id of factIds) for (const n of factNumbers(factsById.get(id))) allowed.add(n);
@@ -347,6 +368,7 @@ export async function writeLine(ctx, recentSpoken = []) {
     next: ctx.next,
     previous: ctx.previous,
     theme: ctx.theme ?? null,
+    ...(ctx.intro ? { intro: true } : {}),
     allowedNames: ctx.allowedNames ?? [],
     facts: (ctx.facts ?? []).map(({ id, text }) => ({ id, text })),
     recentLines: recentSpoken.slice(-PROMPT_RECENT)
@@ -355,7 +377,7 @@ export async function writeLine(ctx, recentSpoken = []) {
   let response;
   try {
     response = await chatJson({
-      system: SYSTEM_PROMPT,
+      system: ctx.intro ? INTRO_SYSTEM_PROMPT : SYSTEM_PROMPT,
       user: JSON.stringify(payload),
       temperature: 0.9,
       timeoutMs: 10000

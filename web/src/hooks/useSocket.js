@@ -208,6 +208,19 @@ export function useSocket() {
     [socket]
   );
 
+  // Themed mode (contracts §3). The result arrives as a dj:state broadcast; a
+  // refusal arrives as `error { code, message }`.
+  const startTheme = useCallback(
+    (theme, lookahead) => {
+      socket?.emit('dj:theme:start', lookahead ? { theme, lookahead } : { theme });
+    },
+    [socket]
+  );
+
+  const stopTheme = useCallback(() => {
+    socket?.emit('dj:theme:stop');
+  }, [socket]);
+
   // The ack and the dj:shoutouts push both carry the saved value.
   const setShoutouts = useCallback(
     (enabled) => {
@@ -253,6 +266,8 @@ export function useSocket() {
     deletePlaylist,
     setDjSettings,
     setShoutouts,
+    startTheme,
+    stopTheme,
     clearError,
     clearNotice
   };

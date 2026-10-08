@@ -2,6 +2,7 @@ import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { PassThrough } from 'stream';
 import { existsSync } from 'fs';
+import { createRequire } from 'module';
 import { StreamType } from '@discordjs/voice';
 import { logger } from '../utils/logger.js';
 
@@ -408,6 +409,159 @@ export async function getStream(url) {
     type: StreamType.Arbitrary,
     cleanup
   };
+}
+
+/**
+ * Resolve the FFmpeg binary the way prism-media (inside @discordjs/voice) does:
+ * the ffmpeg-static binary if it is present on disk, else `ffmpeg` on PATH
+ * (the Docker image installs system FFmpeg).
+ * @returns {string}
+ */
+function resolveFfmpegPath() {
+  try {
+    const require = createRequire(import.meta.url);
+    const ffmpegStatic = require('ffmpeg-static');
+    const path = ffmpegStatic?.path || ffmpegStatic;
+    if (typeof path === 'string' && existsSync(path)) return path;
+  } catch {
+    // Not installed or unsupported platform: fall back to PATH.
+  }
+  return 'ffmpeg';
+}
+
+let ffmpegPath = null;
+
+/**
+ * Get a 48 kHz s16le stereo PCM stream for a URL (ADR-002, research R2).
+ *
+ * Wraps getStream(): its yt-dlp output is piped into our own FFmpeg child, the
+ * same transcode StreamType.Arbitrary would otherwise run inside
+ * @discordjs/voice. The FFmpeg kill is folded into the same idempotent cleanup
+ * as yt-dlp's, so every terminal path (watchdog, errors, consumer close,
+ * external cleanup) tears down both children. yt-dlp's startup watchdog and
+ * drain semantics are unchanged.
+ *
+ * @param {string} url - Video URL
+ * @returns {Promise<{ stream: PassThrough, type: StreamType, cleanup: Function }>}
+ */
+export async function getPcmStream(url) {
+  const source = await getStream(url);
+  ffmpegPath ??= resolveFfmpegPath();
+
+  const stream = new PassThrough();
+  let ffmpeg;
+  let cleanedUp = false;
+
+  const cleanup = (err) => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+
+    if (ffmpeg) {
+      ffmpeg.removeListener('error', onProcessError);
+      ffmpeg.removeListener('close', onProcessClose);
+    }
+    stream.removeListener('error', onStreamError);
+    stream.removeListener('close', onStreamClose);
+    source.stream.removeListener('error', onSourceError);
+    source.stream.removeListener('close', onSourceClose);
+
+    try {
+      source.cleanup?.(err);
+    } catch (sourceErr) {
+      logger.debug('[PcmStream] source cleanup failed:', sourceErr.message);
+    }
+
+    if (ffmpeg && ffmpeg.exitCode === null && !ffmpeg.killed) {
+      try {
+        ffmpeg.kill('SIGKILL');
+        logger.debug('[PcmStream] ffmpeg process killed via cleanup');
+      } catch (killErr) {
+        logger.debug('[PcmStream] ffmpeg kill skipped (already exited):', killErr.message);
+      }
+    }
+
+    if (!stream.destroyed) {
+      stream.destroy(err || undefined);
+      logger.debug('[PcmStream] PassThrough destroyed via cleanup');
+    }
+  };
+
+  function onProcessError(error) {
+    logger.error('ffmpeg process error:', error);
+    cleanup(error);
+  }
+
+  function onProcessClose(code) {
+    if (code !== 0 && code !== null) {
+      logger.error(`ffmpeg exited with code ${code}`);
+    }
+    // Normal exit: let buffered PCM drain. The stream's own 'close' (after
+    // drain) runs cleanup.
+  }
+
+  function onStreamError(err) {
+    logger.debug('[PcmStream] PassThrough error (expected during cleanup):', err.message);
+    cleanup(err);
+  }
+
+  function onStreamClose() {
+    logger.debug('[PcmStream] PassThrough closed');
+    cleanup();
+  }
+
+  function onSourceError(err) {
+    // yt-dlp failed or its watchdog fired: tear down FFmpeg and the PCM stream
+    // too, so playback can fall back to the next track.
+    cleanup(err);
+  }
+
+  function onSourceClose() {
+    // A source destroyed before it ended (watchdog, kill) never reaches FFmpeg's
+    // stdin as EOF, so FFmpeg would wait forever. A natural end has already
+    // ended stdin via pipe(), so this is a no-op then.
+    if (!source.stream.readableEnded) cleanup(new Error('source stream closed early'));
+  }
+
+  try {
+    ffmpeg = spawn(ffmpegPath, [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-i',
+      'pipe:0',
+      '-f',
+      's16le',
+      '-ar',
+      '48000',
+      '-ac',
+      '2',
+      'pipe:1'
+    ]);
+
+    // EPIPE when FFmpeg exits before yt-dlp finishes writing is expected.
+    ffmpeg.stdin.on('error', (err) => {
+      logger.debug('[PcmStream] ffmpeg stdin error:', err.message);
+    });
+    ffmpeg.stderr.on('data', (data) => {
+      logger.error('ffmpeg stderr:', data.toString());
+    });
+
+    ffmpeg.on('error', onProcessError);
+    ffmpeg.on('close', onProcessClose);
+    stream.on('error', onStreamError);
+    stream.on('close', onStreamClose);
+    source.stream.on('error', onSourceError);
+    source.stream.on('close', onSourceClose);
+
+    source.stream.pipe(ffmpeg.stdin);
+    ffmpeg.stdout.pipe(stream);
+  } catch (setupError) {
+    logger.error('[PcmStream] setup failed; tearing down:', setupError);
+    cleanup(setupError);
+    throw setupError;
+  }
+
+  return { stream, type: StreamType.Raw, cleanup };
 }
 
 /**

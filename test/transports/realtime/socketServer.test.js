@@ -54,7 +54,8 @@ const MANAGER_EVENTS = [
   'track:change',
   'player:state',
   'resolution:progress',
-  'voice:context'
+  'voice:context',
+  'dj:state'
 ];
 
 describe('socketServer setup idempotency', () => {
@@ -91,5 +92,14 @@ describe('socketServer setup idempotency', () => {
     expect(botEvents.listenerCount('historyCleared')).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
     expect(fakeIo.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-broadcasts dj:state from the mediator to every socket', () => {
+    setupSocketServer({});
+    const state = { available: true, enabled: true };
+
+    musicManager.emit('dj:state', state);
+
+    expect(fakeIo.emit).toHaveBeenCalledWith('dj:state', state);
   });
 });

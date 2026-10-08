@@ -73,6 +73,7 @@ export class DatabaseManager {
     this.migrate();
     const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf8');
     this.db.exec(schema);
+    this.pruneDjUsage();
     logger.info('[Database] Schema initialized successfully');
   }
 
@@ -675,6 +676,66 @@ export class DatabaseManager {
       logger.error('[Database] deletePlaylist failed:', error.message);
       return false;
     }
+  }
+
+  // AI DJ methods
+
+  getDjSettings() {
+    this.db.prepare('INSERT OR IGNORE INTO dj_settings (id) VALUES (1)').run();
+    const row = this.db
+      .prepare('SELECT enabled, interval, lookahead FROM dj_settings WHERE id = 1')
+      .get();
+    return { enabled: row.enabled === 1, interval: row.interval, lookahead: row.lookahead };
+  }
+
+  /**
+   * Persist any subset of { enabled, interval, lookahead } in one UPDATE.
+   * Validation is djService's job; the table's CHECKs are the last line.
+   */
+  updateDjSettings(partial) {
+    this.db.prepare('INSERT OR IGNORE INTO dj_settings (id) VALUES (1)').run();
+    const sets = [];
+    const params = [];
+    if (partial.enabled !== undefined) {
+      sets.push('enabled = ?');
+      params.push(partial.enabled ? 1 : 0);
+    }
+    if (partial.interval !== undefined) {
+      sets.push('interval = ?');
+      params.push(partial.interval);
+    }
+    if (partial.lookahead !== undefined) {
+      sets.push('lookahead = ?');
+      params.push(partial.lookahead);
+    }
+    sets.push('updated_at = CURRENT_TIMESTAMP');
+    this.db.prepare(`UPDATE dj_settings SET ${sets.join(', ')} WHERE id = 1`).run(...params);
+  }
+
+  getDjUsage(day) {
+    const row = this.db.prepare('SELECT lines, themed_tracks FROM dj_usage WHERE day = ?').get(day);
+    return { lines: row?.lines ?? 0, themed_tracks: row?.themed_tracks ?? 0 };
+  }
+
+  /**
+   * @param {string} day - YYYY-MM-DD local date
+   * @param {'lines'|'themed_tracks'} field - Whitelisted; interpolated into SQL
+   */
+  incrementDjUsage(day, field) {
+    if (field !== 'lines' && field !== 'themed_tracks') {
+      throw new Error(`incrementDjUsage: unknown field "${field}"`);
+    }
+    this.db
+      .prepare(
+        `INSERT INTO dj_usage (day, ${field}) VALUES (?, 1)
+         ON CONFLICT(day) DO UPDATE SET ${field} = ${field} + 1`
+      )
+      .run(day);
+  }
+
+  // Usage rows only matter for today; keep a month for debugging.
+  pruneDjUsage() {
+    this.db.prepare("DELETE FROM dj_usage WHERE day < date('now', 'localtime', '-30 days')").run();
   }
 
   close() {

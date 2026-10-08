@@ -140,6 +140,21 @@ class Queue {
   }
 
   /**
+   * The entry next() would return, without any side effect: currentIndex,
+   * loop-replay flags and the queue itself are left untouched. At the natural
+   * end of the queue this returns null (next() would also clear the queue).
+   * @returns {Track|null}
+   */
+  peekNext() {
+    if (this.tracks.length === 0) return null;
+    if (this.loopMode === 'track') return this.tracks[this.currentIndex] ?? null;
+    if (this.loopMode === 'queue' && this.currentIndex >= this.tracks.length - 1) {
+      return this.tracks[0];
+    }
+    return this.tracks[this.currentIndex + 1] ?? null;
+  }
+
+  /**
    * Flag an entry whose start loop mode chose, so its play is kept in history
    * but excluded from stats (FR-005a). Assigned on every visit, so a flag left
    * by a start that failed is overwritten here. musicManager.onTrackChange()

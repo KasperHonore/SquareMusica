@@ -128,6 +128,9 @@ def check_tasks(base_text: str | None, head_text: str | None, piece: str,
     return out
 
 
+FOUND_KINDS = ("blocker", "nonblocker")
+
+
 def read_found(wt: Path, cfg: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
     """Pre-existing breakage the builder reports in ``.nightshift/found.json`` (D-FOUND).
 
@@ -148,7 +151,7 @@ def read_found(wt: Path, cfg: dict[str, Any]) -> tuple[list[dict[str, Any]], lis
     ids = {c["id"] for c in cfg.get("checks") or []}
     out, errors = [], []
     for i, item in enumerate(data, 1):
-        if not isinstance(item, dict) or item.get("kind") not in ("blocker", "nonblocker") \
+        if not isinstance(item, dict) or item.get("kind") not in FOUND_KINDS \
                 or not str(item.get("summary") or "").strip():
             errors.append(f"found.json item {i}: needs kind blocker|nonblocker and a summary")
             continue
@@ -283,13 +286,18 @@ def record_state(root: Path, name: str, result: dict[str, Any]) -> list[str]:
                 p["question"] = result["blocked_reason"]
         except core.NightshiftError as exc:
             notes.append(f"state not changed: {exc}")
-    elif outcome != "passed" and p["status"] == "building":
+    elif outcome != "passed":
         # A failed attempt goes to `checking` with builder=failed, so `verdict next`
         # bounds the retries exactly like red checks (max_rounds, stagnation).
-        nstate.transition(st, key, "checking")
+        # `phase build` has usually moved it there already; the violations are
+        # recorded either way, so the next builder sees what failed (live 2026-10-08).
+        if p["status"] == "building":
+            nstate.transition(st, key, "checking")
         p["postcondition_violations"] = sorted({f"postconditions:{v['code']}" for v in result["violations"]})
+        p["postcondition_details"] = [f"postconditions:{v['code']}: {v['detail']}" for v in result["violations"]]
     else:
         p.pop("postcondition_violations", None)
+        p.pop("postcondition_details", None)
     nstate.save(root, name, st)
     detail = "; ".join(f"{v['code']}: {v['detail']}" for v in result["violations"])
     if outcome == "blocked":

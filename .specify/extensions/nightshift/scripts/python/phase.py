@@ -180,7 +180,8 @@ def _render_prompt(c: Ctx, findings_file: str | None) -> str:
         "grounding": _grounding(c), "piece": c.key, "phase_title": piece.title if piece else c.key, "round": c.p["round"],
         "feature": c.feature, "task_refs": _task_refs(c, piece),
         "bar": bar, "unseen_findings": _unseen(c, findings_file),
-        "check_results": _check_results(c), "gate_paths": gates})
+        "check_results": _check_results(c), "gate_paths": gates,
+        "check_ids": ", ".join(f"`{x['id']}`" for x in c.cfg.get("checks") or []) or "_none configured_"})
 
 
 # Claude Code flags per role, checked against `claude --help` of Claude Code 2.1.287

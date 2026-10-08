@@ -209,6 +209,25 @@ NIGHTSHIFT_SPECIFY=/path/to/specify python3 -m unittest discover -s tests -t .
   [docs/field-reports/](docs/field-reports/). Spike reports: [docs/spikes/](docs/spikes/).
 - [AGENTS.md](AGENTS.md): instructions for agents working in this repository.
 
+## Changes in 2.0.3 (2026-10-08)
+
+- Postcondition violations reach the next builder with their detail, and
+  `blocker_history` keeps their codes (`postconditions:found-invalid`). Before, `phase
+  build` had already moved the piece to `checking`, so the builder saw only "postconditions"
+  (SquareMusica 002 us3, 2.0.1).
+- A dependency bullet's sentences are separate clauses, and a story the piece "works
+  without" or uses "if present" is no prerequisite. Before, "Works without US3" made US4
+  wait behind a parked US3 (SquareMusica 002, 2.0.1).
+- Acceptance scenarios and the Independent Test keep their wrapped lines. Before, they
+  were cut at the first line (US3/AC2 ended "**Then** it"); approved records with the cut
+  quotes now report those scenarios as changed (SquareMusica 002, 2.0.1).
+
+## Changes in 2.0.2 (2026-10-08)
+
+- The builder prompt states the `.nightshift/found.json` shape postconditions accept
+  (`kind` `blocker` with a check id, or `nonblocker`, plus a `summary`). Before, a builder
+  guessed the shape and lost a round to `found-invalid` (SquareMusica 002, 2.0.1).
+
 ## Changes in 2.0.1 (2026-10-08)
 
 - Task IDs with a one-letter suffix (`T019a`) are tasks. Before, ticking one counted as

@@ -2,9 +2,9 @@
   "schema_version": "1.0",
   "extensions": {
     "nightshift": {
-      "version": "2.0.1",
+      "version": "2.0.3",
       "source": "local",
-      "manifest_hash": "sha256:3934d02fcbf05d50c968d0d47bef72fd0f861962f67f971a9d0edc18ff0199ef",
+      "manifest_hash": "sha256:4b1cecfcff9f2c10d7ff2f8e1e92f4423534e051b5f77746a23856fd4fdbd28f",
       "enabled": true,
       "priority": 10,
       "registered_commands": {
@@ -14,7 +14,7 @@
         ]
       },
       "registered_skills": [],
-      "installed_at": "2026-10-08T09:31:46.536110+00:00"
+      "installed_at": "2026-10-08T11:42:05.648465+00:00"
     }
   }
 }

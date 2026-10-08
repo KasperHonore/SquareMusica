@@ -20,7 +20,7 @@ from typing import Any
 
 # The extension version; keep equal to ``extension.version`` in extension.yml
 # (tests/test_version.py). Bump both on every change a consumer should pick up.
-VERSION = "2.0.1"
+VERSION = "2.0.3"
 SCHEMA_VERSION = 1
 MARKER_PREFIX = "speckit-nightshift:"
 
@@ -664,7 +664,22 @@ def parse_spec(path: Path) -> SpecDoc:
     story = ""
     in_scen = False
     in_log = False
+    # Text that wraps onto the next lines belongs to the item before it (P7, verbatim):
+    # an Independent Test runs to the end of its paragraph, a scenario takes its
+    # indented continuation lines. Joined with single spaces; a blank line ends both.
+    wrap = ""  # "test", "scenario" or ""
     for no, line in enumerate(text.splitlines(), 1):
+        if wrap and line.strip():
+            plain = not (re.match(r"^\s*(#|\d+\.\s|[-*]\s)", line) or LABEL_RE.match(line.strip()))
+            if wrap == "test" and plain:
+                stories[story]["independent_test"] += " " + line.strip()
+                continue
+            if wrap == "scenario" and plain and line.startswith(" "):
+                last = scenarios[-1]
+                joined = f"{last.text} {line.strip()}"
+                scenarios[-1] = Scenario(last.ref, last.story, joined, sha256_text(joined), last.line)
+                continue
+        wrap = ""
         if re.match(r"^##\s", line):
             in_log = bool(CLARIFY_LOG_RE.match(line))
         tm = SPEC_TITLE_RE.match(line)
@@ -697,6 +712,7 @@ def parse_spec(path: Path) -> SpecDoc:
             in_scen = label == "acceptance scenarios"
             if label == "independent test":
                 stories[story]["independent_test"] = lm.group("text").strip()
+                wrap = "test"
             continue
         if in_scen:
             am = re.match(r"^\s*(\d+)\.\s+(?P<t>.+?)\s*$", line)
@@ -706,6 +722,7 @@ def parse_spec(path: Path) -> SpecDoc:
                 scenarios.append(
                     Scenario(f"{story}/AC{n}", story, scen_text, sha256_text(scen_text), no)
                 )
+                wrap = "scenario"
             elif line.strip() and not line.startswith(" "):
                 in_scen = False
     return SpecDoc(path, title, stories, scenarios, clar, reqs)

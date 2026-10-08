@@ -25,6 +25,15 @@ You are a fresh builder for one phase of `{{feature}}`. You have no earlier tran
 - Weaken a test or a check to make it pass.
 - Guess an unanswered product decision.
 
+## Found while building
+`.nightshift/found.json` is a JSON list. Each item has exactly one of these shapes; any
+other shape fails the round:
+- `{"kind": "nonblocker", "summary": "<one line>"}`: not fixed here (a `tasks.md`
+  contradiction, an unrelated old bug); it is filed as an issue.
+- `{"kind": "blocker", "summary": "<one line>", "check": "<check id>"}`: old breakage that
+  blocked this phase and that you fixed; `check` is the configured check that proves the
+  fix, one of {{check_ids}}.
+
 ## If you cannot continue honestly
 Write `.nightshift/blocked.json` in this worktree as `{"reason": "<one line>"}`, commit
 whatever is complete, and stop. Parking is a valid outcome; a fake pass is not.

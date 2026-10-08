@@ -101,12 +101,17 @@ def _dep_targets(text: str, by_phase: dict[int, str], by_story: dict[str, str],
                  by_kind: dict[str, list[str]]) -> list[str]:
     """Pieces named as prerequisites in one dependency bullet.
 
-    Only clauses that state a prerequisite count ("after …", "depends on …",
-    "requires …"); "may integrate with US1" is not a dependency, and neither is a
-    preference such as "best after US2" or "ideally after US2".
+    Clauses are split at " - ", ";" and sentence ends. Only clauses that state a
+    prerequisite count ("after …", "depends on …", "requires …", "needs …",
+    "follow …"); "may integrate with US1" is not a dependency, and neither is a
+    preference such as "best after US2" or a story the piece works without or uses
+    "if present" (live 2026-10-08: "Works without US3" made US4 wait for US3).
     """
     targets: list[str] = []
-    for clause in re.split(r"\s+-\s+|;\s*", text):
+    for clause in re.split(r"\s+-\s+|;\s*|(?<!\be\.g\.)(?<!\bi\.e\.)(?<=[.!?])\s+(?=[A-Z(*])", text):
+        # "Works without US3", "US3's set if present", "optionally US3": drop that part only.
+        clause = ",".join(part for part in clause.split(",")
+                          if not re.search(r"\bwithout\b|\bif present\b|\boptional(ly)?\b", part, re.IGNORECASE))
         low = clause.lower()
         if "no dependencies" in low or "may integrate" in low or "independent" in low and "after" not in low:
             continue
@@ -114,7 +119,7 @@ def _dep_targets(text: str, by_phase: dict[int, str], by_story: dict[str, str],
         low = re.sub(r"\b(best|ideally|preferably|optionally)\s+(after|with)\b[^,;]*", "", low)
         clause = re.sub(r"\b(best|ideally|preferably|optionally)\s+(after|with)\b[^,;]*", "", clause,
                         flags=re.IGNORECASE)
-        if not re.search(r"\b(after|depends on|depend on|requires|blocked by)\b", low):
+        if not re.search(r"\b(after|depends on|depend on|requires|blocked by|needs?|follows?)\b", low):
             continue
         for m in _PHASE_NUM_RE.finditer(clause):
             k = by_phase.get(int(m.group(1)))

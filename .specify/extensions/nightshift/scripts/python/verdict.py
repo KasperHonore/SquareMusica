@@ -380,9 +380,10 @@ def next_step(c: Ctx) -> dict[str, Any]:
     if status == "checking" and p["builder"] == "failed":
         # Postconditions failed the attempt; red checks of the same round go to the builder too (D23b).
         blockers = p.get("postcondition_violations") or ["postconditions"]
+        details = p.get("postcondition_details") or blockers
         red = chk.findings(c.ev(sha)) if sha and p["checks"] == "failed" else []
         return _repair(c, "postconditions", blockers, [{"severity": "blocker", "category": "postconditions", "path": "-",
-                                                        "lines": "-", "rationale": b} for b in blockers] + red, sha)
+                                                        "lines": "-", "rationale": d} for d in details] + red, sha)
     if status == "checking" and p["checks"] == "failed":
         recs = [h for h in p["blocker_history"] if isinstance(h, dict)]
         if not sha or sha == p.get("base_sha") or (recs and recs[-1].get("sha") == sha):

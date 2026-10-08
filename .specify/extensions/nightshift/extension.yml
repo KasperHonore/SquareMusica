@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: nightshift
   name: "Spec Kit Nightshift"
-  version: "2.0.1"
+  version: "2.0.3"
   description: "Work packages and unattended batch delivery for Spec Kit: one piece per tasks.md phase, approved in one step by day, run by night with one fresh orchestrator process per piece, handed over as one PR with a preview"
   author: Kasper Honore
   repository: https://github.com/KasperHonore/spec-kit-nightshift

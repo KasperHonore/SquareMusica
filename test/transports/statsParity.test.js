@@ -40,6 +40,7 @@ vi.mock('../../src/core/musicManager.js', () => {
       shuffleQueue: vi.fn(),
       clearQueue: vi.fn(),
       clearUpcomingQueue: vi.fn(),
+      clearAllButCurrent: vi.fn(),
       removeFromQueue: vi.fn(() => true),
       reorderQueue: vi.fn(() => true),
       emitQueueUpdate: vi.fn(),

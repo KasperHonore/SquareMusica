@@ -1,5 +1,11 @@
 import 'dotenv/config';
-import { validateEnv, validateTimezone } from './config/env.js';
+import {
+  validateEnv,
+  validateTimezone,
+  djRequiredVars,
+  isDjConfigured,
+  validateDjFormats
+} from './config/env.js';
 
 // Fail fast with one aggregated error if any required config is missing.
 // This runs BEFORE the rest of the app is imported (those modules open the
@@ -12,10 +18,14 @@ validateEnv([
   'DISCORD_CLIENT_SECRET',
   'JWT_SECRET',
   'OAUTH_REDIRECT_URI',
-  'TZ'
+  'TZ',
+  // The AI DJ group is optional, but all four or none: a partial group is
+  // reported in this same aggregated error.
+  ...djRequiredVars()
 ]);
 // TZ must also be a real zone: an unknown one silently becomes UTC in SQLite.
 validateTimezone();
+validateDjFormats();
 
 // Loaded dynamically (after validation) so their side effects don't run on a
 // misconfigured environment. Static imports would be hoisted above the check.
@@ -48,8 +58,17 @@ setupCommandHandler();
 registerAllCommands();
 
 // Initialize player and queue so web UI can detect voice connection state
-getPlayer();
+const player = getPlayer();
 getQueue();
+
+// AI DJ (ADR-002): when configured, every track goes through the PCM + mixer
+// path and the DJ service is constructed. When unconfigured nothing is built
+// and playback stays on the legacy path.
+if (isDjConfigured()) {
+  player.setMixingEnabled(true);
+  const djService = await import('./services/dj/djService.js');
+  djService.init();
+}
 
 // Start servers
 async function start() {

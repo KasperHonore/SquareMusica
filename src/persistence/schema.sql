@@ -65,6 +65,28 @@ CREATE TABLE IF NOT EXISTS playlists (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- AI DJ settings: exactly one row (id = 1), created on first read (FR-013, FR-014).
+CREATE TABLE IF NOT EXISTS dj_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  enabled INTEGER NOT NULL DEFAULT 0,
+  interval INTEGER NOT NULL DEFAULT 3 CHECK (interval BETWEEN 1 AND 10),
+  lookahead INTEGER NOT NULL DEFAULT 5 CHECK (lookahead IN (5, 10)),
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Members who opted out of DJ shout-outs, keyed by Discord user id.
+CREATE TABLE IF NOT EXISTS dj_shoutout_optouts (
+  user_id TEXT PRIMARY KEY,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Daily DJ usage for the caps. day is date('now','localtime') in TZ.
+CREATE TABLE IF NOT EXISTS dj_usage (
+  day TEXT PRIMARY KEY,
+  lines INTEGER NOT NULL DEFAULT 0,
+  themed_tracks INTEGER NOT NULL DEFAULT 0
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_history_played_at ON history(played_at DESC);
 CREATE INDEX IF NOT EXISTS idx_history_guild_id ON history(guild_id);

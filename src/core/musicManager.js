@@ -1,7 +1,6 @@
 import { EventEmitter } from 'events';
 import { db } from '../persistence/db.js';
 import { resolutionManager } from '../services/resolutionManager.js';
-import { tryPlayWithFallback } from '../services/trackResolver.js';
 import { advanceAndPlay } from '../services/playback.js';
 import { addTracksToQueue } from '../shared/queueHelpers.js';
 import { logger } from '../utils/logger.js';
@@ -19,6 +18,8 @@ class MusicManager extends EventEmitter {
     this.getBotInfo = null;
     this.getChannelInfo = null;
     this.isConnected = null;
+    // Injected by services/dj/djService.js when the DJ is configured.
+    this.getDjState = null;
     this._resolutionListenersSetup = false;
   }
 
@@ -75,6 +76,10 @@ class MusicManager extends EventEmitter {
     this.isConnected = fn;
   }
 
+  setGetDjState(fn) {
+    this.getDjState = fn;
+  }
+
   // Helper to emit queue updates with currentIndex
   emitQueueUpdate() {
     this.emit('queue:update', {
@@ -109,8 +114,11 @@ class MusicManager extends EventEmitter {
     return success;
   }
 
+  // Every queue clear cancels a DJ line in progress (FR-009). The current
+  // track, if any, keeps playing.
   clearQueue() {
     if (!this.queue) return false;
+    this.player?.cancelOverlay?.();
     this.queue.clear();
     this.emitQueueUpdate();
     return true;
@@ -118,7 +126,19 @@ class MusicManager extends EventEmitter {
 
   clearUpcomingQueue() {
     if (!this.queue) return false;
+    this.player?.cancelOverlay?.();
     this.queue.clearUpcoming();
+    this.emitQueueUpdate();
+    return true;
+  }
+
+  // Keep only the current track (if any) as the sole entry.
+  clearAllButCurrent() {
+    if (!this.queue) return false;
+    this.player?.cancelOverlay?.();
+    const current = this.queue.getCurrent();
+    this.queue.tracks = current ? [current] : [];
+    this.queue.currentIndex = 0;
     this.emitQueueUpdate();
     return true;
   }
@@ -166,18 +186,21 @@ class MusicManager extends EventEmitter {
     });
   }
 
-  // Start playback if nothing is playing/paused (used after a queue add). Returns
-  // whether a track actually started.
+  // Start playback if nothing is playing/paused (used after a queue add). Goes
+  // through advanceAndPlay, the same start path as skip and auto-advance, so
+  // member adds and themed picks start identically (FR-026). Returns whether a
+  // track actually started.
   async ensurePlaying() {
     if (!this.player || !this.queue) return false;
     if (this.player.isPlaying() || this.player.isPaused()) return false;
 
     const connection = this.getConnection?.(this.guildId);
-    const { played } = await tryPlayWithFallback(this.player, this.queue, connection);
-    if (!played && this.queue.length > 0) {
-      this.emit('track:change', null);
-      this.emitState();
-    }
+    const { played } = await advanceAndPlay({
+      player: this.player,
+      queue: this.queue,
+      connection,
+      skipCurrent: false
+    });
     return played;
   }
 
@@ -288,7 +311,8 @@ class MusicManager extends EventEmitter {
       playerState: this.getPlayerState(),
       resolutionStats: this.queue?.getResolutionStats() || null,
       voiceContext: this.getVoiceContext(),
-      botInfo: this.getBotInfo?.() || null
+      botInfo: this.getBotInfo?.() || null,
+      dj: this.getDjState?.() ?? { available: false }
     };
   }
 }

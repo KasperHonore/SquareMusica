@@ -12,6 +12,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // DJ stats page. Written against the `h` alias every stats query uses.
 const COUNTED_PLAY = 'h.requested_by_id IS NOT NULL AND h.is_loop_replay = 0';
 
+// The only dj_usage columns incrementDjUsage() may name. The field is
+// interpolated into SQL, so it is checked against this list first.
+const DJ_USAGE_FIELDS = new Set(['lines', 'themed_tracks']);
+
 export class DatabaseManager {
   /**
    * @param {string|null} [dbPath] - Override the database file. Defaults to
@@ -640,6 +644,96 @@ export class DatabaseManager {
       LIMIT 1
     `;
     return this.db.prepare(sql).get({ since, eventType });
+  }
+
+  // ---------------------------------------------------------------------------
+  // AI DJ settings and usage
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The single DJ settings row, created with defaults on first read.
+   * @returns {{ enabled: boolean, interval: number, lookahead: number }}
+   */
+  getDjSettings() {
+    this.db.prepare('INSERT OR IGNORE INTO dj_settings (id) VALUES (1)').run();
+    const row = this.db
+      .prepare('SELECT enabled, interval, lookahead FROM dj_settings WHERE id = 1')
+      .get();
+    return { enabled: row.enabled === 1, interval: row.interval, lookahead: row.lookahead };
+  }
+
+  /**
+   * Persist any subset of { enabled, interval, lookahead } in one UPDATE.
+   * Values are validated by djService before reaching here; the table's CHECK
+   * constraints are the backstop.
+   * @param {{ enabled?: boolean, interval?: number, lookahead?: number }} partial
+   */
+  updateDjSettings(partial) {
+    this.db.prepare('INSERT OR IGNORE INTO dj_settings (id) VALUES (1)').run();
+    const sets = [];
+    const params = {};
+    if (partial.enabled !== undefined) {
+      sets.push('enabled = @enabled');
+      params.enabled = partial.enabled ? 1 : 0;
+    }
+    if (partial.interval !== undefined) {
+      sets.push('interval = @interval');
+      params.interval = partial.interval;
+    }
+    if (partial.lookahead !== undefined) {
+      sets.push('lookahead = @lookahead');
+      params.lookahead = partial.lookahead;
+    }
+    sets.push('updated_at = CURRENT_TIMESTAMP');
+    this.db.prepare(`UPDATE dj_settings SET ${sets.join(', ')} WHERE id = 1`).run(params);
+  }
+
+  /**
+   * Usage counters for one local day; zeros when no row exists.
+   * @param {string} day - 'YYYY-MM-DD'
+   * @returns {{ lines: number, themed_tracks: number }}
+   */
+  getDjUsage(day) {
+    const row = this.db.prepare('SELECT lines, themed_tracks FROM dj_usage WHERE day = ?').get(day);
+    return row
+      ? { lines: row.lines, themed_tracks: row.themed_tracks }
+      : { lines: 0, themed_tracks: 0 };
+  }
+
+  /**
+   * Add one to a usage counter. The field name is interpolated, so it is
+   * whitelisted rather than trusted.
+   * @param {string} day - 'YYYY-MM-DD'
+   * @param {'lines'|'themed_tracks'} field
+   */
+  incrementDjUsage(day, field) {
+    if (!DJ_USAGE_FIELDS.has(field)) {
+      throw new Error(`incrementDjUsage: unknown field "${field}"`);
+    }
+    this.db
+      .prepare(
+        `INSERT INTO dj_usage (day, ${field}) VALUES (?, 1)
+         ON CONFLICT(day) DO UPDATE SET ${field} = ${field} + 1`
+      )
+      .run(day);
+  }
+
+  /**
+   * The local date (in TZ, via SQLite 'localtime') of an instant, 'YYYY-MM-DD'.
+   * Takes the instant from the caller rather than SQLite's own 'now', so the day
+   * agrees with the JS clock the DJ's midnight timer runs on.
+   * @param {number} [nowMs]
+   */
+  getLocalDay(nowMs = Date.now()) {
+    return this.db
+      .prepare("SELECT date(?, 'unixepoch', 'localtime')")
+      .pluck()
+      .get(Math.floor(nowMs / 1000));
+  }
+
+  /** Drop usage rows older than 30 days. Called once at boot. */
+  pruneDjUsage() {
+    this.db.prepare("DELETE FROM dj_usage WHERE day < date('now','localtime','-30 days')").run();
   }
 
   // Playlist methods

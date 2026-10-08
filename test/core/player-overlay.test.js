@@ -137,6 +137,22 @@ describe('MusicPlayer mixing path (R1, contracts §4)', () => {
     expect(h.mixers[0].overlay).toHaveBeenCalledWith(pcm);
   });
 
+  it('overlay() is accepted while the new resource is still buffering', async () => {
+    // Real @discordjs/voice: play() of a not-yet-readable resource → Buffering,
+    // and play() emits trackStart (→ track:change) before it becomes Playing.
+    const player = new MusicPlayer();
+    player.setMixingEnabled(true);
+    player.audioPlayer.play.mockImplementationOnce(function () {
+      this.state = { status: 'buffering' };
+    });
+    let accepted = null;
+    player.once('trackStart', () => (accepted = player.overlay(Buffer.alloc(8))));
+    await player.play(track('a'), connection);
+    expect(player.audioPlayer.state.status).toBe('buffering');
+    expect(accepted).toBe(true);
+    expect(h.mixers[0].overlay).toHaveBeenCalled();
+  });
+
   it('overlay() returns false when nothing is playing', () => {
     const player = new MusicPlayer();
     player.setMixingEnabled(true);

@@ -13,7 +13,9 @@ import { musicManager } from '../../core/musicManager.js';
 import { db } from '../../persistence/db.js';
 import { getDjConfig } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
+import { getPlayer, getQueue } from '../playback.js';
 import { DjError, DJ_UNAVAILABLE, INVALID_INTERVAL, INVALID_LOOKAHEAD } from './errors.js';
+import { createLinePlanner } from './linePlanner.js';
 
 const BREAKER_THRESHOLD = 3;
 const BREAKER_OPEN_MS = 5 * 60 * 1000;
@@ -26,6 +28,8 @@ let settings = null; // { enabled, interval, lookahead }
 const breaker = { consecutiveFailures: 0, openUntil: null, trialInFlight: false };
 let caps = null; // { lines: {used,limit,reached}, themedTracks: {...}, resetsAt }
 let midnightTimer = null;
+let planner = null;
+let mediatorListeners = null;
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -44,6 +48,7 @@ export function init() {
   initialized = true;
   musicManager.setGetDjState(getState);
   scheduleMidnightReset();
+  startPlanner();
   logger.info(
     `[DJ] Initialized (enabled=${settings.enabled}, interval=${settings.interval}, ` +
       `lookahead=${settings.lookahead})`
@@ -52,6 +57,7 @@ export function init() {
 
 /** Stop timers and forget state. Used on shutdown and by tests. */
 export function shutdown() {
+  stopPlanner();
   if (midnightTimer) {
     clearTimeout(midnightTimer);
     midnightTimer = null;
@@ -149,10 +155,63 @@ export function setSettings(partial, _actor = null) {
     changes.enabled = input.enabled;
   }
 
+  const before = settings;
   db.updateDjSettings(changes);
   settings = { ...settings, ...changes };
+  // FR-006: a new interval, or switching the DJ on, restarts the count.
+  const intervalChanged = changes.interval !== undefined && changes.interval !== before.interval;
+  const switchedOn = changes.enabled === true && !before.enabled;
+  if (intervalChanged || switchedOn) planner?.resetCounter();
   broadcast();
+  if (settings.enabled) planner?.poke();
   return getState();
+}
+
+// ---------------------------------------------------------------------------
+// Line planner (R5)
+// ---------------------------------------------------------------------------
+
+function startPlanner() {
+  planner = createLinePlanner({
+    getSettings: () => settings,
+    getVoiceContext: () => musicManager.getVoiceContext(),
+    getQueue: () => getQueue(),
+    getPlayer: () => getPlayer(),
+    getOptOuts: () => db.getShoutoutOptOuts?.() ?? new Set(),
+    isBreakerOpen,
+    canAttempt,
+    isCapReached: () => isCapReached('lines'),
+    onLineReady: () => {
+      recordSuccess();
+      recordUsage('lines');
+    },
+    onLineFailed: (error) => {
+      // A rejected model answer is not an outage, but R9 counts every failed
+      // attempt, so it still feeds the breaker.
+      recordFailure(error?.kind ?? 'unknown', error);
+    }
+  });
+  mediatorListeners = {
+    'track:change': (track) => planner.onTrackChange(track),
+    'queue:update': () => planner.onQueueUpdate(),
+    'player:state': () => planner.poke(),
+    'voice:context': () => planner.poke()
+  };
+  for (const [event, fn] of Object.entries(mediatorListeners)) musicManager.on(event, fn);
+}
+
+function stopPlanner() {
+  if (mediatorListeners) {
+    for (const [event, fn] of Object.entries(mediatorListeners)) musicManager.off(event, fn);
+    mediatorListeners = null;
+  }
+  planner?.shutdown();
+  planner = null;
+}
+
+/** The running line planner, or null. Tests and diagnostics only. */
+export function getPlanner() {
+  return planner;
 }
 
 // ---------------------------------------------------------------------------
@@ -291,6 +350,7 @@ function scheduleMidnightReset() {
     midnightTimer = null;
     if (!initialized) return;
     caps = readCaps();
+    planner?.logDailyStats();
     broadcast();
     scheduleMidnightReset();
   }, delay);

@@ -209,6 +209,14 @@ NIGHTSHIFT_SPECIFY=/path/to/specify python3 -m unittest discover -s tests -t .
   [docs/field-reports/](docs/field-reports/). Spike reports: [docs/spikes/](docs/spikes/).
 - [AGENTS.md](AGENTS.md): instructions for agents working in this repository.
 
+## Changes in 2.0.4 (2026-10-08)
+
+- A round's findings stay in the run state (`round_findings`). A second `verdict.py next`
+  while the piece is `building` returns them again, and `phase.py build` renders the builder
+  prompt from the state. Before, the repeated call returned no findings, the round-3 builder
+  saw "_None._" and made an empty commit, and the last round re-reviewed unchanged code
+  (SquareMusica 002 us3, 2.0.3).
+
 ## Changes in 2.0.3 (2026-10-08)
 
 - Postcondition violations reach the next builder with their detail, and

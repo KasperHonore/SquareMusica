@@ -158,12 +158,14 @@ def _check_results(c: Ctx) -> str:
 
 
 def _unseen(c: Ctx, path: str | None) -> str:
-    items: list[Any] = []
-    if path:
+    """The round's findings from the run state; ``--findings`` only for a round the state
+    holds none for (started before 2.0.4), so a stale or empty file cannot drop them."""
+    items: list[Any] | None = st.round_findings(c.p)
+    if items is None and path:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         items = list(data.get("unseen_findings", data) if isinstance(data, dict) else data)
     return "\n".join(f"- **{f.get('severity', '?')}** `{f.get('path', '')}` {f.get('lines', '')}: "
-                     f"{f.get('rationale', f)}" for f in items) or "_None._"
+                     f"{f.get('rationale', f)}" for f in items or []) or "_None._"
 
 
 def _grounding(c: Ctx) -> str:
@@ -616,7 +618,8 @@ def main(argv: list[str]) -> int:
         sp = sub.add_parser(name, parents=[common])
         sp.add_argument("--piece", required=True)
         if name == "build":
-            sp.add_argument("--findings", help="JSON file from `verdict.py next --json` (unseen findings)")
+            sp.add_argument("--findings", help="JSON file from `verdict.py next --json`; used only when the run state holds "
+                                "no findings for this round (a run started before 2.0.4)")
     args = ap.parse_args(argv)
     args.feature = getattr(args, "feature", None)
     args.json = getattr(args, "json", False)

@@ -338,6 +338,9 @@ def _build(c: Ctx, reason: str, findings: list[dict[str, Any]], sha: str | None)
     p["seen_findings"] += [fingerprint(f) for f in unseen]
     st.transition(c.state, c.key, "building")
     p["round"] += 1
+    # The round's findings stay in state: `next` may be called again while `building`
+    # (an LLM orchestrator re-calls), and `phase build` renders from here (live 2026-10-08).
+    p["round_findings"] = {"round": p["round"], "findings": unseen}
     for field in st.SUB_FIELDS:
         st.set_sub(c.state, c.key, field, "not_run")
     c.save()
@@ -369,8 +372,9 @@ def next_step(c: Ctx) -> dict[str, Any]:
         raise core.NightshiftError(f"{c.key}: run state loop {c.p['loop']!r} differs from the approved loop "
                                    f"{approved!r}; a loop change needs a human decision, never the run")
     p, sha, status = c.p, c.p.get("candidate_sha"), c.p["status"]
-    simple = {"merging": ("merge", "approved"), "parked": ("park", p.get("reason")),
-              "building": ("build", "in_progress")}
+    simple = {"merging": ("merge", "approved"), "parked": ("park", p.get("reason"))}
+    if status == "building":
+        return {"action": "build", "reason": "in_progress", "unseen_findings": st.round_findings(p) or []}
     if status in simple:
         return {"action": simple[status][0], "reason": simple[status][1], "unseen_findings": []}
     if status == "blocked":

@@ -68,6 +68,13 @@ def run_dir(root: Path, name: str) -> Path:
     return root / ".nightshift" / name
 
 
+def round_findings(p: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """The unseen findings ``verdict._build`` handed the current round, or None when the
+    state has no record for this round (a run started before 2.0.4)."""
+    rec = p.get("round_findings") or {}
+    return list(rec.get("findings") or []) if rec.get("round") == p.get("round") else None
+
+
 def state_path(root: Path, name: str) -> Path:
     return run_dir(root, name) / "state.json"
 
@@ -435,6 +442,7 @@ def unpark(p: dict[str, Any], to: str, by: str) -> None:
         "merged_sha": p.get("merged_sha"), "combined_sha": p.get("combined_sha"),
         "blocker_history": p.get("blocker_history") or [], "seen_findings": p.get("seen_findings") or []})
     p["blocker_history"], p["seen_findings"] = [], []  # the fresh builder sees every finding again
+    p.pop("round_findings", None)
     if p.get("merged_sha"):
         # Its merge was reverted on the feature branch: re-merging the same branch would
         # not bring the work back, so the next ``phase.py start`` branches afresh.

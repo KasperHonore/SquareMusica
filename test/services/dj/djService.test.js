@@ -76,7 +76,12 @@ beforeEach(() => {
   h.users = [{ id: 'A' }];
   h.queue = new Queue();
   for (const t of tracks(6)) h.queue.add(t);
-  h.player = { isPaused: () => false, overlay: vi.fn(() => true) };
+  // Like MusicPlayer: refuses overlays until the new resource is playing.
+  h.player = {
+    status: 'idle',
+    isPaused: () => false,
+    overlay: vi.fn(() => h.player.status === 'playing')
+  };
   writeLine.mockReset();
   writeLine.mockImplementation(async (ctx) => ({
     forKey: ctx.forKey,
@@ -182,6 +187,25 @@ describe('djService: breaker (R9)', () => {
     }
     expect(dj.getState().health).toBe('degraded');
     expect(h.player.overlay).not.toHaveBeenCalled();
+  });
+});
+
+describe('djService: speaking through the mediator (US1/AC1)', () => {
+  beforeEach(() => dj.init());
+
+  it('speaks the prepared line once the new track leaves buffering', async () => {
+    dj.setSettings({ enabled: true, interval: 1 });
+    for (let i = 0; i < 2; i++) {
+      h.queue.currentIndex = i;
+      // MusicPlayer.play() emits trackStart while the resource is buffering.
+      h.player.status = 'buffering';
+      musicManager.emit('track:change', h.queue.tracks[i]);
+      await vi.advanceTimersByTimeAsync(30);
+      h.player.status = 'playing';
+      await vi.advanceTimersByTimeAsync(100);
+    }
+    const accepted = h.player.overlay.mock.results.filter((r) => r.value === true);
+    expect(accepted).toHaveLength(1);
   });
 });
 

@@ -8,6 +8,7 @@ import { trackKey } from '../../../src/services/dj/context.js';
 import { Queue } from '../../../src/core/queue.js';
 
 const PCM = Buffer.alloc(8);
+const BUFFER_MS = 40; // time from play() to the resource being readable
 const quietLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 
 function makeTracks(n, duration = 10) {
@@ -24,10 +25,19 @@ let h;
 function setup({ tracks = makeTracks(7), interval = 1, enabled = true, ...overrides } = {}) {
   const queue = new Queue();
   for (const t of tracks) queue.add(t);
+  // Like MusicPlayer: track:change fires while the new resource is still
+  // buffering, and overlay() refuses until it is playing. `mix` records the
+  // overlays the player actually accepted.
   const player = {
     paused: false,
+    status: 'idle',
     isPaused: vi.fn(() => player.paused),
-    overlay: vi.fn(() => !player.paused)
+    mix: vi.fn(),
+    overlay: vi.fn((pcm) => {
+      if (player.paused || player.status !== 'playing') return false;
+      player.mix(pcm);
+      return true;
+    })
   };
   const state = {
     settings: { enabled, interval, lookahead: 5 },
@@ -66,11 +76,14 @@ function setup({ tracks = makeTracks(7), interval = 1, enabled = true, ...overri
 /** Start the queue entry at `index`, as the mediator would. */
 function start(index) {
   h.queue.currentIndex = index;
+  h.player.status = 'buffering';
+  clearTimeout(h.bufferTimer);
+  h.bufferTimer = setTimeout(() => (h.player.status = 'playing'), BUFFER_MS);
   h.planner.onTrackChange(h.queue.tracks[index]);
 }
 
 /** Let scheduled preparations and their promises run. */
-async function settle(ms = 0) {
+async function settle(ms = BUFFER_MS * 2) {
   await vi.advanceTimersByTimeAsync(ms);
 }
 
@@ -96,13 +109,13 @@ describe('linePlanner: transitions and the interval (FR-006)', () => {
   it('interval 3 over 6 transitions speaks exactly 2 times (US1/AC2)', async () => {
     h = setup({ interval: 3 });
     await playThrough(7);
-    expect(h.player.overlay).toHaveBeenCalledTimes(2);
+    expect(h.player.mix).toHaveBeenCalledTimes(2);
   });
 
   it('interval 1 speaks at every transition, each line for the started track (US1/AC1)', async () => {
     h = setup({ interval: 1, tracks: makeTracks(3) });
     await playThrough(3);
-    expect(h.player.overlay).toHaveBeenCalledTimes(2);
+    expect(h.player.mix).toHaveBeenCalledTimes(2);
     expect(h.planner.spoken).toEqual(['Line 1 into Track 1.', 'Line 2 into Track 2.']);
   });
 
@@ -110,7 +123,7 @@ describe('linePlanner: transitions and the interval (FR-006)', () => {
     h = setup({ enabled: false });
     await playThrough(7);
     expect(h.writeLine).not.toHaveBeenCalled();
-    expect(h.player.overlay).not.toHaveBeenCalled();
+    expect(h.player.mix).not.toHaveBeenCalled();
   });
 
   it('seven tracks from an idle queue are six transitions; first start is not one', async () => {
@@ -144,7 +157,7 @@ describe('linePlanner: transitions and the interval (FR-006)', () => {
     h = setup({ interval: 2 });
     h.writeLine.mockRejectedValue(Object.assign(new Error('down'), { kind: 'llm' }));
     await playThrough(4);
-    expect(h.player.overlay).not.toHaveBeenCalled();
+    expect(h.player.mix).not.toHaveBeenCalled();
     expect(h.planner.transitionsSinceSpoken).toBe(3);
   });
 
@@ -157,10 +170,10 @@ describe('linePlanner: transitions and the interval (FR-006)', () => {
       start(i);
       await settle();
     }
-    expect(h.player.overlay).not.toHaveBeenCalled();
+    expect(h.player.mix).not.toHaveBeenCalled();
     start(6);
     await settle();
-    expect(h.player.overlay).toHaveBeenCalledTimes(1);
+    expect(h.player.mix).toHaveBeenCalledTimes(1);
   });
 
   it('a skip counts as a transition', async () => {
@@ -202,7 +215,7 @@ describe('linePlanner: preparation timing', () => {
     expect(h.writeLine.mock.calls[0][0].forKey).toBe(trackKey(h.queue.tracks[0]));
     start(0);
     await settle();
-    expect(h.player.overlay).toHaveBeenCalledTimes(1);
+    expect(h.player.mix).toHaveBeenCalledTimes(1);
   });
 
   it('uses queue.peekNext(): loop queue at the last index prepares for tracks[0]', async () => {
@@ -213,7 +226,7 @@ describe('linePlanner: preparation timing', () => {
     expect(h.writeLine.mock.calls[0][0].forKey).toBe(trackKey(h.queue.tracks[0]));
     start(0);
     await settle();
-    expect(h.player.overlay).toHaveBeenCalledTimes(1);
+    expect(h.player.mix).toHaveBeenCalledTimes(1);
   });
 
   it('a queue:update that changes the predicted next track discards and re-prepares', async () => {
@@ -227,7 +240,8 @@ describe('linePlanner: preparation timing', () => {
     expect(h.writeLine).toHaveBeenCalledTimes(2);
     expect(h.planner.prepared.forKey).toBe('https://yt/jump');
     start(1);
-    expect(h.player.overlay).toHaveBeenCalledTimes(1);
+    await settle();
+    expect(h.player.mix).toHaveBeenCalledTimes(1);
     expect(h.planner.spoken[0]).toMatch(/Jumped/);
   });
 
@@ -239,7 +253,7 @@ describe('linePlanner: preparation timing', () => {
     // Skip twice quickly: track 2 starts without a queue:update in between.
     h.queue.currentIndex = 2;
     h.planner.onTrackChange(h.queue.tracks[2]);
-    expect(h.player.overlay).not.toHaveBeenCalled();
+    expect(h.player.mix).not.toHaveBeenCalled();
   });
 
   it('only one preparation is in flight at a time', async () => {
@@ -281,7 +295,7 @@ describe('linePlanner: never delays playback (FR-008, US1/AC4)', () => {
     expect(result).toBeUndefined(); // synchronous, nothing to await
     await settle(2000);
     await settle(5000);
-    expect(h.player.overlay).not.toHaveBeenCalled();
+    expect(h.player.mix).not.toHaveBeenCalled();
     expect(h.planner.transitionsSinceSpoken).toBe(1);
   });
 
@@ -301,7 +315,7 @@ describe('linePlanner: never delays playback (FR-008, US1/AC4)', () => {
     await settle(1000);
     start(1);
     await settle(1000);
-    expect(h.player.overlay).toHaveBeenCalledTimes(1);
+    expect(h.player.mix).toHaveBeenCalledTimes(1);
   });
 
   it('an LLM/TTS failure drops the line and reports it to the breaker', async () => {
@@ -310,7 +324,7 @@ describe('linePlanner: never delays playback (FR-008, US1/AC4)', () => {
     h.writeLine.mockRejectedValue(err);
     await playThrough(3);
     expect(h.deps.onLineFailed).toHaveBeenCalledWith(err);
-    expect(h.player.overlay).not.toHaveBeenCalled();
+    expect(h.player.mix).not.toHaveBeenCalled();
   });
 
   it('reports a successful TTS to onLineReady (usage counting)', async () => {
@@ -346,7 +360,47 @@ describe('linePlanner: silence conditions (R5 step 5, FR-010)', () => {
     await settle();
     h.state.users = [];
     start(1);
-    expect(h.player.overlay).not.toHaveBeenCalled();
+    await settle();
+    expect(h.player.mix).not.toHaveBeenCalled();
+  });
+});
+
+describe('linePlanner: overlay while the new track is still buffering (US1/AC1)', () => {
+  it('a line prepared ahead is spoken once the player reaches playing, not dropped', async () => {
+    h = setup({ interval: 1, tracks: makeTracks(3) });
+    start(0);
+    await settle();
+    expect(h.planner.prepared.forKey).toBe('https://yt/1');
+    start(1);
+    // track:change fired during buffering: the player refused the overlay.
+    expect(h.player.overlay).toHaveBeenCalled();
+    expect(h.player.mix).not.toHaveBeenCalled();
+    await settle();
+    expect(h.player.mix).toHaveBeenCalledTimes(1);
+    expect(h.planner.spoken).toEqual(['Line 1 into Track 1.']);
+    expect(h.planner.transitionsSinceSpoken).toBe(0);
+  });
+
+  it('drops the line as not-playing if the track never becomes playable within 2 s', async () => {
+    h = setup({ interval: 1, tracks: makeTracks(3) });
+    start(0);
+    await settle();
+    start(1);
+    clearTimeout(h.bufferTimer);
+    await settle(2500);
+    expect(h.player.mix).not.toHaveBeenCalled();
+    expect(h.planner.transitionsSinceSpoken).toBe(1);
+    expect(quietLogger.info).toHaveBeenCalledWith(expect.stringContaining('not-playing'));
+  });
+
+  it('a skip during buffering cancels the pending overlay for the skipped track', async () => {
+    h = setup({ interval: 1, tracks: makeTracks(3) });
+    start(0);
+    await settle();
+    start(1);
+    h.planner.onTrackChange(null);
+    await settle();
+    expect(h.player.mix).not.toHaveBeenCalled();
   });
 });
 
@@ -365,10 +419,10 @@ describe('linePlanner: loops and repeats', () => {
     await settle();
     start(0);
     await settle();
-    expect(h.player.overlay).toHaveBeenCalledTimes(1);
+    expect(h.player.mix).toHaveBeenCalledTimes(1);
     start(0);
     await settle();
-    expect(h.player.overlay).toHaveBeenCalledTimes(1);
+    expect(h.player.mix).toHaveBeenCalledTimes(1);
     expect(h.planner.transitionsSinceSpoken).toBe(1);
   });
 });
@@ -391,7 +445,8 @@ describe('linePlanner: speak-time member re-check (R7, FR-017, FR-020)', () => {
     await settle();
     h.state.users = [{ id: 'B' }];
     start(1);
-    expect(h.player.overlay).not.toHaveBeenCalled();
+    await settle();
+    expect(h.player.mix).not.toHaveBeenCalled();
     expect(h.planner.transitionsSinceSpoken).toBe(1);
     expect(quietLogger.info).toHaveBeenCalledWith(expect.stringContaining('stale-member'));
   });
@@ -403,7 +458,8 @@ describe('linePlanner: speak-time member re-check (R7, FR-017, FR-020)', () => {
     await settle();
     h.state.optOuts = new Set(['A']);
     start(1);
-    expect(h.player.overlay).not.toHaveBeenCalled();
+    await settle();
+    expect(h.player.mix).not.toHaveBeenCalled();
     expect(h.planner.transitionsSinceSpoken).toBe(1);
   });
 });

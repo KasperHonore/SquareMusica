@@ -16,6 +16,7 @@ import { logger as defaultLogger } from '../../utils/logger.js';
 
 const PREPARE_LEAD_MS = 30 * 1000;
 const SPEAK_GRACE_MS = 2000;
+const OVERLAY_RETRY_MS = 50;
 const SPOKEN_RING_SIZE = 20;
 
 /** Drop reasons that come from a failed preparation rather than timing. */
@@ -74,6 +75,8 @@ export function createLinePlanner(deps) {
   let prepWindowOpen = false; // the current track's preparation time has come
   let prepWanted = false; // re-run preparation once the in-flight one settles
   let waiting = null; // { key, track, timer } for a line still in flight at track start
+  let retry = null; // { key, timer } for a line the player could not take yet
+  let trackStartedAt = 0;
   let lastSpoken = null; // { key, text }
   const spoken = [];
   const stats = { day: localDay(Date.now()), due: 0, spoken: 0 };
@@ -233,6 +236,14 @@ export function createLinePlanner(deps) {
     }
   }
 
+  function cancelRetry(reason) {
+    if (retry) {
+      clearTimeout(retry.timer);
+      if (reason) drop(reason, retry.key);
+      retry = null;
+    }
+  }
+
   function speakWaiting() {
     const { track } = waiting;
     endWait();
@@ -266,6 +277,20 @@ export function createLinePlanner(deps) {
     }
 
     if (!getPlayer()?.overlay?.(line.pcm)) {
+      // The new track may not be audible yet (track:change fires as soon as
+      // play() hands the resource over). Retry within the grace window rather
+      // than lose the line; the track itself is never held back.
+      if (previous === track && Date.now() - trackStartedAt < SPEAK_GRACE_MS) {
+        retry = {
+          key,
+          timer: setTimeout(() => {
+            retry = null;
+            speak(line, track);
+          }, OVERLAY_RETRY_MS)
+        };
+        retry.timer.unref?.();
+        return;
+      }
       drop('not-playing', key);
       return;
     }
@@ -288,6 +313,8 @@ export function createLinePlanner(deps) {
     clearPrepTimer();
     prepWindowOpen = false;
     endWait();
+    cancelRetry('stale');
+    trackStartedAt = Date.now();
 
     if (!track) {
       // Stop or empty queue: the next start is not a transition (FR-006).
@@ -371,6 +398,7 @@ export function createLinePlanner(deps) {
   function shutdown() {
     clearPrepTimer();
     endWait();
+    cancelRetry();
     orphanInFlight();
     prepared = null;
     logDailyStats('shutdown');

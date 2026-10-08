@@ -24,6 +24,11 @@
 - Q: Does the very first track starting (nothing played before it) count as a transition for the DJ interval? → A: No — a transition is one track ending (or being skipped) and the next one starting; the first track after an idle or empty queue is not a transition.
 - Q: Should DJ lines recap the wider session or play history ("how the session has been going")? → A: No — v1 lines draw only on the previous and next track, present members' history with them, and the theme; session recaps are out of scope.
 
+### Session 2026-10-08
+
+- Q: When a member presses shuffle while themed mode is running, what should happen to the queue order? → A: Shuffle is rejected while themed mode is on, with a message saying why; the queue order is unchanged.
+- Q: When a member clears the queue while themed mode is running, what should happen to themed mode? → A: Clearing the queue also stops themed mode, as if a member pressed stop; the current track keeps playing.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - The DJ introduces songs out loud (Priority: P1)
@@ -159,6 +164,12 @@ themed mode: no further tracks are added, already queued tracks remain.
    first, and 5 themed picks are queued behind them.
 7. **Given** themed mode is on, **When** a member changes the theme, **Then** tracks added
    from that point fit the new theme and previously queued themed tracks are left in place.
+8. **Given** themed mode is on, **When** a member shuffles the queue, **Then** the shuffle
+   is rejected with a message saying it is unavailable during themed mode and the queue
+   order is unchanged (FR-024a).
+9. **Given** themed mode is on, **When** a member clears the queue or stops playback,
+   **Then** themed mode stops and no further tracks are added, not even after a moment
+   (FR-024b).
 
 ---
 
@@ -183,6 +194,10 @@ themed mode: no further tracks are added, already queued tracks remain.
   returns to the new volume (follow-up recorded in ADR-002).
 - **Short next track**: if the next track is shorter than the line, the line is cut off
   when that track ends rather than carrying over into the following track.
+- **Shuffle during themed mode**: rejected per FR-024a, so member requests keep their
+  place ahead of the DJ's picks (FR-024).
+- **Queue cleared or playback stopped during themed mode**: themed mode stops (FR-024b)
+  rather than refilling the queue the member just emptied.
 - **Bot leaves or is disconnected from voice**: themed mode stops topping up; the DJ
   setting itself (on/off, interval) is retained.
 - **Service outage**: if the voice or text-generation service fails repeatedly, the DJ
@@ -301,6 +316,15 @@ themed mode: no further tracks are added, already queued tracks remain.
   placed ahead of the DJ's upcoming picks, so they play before any not-yet-played
   DJ-added track. Multiple member requests keep the order in which they were queued.
   Member-queued tracks do not count toward the lookahead (FR-022).
+- **FR-024a**: While themed mode is on, shuffling the queue MUST be rejected on every
+  surface with a message saying shuffle is unavailable during themed mode, and the queue
+  order MUST stay unchanged. Shuffle works normally again once themed mode stops.
+- **FR-024b**: Clearing the queue while themed mode is on MUST also stop themed mode, with
+  the same effect as a member stopping it (US4 scenario 4): no further tracks are added,
+  including picks that were still being looked up when the clear happened. A clear does
+  not otherwise change playback: whatever the clear already does on that surface still
+  happens, and nothing else is interrupted. Stopping playback also empties the queue, so
+  it stops themed mode too. This applies on every surface.
 - **FR-025**: Themed mode MUST NOT add a track that has already played or been queued
   during the current themed session, unless no other fitting tracks can be found.
 - **FR-026**: Every track themed mode adds MUST be playable through the same search and

@@ -60,6 +60,7 @@ Queue entries in `queue:update` gain `addedByDj: true` on picks. The web client 
 | `NO_TRACKS_FOR_THEME` | first batch produced zero playable tracks (FR-029) | 422 | "I couldn't find any tracks for that theme." | same |
 | `SERVICE_UNAVAILABLE` | LLM unreachable or breaker open at theme start | 503 | "The DJ's music brain is unavailable right now, try again soon." | same |
 | `CAP_REACHED` | themed-track cap reached at theme start | 429 | "The DJ has hit today's limit; it resets at HH:MM." | same |
+| `THEMED_MODE_ACTIVE` | shuffle refused while themed mode is on (FR-024a) | 409 | "Shuffle is off while themed mode is running." | same |
 
 On any error, the previous state is unchanged (US2 scenario 3).
 
@@ -75,6 +76,8 @@ On any error, the previous state is unchanged (US2 scenario 3).
 | Set lookahead | `setSettings({lookahead})` | `/dj theme ... lookahead:<5\|10>` or `/dj lookahead size:<5\|10>` | `PATCH /api/dj` `{ "lookahead": 10 }` | `dj:settings` `{ lookahead }` |
 | Start / change theme | `startTheme({theme, lookahead?}, actor, origin)` | `/dj theme description:<text> [lookahead]` | `POST /api/dj/theme` `{ "theme": "...", "lookahead": 5 }` → 200 `DjState` | `dj:theme:start` `{ theme, lookahead? }` |
 | Stop theme | `stopTheme(actor)` | `/dj theme-stop` | `DELETE /api/dj/theme` → 200 `DjState` | `dj:theme:stop` |
+| Shuffle during themed mode | `musicManager.shuffleQueue()` → `{ shuffled: false, reason: 'THEMED_MODE_ACTIVE' }` (not a `djService` call) | `/shuffle` | `POST /api/queue/shuffle` | `player:control { action: 'shuffle' }` |
+| Clear / stop during themed mode | `musicManager.clearQueue()`, `clearUpcomingQueue()`, `clearAllButCurrent()` or `stop()` → `djService.stopTheme(null, 'queue-cleared')` via the injected clear hook | `/clear`, `/stop` | `DELETE /api/queue`, `POST /api/playback/stop` | `player:control { action: 'clear' \| 'stop' }` |
 | Own shout-outs | `getShoutouts(uid)` / `setShoutouts(uid, enabled)` | `/dj shoutouts enabled:<true\|false>` (reply states the current value) | `GET /api/dj/shoutouts/me` → `{ "enabled": true }`; `PUT /api/dj/shoutouts/me` `{ "enabled": false }` | `dj:shoutouts` `{ enabled }` → ack `{ enabled }` |
 
 Rules:
@@ -87,6 +90,12 @@ Rules:
   added to `register.js` **and** `commands/index.js`, then `npm run register` is run.
 - Discord replies to settings changes publicly (non-ephemeral), like `/loop`, and replies
   to shout-out changes ephemerally, since they're personal.
+- Shuffle and clear are existing queue operations, not `/dj` operations. Their two rows
+  exist because themed mode changes their outcome, so the parity test must cover them.
+  A refused shuffle is reported as `THEMED_MODE_ACTIVE` on every surface, changes nothing,
+  and records **no** `shuffle` stats event. Every clear and stop reaches
+  `musicManager`, so all surfaces end themed mode the same way (Discord `/shuffle` and
+  `/stop` stop touching the queue directly).
 
 Parity test: `test/transports/djParity.test.js` drives each row through all three
 transports against a mocked `djService` and asserts the same call and arguments, and the
@@ -103,6 +112,13 @@ same error code mapping.
 | `overlay(pcm: Buffer): boolean` | Mixes `pcm` (48 kHz s16le stereo) over the current track with ducking. Returns `false` if nothing is playing, the player is paused, or the mixer is disabled (DJ unconfigured). Replaces any overlay already in progress. |
 | `cancelOverlay(): void` | Drops the remaining overlay and ramps music back to unity. Idempotent. Called internally by `pause()`, `stop()` and `play()`. |
 | `setMixingEnabled(bool)` | Set once at boot from `isDjConfigured()`. Selects the PCM+mixer path or the legacy `Arbitrary` path for subsequent `play()` calls. |
+
+`core/musicManager.js` additions consumed by `djService`:
+
+| Member | Contract |
+|---|---|
+| `shuffleQueue(): { shuffled: boolean, reason?: 'THEMED_MODE_ACTIVE' }` | When `queue.prioritizeMemberTracks` is `true` (themed mode on), does nothing, emits nothing and returns `{ shuffled: false, reason: 'THEMED_MODE_ACTIVE' }`. Otherwise shuffles and emits `queue:update` as today. (Was `boolean`; its callers are updated.) |
+| `setOnQueueCleared(fn)` | Injection seam like `setGetDjState`. `clearQueue()`, `clearUpcomingQueue()`, `clearAllButCurrent()` and `stop()` call `fn()` synchronously **before** emitting `queue:update`, so the theme engine is gone before it could see the emptied queue and refill it. |
 
 `DuckingMixer` (`core/audioMixer.js`):
 - Duck gain 0.3.

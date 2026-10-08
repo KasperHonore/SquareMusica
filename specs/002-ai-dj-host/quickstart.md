@@ -94,6 +94,10 @@ npm run dev
   and old picks to stay.
 - `/dj theme-stop`. **Expect** no more picks, the existing ones to stay, and new member
   songs to append.
+- With themed mode on, `/shuffle` and the dashboard shuffle button. **Expect** "Shuffle is
+  off while themed mode is running", no change in order, and no Shuffle Addict count.
+- With themed mode on, `/clear`. **Expect** themed mode to end and no picks to reappear
+  after a few seconds. Repeat with `/stop` and with the dashboard clear.
 - Nonsense theme ("zzzzqqqq"): **expect** "couldn't find any tracks" and no themed state.
 - DJ Stats page: picks don't appear in any member's stats.
 - Leave themed mode running for 1 hour. **Expect** the upcoming queue never to empty.

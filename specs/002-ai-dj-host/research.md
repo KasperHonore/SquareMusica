@@ -288,6 +288,17 @@ rule lives in the one `Queue` every transport uses, so parity needs no per-trans
 The DJ service sets the flag on theme start and clears it on stop. After stop, leftover DJ
 picks keep their place and new member songs append normally (US4 scenario 4).
 
+**Shuffle and clear during themed mode (FR-024a, FR-024b).** Shuffling would mix DJ
+picks in among member requests and break FR-024. `musicManager.shuffleQueue()` therefore
+refuses while `queue.prioritizeMemberTracks` is set. That flag is already the
+themed-mode signal inside `core/`, so no new import is needed. A clear, or a stop (which
+also empties the queue), would otherwise be undone within a second by the next top-up.
+`musicManager` gets an injected `setOnQueueCleared(fn)` hook that `djService` wires to
+`stopTheme`. It is called before `queue:update` goes out. Each top-up is stamped with its
+session `id` and drops any pick that resolves after its session has ended. Discord
+`/shuffle` and `/stop` currently change the queue directly, so they are moved onto the
+mediator, the same fix `/clear` got in T019a.
+
 **Existing queue at start (FR-021a).** DJ picks are appended, so earlier upcoming tracks
 naturally play first. They aren't `addedByDj`, so they don't count toward the lookahead.
 

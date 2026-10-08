@@ -124,7 +124,10 @@ which both paths reach. Discord `/clear` was different: it changed `queue.tracks
 directly, so it never reached the player or the mediator. It now calls
 `musicManager.clearAllButCurrent()` (T019a), so FR-009 holds for queue clears on every
 transport. The Discord-specific clear behaviour (keep the current track, drop everything
-else) and its stats variant are unchanged.
+else) and its stats variant are unchanged. The same applies to Discord `/shuffle` and
+`/stop` (T063b): they also changed the queue directly, so the themed-mode shuffle refusal
+(FR-024a) and the clear-stops-theme hook (FR-024b) would have missed Discord. Both now
+go through `musicManager`.
 
 **Post-design re-check (after Phase 1, re-run 2026-10-06 after FR-004 narrowing):** all
 five still **PASS**. The re-run removed the unused `getRecentTracks` read, added the
@@ -160,7 +163,7 @@ src/
 │   ├── audioMixer.js                   # A: DuckingMixer Transform (R1)
 │   ├── player.js                       # M: PCM path when mixing enabled; overlay/cancelOverlay; cancel on pause/stop/play
 │   ├── queue.js                        # M: insertAt, prioritizeMemberTracks, countUpcoming, peekNext
-│   └── musicManager.js                 # M: setGetDjState; dj in getFullState; addToHistory passes addedByDj; ensurePlaying via advanceAndPlay; clearAllButCurrent (cancels overlay)
+│   └── musicManager.js                 # M: setGetDjState; dj in getFullState; addToHistory passes addedByDj; ensurePlaying via advanceAndPlay; clearAllButCurrent (cancels overlay); shuffleQueue refuses in themed mode; setOnQueueCleared hook
 ├── integrations/
 │   ├── youtube.js                      # M: getPcmStream(url) wrapping getStream + ffmpeg child in shared cleanup
 │   ├── elevenlabs.js                   # A: synthesize(text) → 48 kHz stereo PCM Buffer (R3)
@@ -184,7 +187,8 @@ src/
     │   └── commands/
     │       ├── dj.js                   # A: /dj subcommands
     │       ├── index.js                # M: register dj handler
-    │       ├── queue.js                # M: /clear via musicManager.clearAllButCurrent()
+    │       ├── playback.js             # M: /stop via musicManager.stop()
+    │       ├── queue.js                # M: /clear via musicManager.clearAllButCurrent(); /shuffle via musicManager.shuffleQueue()
     │       └── register.js             # M: /dj SlashCommandBuilder
     ├── http/
     │   ├── index.js                    # M: mount /api/dj with mutationLimiter

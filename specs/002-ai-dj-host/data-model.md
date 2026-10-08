@@ -110,6 +110,7 @@ New optional fields on the track object in `core/queue.js`:
 | `status` | `'running' \| 'stalled'` | — |
 | `reason` | `null \| 'NO_LISTENERS' \| 'NOT_IN_VOICE' \| 'CAP_REACHED' \| 'SERVICE_UNAVAILABLE' \| 'THEME_EXHAUSTED'` | — |
 | `introPending` | boolean | next transition speaks the theme intro (FR-028) |
+| `id` | number | increments per session; a top-up only adds picks while its `id` is still the live session's (FR-024b) |
 
 **State transitions**
 
@@ -122,6 +123,7 @@ New optional fields on the track object in `core/queue.js`:
                             stalled ─────────┘
   changeTheme(theme): running|stalled → running, introPending = true, usedKeys kept
   restart / bot leaves voice: themed session discarded (bot leave → stalled NOT_IN_VOICE until stop or rejoin)
+  queue cleared or playback stopped (any surface): running|stalled → (none), same as stop() (FR-024b)
 ```
 
 ### DJ Line

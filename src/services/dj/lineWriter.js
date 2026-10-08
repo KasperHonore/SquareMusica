@@ -28,6 +28,19 @@ export const SYSTEM_PROMPT = [
   'Return JSON {"line": string, "factIds": string[]} where factIds lists the ids of the facts you used.'
 ].join(' ');
 
+// The themed intro (FR-028): about the theme, spoken over whichever track
+// starts next, so it names no track.
+export const INTRO_SYSTEM_PROMPT = [
+  'You are the SquareMusica radio DJ.',
+  'A themed set is starting (or the theme just changed).',
+  'Write ONE or TWO short, upbeat sentences introducing the theme, to say over the start of the first song of the set.',
+  "Use ONLY the facts provided. Don't name any song, artist or person.",
+  'Never insult anyone and never use slurs.',
+  'Spell numbers as words. No emoji.',
+  "Don't repeat any of recentLines.",
+  'Return JSON {"line": string, "factIds": string[]} where factIds lists the ids of the facts you used.'
+].join(' ');
+
 /**
  * A dropped line. `kind` is 'validation' when the model's answer failed a
  * check, 'llm' when the model call itself failed, or the TtsError kind.
@@ -198,6 +211,14 @@ export function validateLine(answer, ctx, recentSpoken = []) {
 
 /** The user payload for the line prompt (contracts §5a). */
 export function buildPayload(ctx) {
+  if (ctx.intro) {
+    return {
+      intro: true,
+      theme: ctx.theme,
+      facts: ctx.facts.map(({ id, text }) => ({ id, text })),
+      recentLines: (ctx.recentLines ?? []).slice(-PROMPT_RECENT)
+    };
+  }
   return {
     next: ctx.next,
     previous: ctx.previous,
@@ -221,7 +242,7 @@ export async function writeLine(ctx, recentSpoken = []) {
   let answer;
   try {
     answer = await chatJson({
-      system: SYSTEM_PROMPT,
+      system: ctx.intro ? INTRO_SYSTEM_PROMPT : SYSTEM_PROMPT,
       user: buildPayload(prompted),
       temperature: LLM_TEMPERATURE,
       timeoutMs: LLM_TIMEOUT_MS

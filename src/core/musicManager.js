@@ -20,6 +20,9 @@ class MusicManager extends EventEmitter {
     this.isConnected = null;
     // Wired by services/dj/djService.js when the DJ is configured.
     this.getDjState = null;
+    // Wired by djService: called before the queue:update of every clear or
+    // stop, so themed mode ends before it could refill the emptied queue.
+    this.onQueueCleared = null;
     this._resolutionListenersSetup = false;
   }
 
@@ -80,6 +83,19 @@ class MusicManager extends EventEmitter {
     this.getDjState = fn;
   }
 
+  setOnQueueCleared(fn) {
+    this.onQueueCleared = fn;
+  }
+
+  // Synchronous, and never lets a hook failure break the clear itself.
+  notifyQueueCleared() {
+    try {
+      this.onQueueCleared?.();
+    } catch (error) {
+      logger.warn('[MusicManager] onQueueCleared hook failed:', error.message);
+    }
+  }
+
   // Helper to emit queue updates with currentIndex
   emitQueueUpdate() {
     this.emit('queue:update', {
@@ -119,6 +135,7 @@ class MusicManager extends EventEmitter {
     if (!this.queue) return false;
     this.player?.cancelOverlay?.();
     this.queue.clear();
+    this.notifyQueueCleared();
     this.emitQueueUpdate();
     return true;
   }
@@ -127,6 +144,7 @@ class MusicManager extends EventEmitter {
     if (!this.queue) return false;
     this.player?.cancelOverlay?.();
     this.queue.clearUpcoming();
+    this.notifyQueueCleared();
     this.emitQueueUpdate();
     return true;
   }
@@ -138,15 +156,21 @@ class MusicManager extends EventEmitter {
     const current = this.queue.getCurrent();
     this.queue.tracks = current ? [current] : [];
     this.queue.currentIndex = 0;
+    this.notifyQueueCleared();
     this.emitQueueUpdate();
     return true;
   }
 
+  // Refused while themed mode runs: a shuffle would mix the DJ's picks in among
+  // member requests (FR-024a). prioritizeMemberTracks is that mode's flag.
   shuffleQueue() {
-    if (!this.queue) return false;
+    if (!this.queue) return { shuffled: false };
+    if (this.queue.prioritizeMemberTracks) {
+      return { shuffled: false, reason: 'THEMED_MODE_ACTIVE' };
+    }
     this.queue.shuffle();
     this.emitQueueUpdate();
-    return true;
+    return { shuffled: true };
   }
 
   // Playback operations
@@ -228,6 +252,7 @@ class MusicManager extends EventEmitter {
     if (this.queue) {
       this.queue.clear(); // clear() already resets currentIndex to 0
     }
+    this.notifyQueueCleared();
     this.emit('queue:update', { tracks: [], currentIndex: 0 });
     this.emit('track:change', null);
     this.emitState();
@@ -280,7 +305,9 @@ class MusicManager extends EventEmitter {
       // Read once and cleared, so a later non-loop start of the same entry (e.g.
       // after loop is switched off) is counted.
       const loopReplay = track.loopReplay === true;
-      db.addToHistory(track, this.guildId, { loopReplay });
+      // DJ picks carry requestedBy 'SquareMusica DJ' and no requestedById, so
+      // they are never counted as a member's play (FR-027).
+      db.addToHistory(track, this.guildId, { loopReplay, addedByDj: track.addedByDj === true });
       track.loopReplay = false;
       track.hasPlayed = true;
     }

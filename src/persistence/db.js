@@ -121,6 +121,13 @@ export class DatabaseManager {
       logger.info('[Database] Migrated: added is_loop_replay to history table');
     }
 
+    // DJ themed picks (FR-027). Existing rows read as 0: no DJ picks predate it.
+    const hasAddedByDj = tableInfo.some((col) => col.name === 'added_by_dj');
+    if (!hasAddedByDj) {
+      this.db.exec('ALTER TABLE history ADD COLUMN added_by_dj INTEGER NOT NULL DEFAULT 0');
+      logger.info('[Database] Migrated: added added_by_dj to history table');
+    }
+
     // Also declared in schema.sql, for the fresh-install path this method returns
     // early on. IF NOT EXISTS keeps both paths idempotent.
     this.db.exec(
@@ -188,7 +195,7 @@ export class DatabaseManager {
   }
 
   // History methods
-  addToHistory(track, guildId = null, { loopReplay = false } = {}) {
+  addToHistory(track, guildId = null, { loopReplay = false, addedByDj = false } = {}) {
     try {
       if (!track?.title || !track?.url) {
         logger.warn('[Database] addToHistory: Missing required track fields', {
@@ -198,7 +205,7 @@ export class DatabaseManager {
         return;
       }
       const stmt = this.db.prepare(
-        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar, is_loop_replay) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar, is_loop_replay, added_by_dj) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       );
       stmt.run(
         guildId,
@@ -209,7 +216,8 @@ export class DatabaseManager {
         track.requestedBy || 'Unknown',
         track.requestedById || null,
         track.requestedByAvatar || null,
-        loopReplay ? 1 : 0
+        loopReplay ? 1 : 0,
+        addedByDj || track.addedByDj === true ? 1 : 0
       );
     } catch (error) {
       logger.error('[Database] addToHistory failed:', error.message, { track: track?.title });
@@ -565,7 +573,8 @@ export class DatabaseManager {
       eventType: 'skip',
       groupColumn: 'target_user_id',
       nameColumn: 'target_user_name',
-      extraPredicate: 'e.target_user_id <> e.actor_id',
+      // DJ picks have no owner (target_user_id NULL), so "the DJ" never wins.
+      extraPredicate: 'e.target_user_id IS NOT NULL AND e.target_user_id <> e.actor_id',
       // events records no avatar for the target, only for the actor, and the
       // actor here is the person doing the skipping. The victim's own avatar
       // comes from the plays they queued.
@@ -734,6 +743,51 @@ export class DatabaseManager {
   /** Drop usage rows older than 30 days. Called once at boot. */
   pruneDjUsage() {
     this.db.prepare("DELETE FROM dj_usage WHERE day < date('now','localtime','-30 days')").run();
+  }
+
+  // ---------------------------------------------------------------------------
+  // AI DJ themed mode (US4)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Most-played tracks, as history candidates for themed picks (FR-021b).
+   * Counts only COUNTED_PLAY rows, so loop replays and DJ picks never promote
+   * a track. With `userIds`, only those members' plays count.
+   * `artist` is null for rows recorded without one (or before the column).
+   * @param {{ userIds?: string[]|null, limit: number }} params
+   * @returns {Array<{ url: string, title: string, artist: string|null, count: number,
+   *   duration: number|null, thumbnail: string|null }>}
+   */
+  getTopTracks({ userIds = null, limit } = {}) {
+    if (Array.isArray(userIds) && userIds.length === 0) return [];
+    const hasArtist = this.db.pragma('table_info(history)').some((col) => col.name === 'artist');
+    const latest = (column) => `(SELECT h2.${column} FROM history h2
+             WHERE h2.url = h.url
+             ORDER BY h2.played_at DESC, h2.id DESC LIMIT 1)`;
+    const placeholders = userIds ? userIds.map(() => '?').join(', ') : '';
+    return this.db
+      .prepare(
+        `SELECT h.url AS url, COUNT(*) AS count, MIN(h.played_at) AS firstPlayedAt,
+           ${latest('title')} AS title,
+           ${hasArtist ? latest('artist') : 'NULL'} AS artist,
+           ${latest('duration')} AS duration,
+           ${latest('thumbnail')} AS thumbnail
+         FROM history h
+         WHERE ${COUNTED_PLAY}
+           ${userIds ? `AND h.requested_by_id IN (${placeholders})` : ''}
+         GROUP BY h.url
+         ORDER BY count DESC, firstPlayedAt ASC, h.url ASC
+         LIMIT ?`
+      )
+      .all(...(userIds ?? []), limit)
+      .map(({ url, title, artist, count, duration, thumbnail }) => ({
+        url,
+        title,
+        artist: artist ?? null,
+        count,
+        duration: duration ?? null,
+        thumbnail: thumbnail ?? null
+      }));
   }
 
   // Playlist methods

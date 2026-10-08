@@ -20,6 +20,7 @@ import {
   MAX_QUERY_LENGTH
 } from '../../../shared/queueHelpers.js';
 import { logger } from '../../../utils/logger.js';
+import { DJ_MESSAGES, textFor } from '../../../services/dj/messages.js';
 
 const router = Router();
 
@@ -185,7 +186,11 @@ router.patch('/reorder', authMiddleware, requireVoiceConnection, (req, res) => {
  * POST /api/queue/shuffle - Shuffle queue
  */
 router.post('/shuffle', authMiddleware, requireVoiceConnection, (req, res) => {
-  musicManager.shuffleQueue();
+  const { shuffled, reason } = musicManager.shuffleQueue();
+  // Refused while themed mode runs (FR-024a); nothing changed, nothing recorded.
+  if (!shuffled && reason) {
+    return res.status(DJ_MESSAGES[reason].http).json({ code: reason, message: textFor(reason) });
+  }
   // Acts on the queue as a whole, so no track is recorded.
   emitAction(STATS_EVENT_TYPES.SHUFFLE, req.user, null);
   res.json({ success: true });

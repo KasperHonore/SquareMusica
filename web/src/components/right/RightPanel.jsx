@@ -16,7 +16,8 @@ export function RightPanel() {
     upcomingTracks,
     reorderUpcoming,
     removeUpcoming,
-    resolutionStats
+    resolutionStats,
+    djState
   } = useSocketContext();
 
   return (
@@ -46,6 +47,9 @@ export function RightPanel() {
           onShuffle={() => playerControl('shuffle')}
           onClear={() => playerControl('clear')}
           resolutionStats={resolutionStats}
+          shuffleDisabledReason={
+            djState?.theme ? 'Shuffle is off while themed mode is running.' : null
+          }
           isRightPanel
         />
       </div>

@@ -37,6 +37,7 @@ export function Queue({
   onShuffle,
   onClear,
   resolutionStats,
+  shuffleDisabledReason = null,
   isRightPanel = false
 }) {
   const [activeId, setActiveId] = useState(null);
@@ -104,6 +105,7 @@ export function Queue({
         isRightPanel={isRightPanel}
         onShuffle={onShuffle}
         onClear={onClear}
+        shuffleDisabledReason={shuffleDisabledReason}
       />
 
       <style>{`

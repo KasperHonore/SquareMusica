@@ -82,3 +82,85 @@ describe('dj_shoutout_optouts table', () => {
     ).not.toThrow();
   });
 });
+
+describe('themed-mode history (US4, FR-021b, FR-027)', () => {
+  const play = (url, userId, { loopReplay = false, addedByDj = false, title = url } = {}) =>
+    manager.addToHistory(
+      {
+        title,
+        url,
+        duration: 200,
+        thumbnail: `${url}.jpg`,
+        requestedBy: addedByDj ? 'SquareMusica DJ' : `user-${userId}`,
+        requestedById: addedByDj ? null : userId,
+        addedByDj
+      },
+      'g1',
+      { loopReplay, addedByDj }
+    );
+
+  it('addToHistory writes added_by_dj = 1 and requested_by_id NULL for a DJ pick', () => {
+    play('dj-url', null, { addedByDj: true });
+    play('member-url', 'A');
+    const rows = manager.db
+      .prepare('SELECT url, added_by_dj, requested_by, requested_by_id FROM history ORDER BY id')
+      .all();
+    expect(rows).toEqual([
+      { url: 'dj-url', added_by_dj: 1, requested_by: 'SquareMusica DJ', requested_by_id: null },
+      { url: 'member-url', added_by_dj: 0, requested_by: 'user-A', requested_by_id: 'A' }
+    ]);
+  });
+
+  it('getTopTracks counts plays, excluding loop replays and DJ picks', () => {
+    play('u1', 'A');
+    play('u1', 'B');
+    play('u1', 'A', { loopReplay: true });
+    play('u1', null, { addedByDj: true });
+    play('u2', 'A');
+    play('u2', 'A', { loopReplay: true });
+    play('u2', 'A', { loopReplay: true });
+    play('dj-only', null, { addedByDj: true });
+    play('dj-only', null, { addedByDj: true });
+
+    const top = manager.getTopTracks({ limit: 10 });
+    expect(top.map(({ url, count }) => ({ url, count }))).toEqual([
+      { url: 'u1', count: 2 },
+      { url: 'u2', count: 1 }
+    ]);
+    expect(top[0]).toMatchObject({ title: 'u1', duration: 200, thumbnail: 'u1.jpg' });
+    expect(top[0]).toHaveProperty('artist');
+  });
+
+  it('getTopTracks with userIds counts only those members, and honours limit', () => {
+    play('u1', 'A');
+    play('u2', 'B');
+    play('u2', 'B');
+    play('u3', 'C');
+    expect(manager.getTopTracks({ userIds: ['A', 'C'], limit: 10 }).map((t) => t.url)).toEqual([
+      'u1',
+      'u3'
+    ]);
+    expect(manager.getTopTracks({ limit: 1 }).map((t) => t.url)).toEqual(['u2']);
+    expect(manager.getTopTracks({ userIds: [], limit: 10 })).toEqual([]);
+  });
+
+  it('getDjSkipAward ignores skip events whose target is NULL (DJ picks)', () => {
+    const skip = (actor, target) =>
+      manager.logEvent({
+        type: 'skip',
+        actor: { id: actor, name: `user-${actor}` },
+        track: {
+          title: 'T',
+          url: 'u',
+          requestedById: target,
+          requestedBy: target ? `user-${target}` : 'SquareMusica DJ'
+        }
+      });
+    for (let i = 0; i < 5; i++) skip('A', null);
+    skip('A', 'B');
+
+    const award = manager.getDjSkipAward();
+    expect(award?.userId).toBe('B');
+    expect(award?.value).toBe(1);
+  });
+});

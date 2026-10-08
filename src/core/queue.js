@@ -26,6 +26,7 @@
  * @property {ResolutionStatus} [status] - Resolution status for Spotify tracks
  * @property {boolean} [hasPlayed] - This entry has started at least once
  * @property {boolean} [loopReplay] - This start was chosen by loop mode
+ * @property {boolean} [addedByDj] - Picked by the DJ's themed mode (FR-027)
  */
 
 class Queue {
@@ -33,13 +34,25 @@ class Queue {
     this.tracks = [];
     this.currentIndex = 0;
     this.loopMode = 'off'; // 'off' | 'track' | 'queue'
+    // Set by the DJ while themed mode runs: member tracks then go ahead of the
+    // DJ's upcoming picks instead of to the end (FR-024).
+    this.prioritizeMemberTracks = false;
   }
 
   /**
-   * Add a track to the end of the queue
+   * Add a track to the end of the queue. With prioritizeMemberTracks set, a
+   * member's track goes before the first upcoming DJ pick instead, so member
+   * requests stay in FIFO order ahead of the DJ's picks (FR-024).
    * @param {Track} track
    */
   add(track) {
+    if (this.prioritizeMemberTracks && !track.addedByDj) {
+      const firstPick = this.tracks.findIndex((t, i) => i > this.currentIndex && t.addedByDj);
+      if (firstPick !== -1) {
+        this.insertAt(firstPick, track);
+        return;
+      }
+    }
     // Reset index when adding to empty queue to prevent stale index issues
     if (this.tracks.length === 0) {
       this.currentIndex = 0;
@@ -48,6 +61,35 @@ class Queue {
       ...track,
       addedAt: new Date()
     });
+  }
+
+  /**
+   * Insert a track among the upcoming entries. The index is clamped to
+   * [currentIndex + 1, length], so the current and past entries never move.
+   * @param {number} index
+   * @param {Track} track
+   * @returns {number} The index the track landed at
+   */
+  insertAt(index, track) {
+    if (this.tracks.length === 0) {
+      this.currentIndex = 0;
+    }
+    const at = Math.min(Math.max(index, this.currentIndex + 1), this.tracks.length);
+    this.tracks.splice(at, 0, { ...track, addedAt: new Date() });
+    return at;
+  }
+
+  /**
+   * Number of entries after currentIndex matching the predicate.
+   * @param {(track: Track) => boolean} predicate
+   * @returns {number}
+   */
+  countUpcoming(predicate) {
+    let count = 0;
+    for (let i = this.currentIndex + 1; i < this.tracks.length; i++) {
+      if (predicate(this.tracks[i])) count++;
+    }
+    return count;
   }
 
   /**

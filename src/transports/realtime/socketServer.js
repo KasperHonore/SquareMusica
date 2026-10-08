@@ -13,7 +13,9 @@ import {
   handlePlayerControl,
   handleVoiceJoin,
   handleVoiceLeave,
-  handleDjSettings
+  handleDjSettings,
+  handleDjThemeStart,
+  handleDjThemeStop
 } from './handlers.js';
 
 let io;
@@ -105,6 +107,8 @@ export function setupSocketServer(httpServer) {
     socket.on(ClientEvents.VOICE_JOIN, handleVoiceJoin(socket));
     socket.on(ClientEvents.VOICE_LEAVE, handleVoiceLeave(socket));
     socket.on(ClientEvents.DJ_SETTINGS, handleDjSettings(socket));
+    socket.on(ClientEvents.DJ_THEME_START, handleDjThemeStart(socket));
+    socket.on(ClientEvents.DJ_THEME_STOP, handleDjThemeStop(socket));
 
     // Playlist event handlers
     socket.on(ClientEvents.PLAYLIST_CREATE, ({ name, spotifyUrl, coverImage }) => {

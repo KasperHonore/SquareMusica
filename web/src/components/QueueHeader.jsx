@@ -5,8 +5,20 @@ import { Shuffle, Trash } from './icons';
  * QueueHeader - "Up Next" title, count badge, resolution indicator,
  * and the shuffle / clear controls (with inline clear confirmation).
  */
-export function QueueHeader({ count, isEmpty, hasUnresolved, isRightPanel, onShuffle, onClear }) {
+export function QueueHeader({
+  count,
+  isEmpty,
+  hasUnresolved,
+  isRightPanel,
+  onShuffle,
+  onClear,
+  shuffleDisabledReason = null
+}) {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  // The server refuses a shuffle during themed mode anyway (FR-024a); this only
+  // explains why the control is off.
+  const shuffleDisabled = isEmpty || !!shuffleDisabledReason;
+  const shuffleTitle = shuffleDisabledReason || 'Shuffle queue';
 
   // Auto-dismiss confirmation after 3 seconds
   useEffect(() => {
@@ -145,21 +157,21 @@ export function QueueHeader({ count, isEmpty, hasUnresolved, isRightPanel, onShu
           <>
             <button
               onClick={onShuffle}
-              disabled={isEmpty}
+              disabled={shuffleDisabled}
               style={{
                 background: 'none',
                 border: 'none',
                 fontSize: '11px',
-                color: isEmpty ? 'var(--color-text-muted)' : 'var(--color-text-muted)',
-                cursor: isEmpty ? 'not-allowed' : 'pointer',
+                color: 'var(--color-text-muted)',
+                cursor: shuffleDisabled ? 'not-allowed' : 'pointer',
                 fontFamily: 'var(--font-body)',
                 transition: 'color 0.12s',
                 padding: 0,
-                opacity: isEmpty ? 0.5 : 1
+                opacity: shuffleDisabled ? 0.5 : 1
               }}
               className="wave-queue-action"
-              title="Shuffle queue"
-              aria-label="Shuffle queue"
+              title={shuffleTitle}
+              aria-label={shuffleTitle}
             >
               Shuffle
             </button>
@@ -209,13 +221,13 @@ export function QueueHeader({ count, isEmpty, hasUnresolved, isRightPanel, onShu
             </button>
             <button
               onClick={onShuffle}
-              disabled={isEmpty}
+              disabled={shuffleDisabled}
               className="flex items-center justify-center"
               style={{
                 padding: '8px',
                 color: 'var(--color-text-secondary)',
-                opacity: isEmpty ? 0.5 : 1,
-                cursor: isEmpty ? 'not-allowed' : 'pointer',
+                opacity: shuffleDisabled ? 0.5 : 1,
+                cursor: shuffleDisabled ? 'not-allowed' : 'pointer',
                 borderRadius: '9999px',
                 border: 'none',
                 background: 'none',
@@ -223,8 +235,8 @@ export function QueueHeader({ count, isEmpty, hasUnresolved, isRightPanel, onShu
                 minWidth: '44px',
                 minHeight: '44px'
               }}
-              title="Shuffle queue"
-              aria-label="Shuffle queue"
+              title={shuffleTitle}
+              aria-label={shuffleTitle}
             >
               <Shuffle size={20} />
             </button>

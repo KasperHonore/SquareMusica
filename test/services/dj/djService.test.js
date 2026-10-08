@@ -7,7 +7,8 @@ const h = vi.hoisted(() => ({
   settings: { enabled: false, interval: 3, lookahead: 5 },
   queue: null,
   player: null,
-  users: [{ id: 'A' }]
+  users: [{ id: 'A' }],
+  connected: true
 }));
 
 vi.mock('../../../src/utils/logger.js', () => ({
@@ -18,7 +19,18 @@ vi.mock('../../../src/core/musicManager.js', async () => {
   const { EventEmitter } = await import('events');
   const mm = new EventEmitter();
   mm.setGetDjState = vi.fn();
+  mm.onQueueCleared = null;
+  mm.setOnQueueCleared = vi.fn((fn) => {
+    mm.onQueueCleared = fn;
+  });
   mm.getVoiceContext = vi.fn(() => ({ connectedUsers: h.users }));
+  mm.getPlayerState = vi.fn(() => ({ connected: h.connected }));
+  mm.ensurePlaying = vi.fn(async () => true);
+  mm.addToQueue = vi.fn((track) => {
+    h.queue.add(track);
+    mm.emit('queue:update', { tracks: h.queue.getAll(), currentIndex: h.queue.currentIndex });
+    return true;
+  });
   return { musicManager: mm };
 });
 
@@ -39,7 +51,9 @@ vi.mock('../../../src/persistence/db.js', () => {
         h.usage.set(day, row);
       }),
       getLocalDay: vi.fn(localDay),
-      pruneDjUsage: vi.fn()
+      pruneDjUsage: vi.fn(),
+      getTopTracks: vi.fn(() => []),
+      getShoutoutOptOuts: vi.fn(() => new Set())
     }
   };
 });
@@ -50,14 +64,18 @@ vi.mock('../../../src/services/playback.js', () => ({
 }));
 
 vi.mock('../../../src/services/dj/lineWriter.js', () => ({ writeLine: vi.fn() }));
+vi.mock('../../../src/integrations/llm.js', () => ({ chatJson: vi.fn() }));
+vi.mock('../../../src/services/resolver.js', () => ({ resolveSpotifyTrack: vi.fn() }));
 
 vi.mock('../../../src/config/env.js', () => ({
-  getDjConfig: () => ({ caps: { lines: 2, themedTracks: 100 } })
+  getDjConfig: () => ({ caps: { lines: 2, themedTracks: h.themedCap ?? 100 } })
 }));
 
 import { musicManager } from '../../../src/core/musicManager.js';
 import { db } from '../../../src/persistence/db.js';
 import { writeLine } from '../../../src/services/dj/lineWriter.js';
+import { chatJson } from '../../../src/integrations/llm.js';
+import { resolveSpotifyTrack } from '../../../src/services/resolver.js';
 import { Queue } from '../../../src/core/queue.js';
 import * as dj from '../../../src/services/dj/djService.js';
 
@@ -74,12 +92,15 @@ beforeEach(() => {
   h.usage.clear();
   h.settings = { enabled: false, interval: 3, lookahead: 5 };
   h.users = [{ id: 'A' }];
+  h.connected = true;
+  h.themedCap = 100;
   h.queue = new Queue();
   for (const t of tracks(6)) h.queue.add(t);
   // Like MusicPlayer: refuses overlays until the new resource is playing.
   h.player = {
     status: 'idle',
     isPaused: () => false,
+    isPlaying: () => h.player.status === 'playing',
     overlay: vi.fn(() => h.player.status === 'playing')
   };
   writeLine.mockReset();
@@ -92,6 +113,18 @@ beforeEach(() => {
     preparedAt: Date.now()
   }));
   vi.mocked(db.updateDjSettings).mockClear();
+  vi.mocked(musicManager.ensurePlaying).mockClear();
+  let n = 0;
+  chatJson.mockReset();
+  chatJson.mockImplementation(async ({ user }) => ({
+    picks: Array.from({ length: user.count }, () => ({ artist: `A${++n}`, title: `S${n}` }))
+  }));
+  resolveSpotifyTrack.mockReset();
+  resolveSpotifyTrack.mockImplementation(async ({ title, artists }) => ({
+    url: `https://yt/${artists[0]}-${title}`,
+    title,
+    duration: 120
+  }));
   emitted = [];
   musicManager.on('dj:state', onState);
 });
@@ -250,5 +283,210 @@ describe('djService: caps (FR-033, FR-034)', () => {
       24 * 60 * 60 * 1000
     );
     expect(emitted).toHaveLength(1);
+  });
+});
+
+describe('djService: themed mode (US4, contracts §3)', () => {
+  beforeEach(() => {
+    h.queue = new Queue();
+    dj.init();
+  });
+
+  const actor = { id: 'A', name: 'Alice' };
+  const origin = { transport: 'http' };
+
+  it.each([
+    ['empty', '   '],
+    ['too long', 'x'.repeat(201)],
+    ['not a string', 42],
+    ['failing the content filter', 'songs for a retard']
+  ])('startTheme rejects a theme that is %s with INVALID_THEME', async (_label, theme) => {
+    await expect(dj.startTheme({ theme }, actor, origin)).rejects.toMatchObject({
+      code: 'INVALID_THEME'
+    });
+    expect(dj.getState().theme).toBeNull();
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('accepts a 200-character theme after trimming', async () => {
+    const state = await dj.startTheme({ theme: `  ${'x'.repeat(200)}  ` }, actor, origin);
+    expect(state.theme.theme).toHaveLength(200);
+  });
+
+  it('rejects a bad lookahead with INVALID_LOOKAHEAD', async () => {
+    await expect(
+      dj.startTheme({ theme: 'rock', lookahead: 7 }, actor, origin)
+    ).rejects.toMatchObject({ code: 'INVALID_LOOKAHEAD' });
+  });
+
+  it('bot not connected → NOT_IN_VOICE', async () => {
+    h.connected = false;
+    await expect(dj.startTheme({ theme: 'rock' }, actor, origin)).rejects.toMatchObject({
+      code: 'NOT_IN_VOICE'
+    });
+  });
+
+  it('breaker open → SERVICE_UNAVAILABLE', async () => {
+    for (let i = 0; i < 3; i++) dj.recordFailure('llm');
+    emitted = [];
+    await expect(dj.startTheme({ theme: 'rock' }, actor, origin)).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE'
+    });
+    expect(chatJson).not.toHaveBeenCalled();
+  });
+
+  it('themed cap reached → CAP_REACHED', async () => {
+    h.themedCap = 0;
+    dj.shutdown();
+    dj.init();
+    await expect(dj.startTheme({ theme: 'rock' }, actor, origin)).rejects.toMatchObject({
+      code: 'CAP_REACHED'
+    });
+  });
+
+  it('no playable tracks → NO_TRACKS_FOR_THEME, no session, flag cleared (US4/AC5)', async () => {
+    resolveSpotifyTrack.mockResolvedValue(null);
+    await expect(dj.startTheme({ theme: 'zzzzqqqq' }, actor, origin)).rejects.toMatchObject({
+      code: 'NO_TRACKS_FOR_THEME'
+    });
+    expect(dj.getState().theme).toBeNull();
+    expect(h.queue.prioritizeMemberTracks).toBe(false);
+    expect(emitted.filter((s) => s.theme)).toHaveLength(0);
+  });
+
+  it('starts: sets prioritizeMemberTracks, starts playback, broadcasts ThemeState (US4/AC1)', async () => {
+    const state = await dj.startTheme({ theme: 'classic rock', lookahead: 10 }, actor, origin);
+    expect(h.queue.prioritizeMemberTracks).toBe(true);
+    expect(musicManager.ensurePlaying).toHaveBeenCalled();
+    expect(state.theme).toMatchObject({
+      theme: 'classic rock',
+      startedBy: actor,
+      status: 'running',
+      reason: null
+    });
+    expect(state.lookahead).toBe(10);
+    expect(db.updateDjSettings).toHaveBeenCalledWith({ lookahead: 10 });
+    expect(emitted.filter((s) => s.theme?.theme === 'classic rock').length).toBeGreaterThan(0);
+
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(h.queue.countUpcoming((t) => t.addedByDj)).toBeGreaterThanOrEqual(9);
+  });
+
+  it('startTheme while running changes the theme, keeps usedKeys and sets introPending (US4/AC7)', async () => {
+    dj.setSettings({ enabled: true });
+    await dj.startTheme({ theme: 'old' }, actor, origin);
+    await vi.advanceTimersByTimeAsync(1500);
+    const before = dj.getState().theme;
+    emitted = [];
+
+    const state = await dj.startTheme({ theme: 'new' }, { id: 'B', name: 'Bob' }, origin);
+    expect(state.theme.theme).toBe('new');
+    expect(state.theme.startedAt).toBe(before.startedAt);
+    expect(emitted).toHaveLength(1);
+    // introPending set: the planner starts writing the new theme's intro at once.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(writeLine).toHaveBeenLastCalledWith(
+      expect.objectContaining({ intro: true, theme: 'new' }),
+      expect.any(Array)
+    );
+    expect(dj.getThemeOrigin()).toEqual(origin);
+  });
+
+  it('a lookahead given with a failed start is not persisted', async () => {
+    resolveSpotifyTrack.mockResolvedValue(null);
+    await expect(
+      dj.startTheme({ theme: 'nothing', lookahead: 10 }, actor, origin)
+    ).rejects.toBeTruthy();
+    expect(db.updateDjSettings).not.toHaveBeenCalled();
+    expect(dj.getState().lookahead).toBe(5);
+  });
+
+  it('stopTheme clears the flag, keeps queued picks and broadcasts once (US4/AC4)', async () => {
+    await dj.startTheme({ theme: 'rock' }, actor, origin);
+    await vi.advanceTimersByTimeAsync(1500);
+    const queued = h.queue.length;
+    emitted = [];
+
+    const state = dj.stopTheme(actor);
+    expect(state.theme).toBeNull();
+    expect(h.queue.prioritizeMemberTracks).toBe(false);
+    expect(h.queue.length).toBe(queued);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].theme).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(h.queue.length).toBe(queued);
+  });
+
+  it('works with commentary disabled: builds the queue silently (FR-028)', async () => {
+    expect(dj.getState().enabled).toBe(false);
+    await dj.startTheme({ theme: 'rock' }, actor, origin);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(h.queue.countUpcoming((t) => t.addedByDj)).toBe(5);
+    expect(writeLine).not.toHaveBeenCalled();
+  });
+
+  it('the queue-cleared hook stops a running theme with one dj:state (FR-024b)', async () => {
+    expect(musicManager.setOnQueueCleared).toHaveBeenCalledWith(expect.any(Function));
+    await dj.startTheme({ theme: 'rock' }, actor, origin);
+    emitted = [];
+
+    musicManager.onQueueCleared();
+    expect(h.queue.prioritizeMemberTracks).toBe(false);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].theme).toBeNull();
+    expect(dj.getState().theme).toBeNull();
+  });
+
+  it('the queue-cleared hook is a no-op with no broadcast when no theme runs', () => {
+    musicManager.onQueueCleared();
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('after a clear, the emptied queue:update triggers no top-up', async () => {
+    await dj.startTheme({ theme: 'rock' }, actor, origin);
+    await vi.advanceTimersByTimeAsync(1500);
+    chatJson.mockClear();
+
+    musicManager.onQueueCleared();
+    h.queue.clear();
+    musicManager.emit('queue:update', { tracks: [], currentIndex: 0 });
+    await vi.advanceTimersByTimeAsync(70_000);
+    expect(chatJson).not.toHaveBeenCalled();
+    expect(h.queue.length).toBe(0);
+  });
+
+  it('bot leaving voice marks the theme stalled NOT_IN_VOICE', async () => {
+    await dj.startTheme({ theme: 'rock' }, actor, origin);
+    emitted = [];
+    h.connected = false;
+    musicManager.emit('voice:context', null);
+    expect(dj.getState().theme).toMatchObject({ status: 'stalled', reason: 'NOT_IN_VOICE' });
+    expect(emitted).toHaveLength(1);
+  });
+
+  it('stopTheme and startTheme throw DJ_UNAVAILABLE when unconfigured', async () => {
+    dj.shutdown();
+    expect(() => dj.stopTheme(actor)).toThrow(expect.objectContaining({ code: 'DJ_UNAVAILABLE' }));
+    await expect(dj.startTheme({ theme: 'x' }, actor, origin)).rejects.toMatchObject({
+      code: 'DJ_UNAVAILABLE'
+    });
+  });
+});
+
+describe('djService: lookahead change during themed mode (FR-022, FR-023)', () => {
+  beforeEach(() => {
+    h.queue = new Queue();
+    dj.init();
+  });
+
+  it('raising the lookahead to 10 tops up to 10 upcoming picks', async () => {
+    await dj.startTheme({ theme: 'rock' }, { id: 'A', name: 'Alice' }, { transport: 'http' });
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(h.queue.countUpcoming((t) => t.addedByDj)).toBe(5);
+
+    dj.setSettings({ lookahead: 10 });
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(h.queue.countUpcoming((t) => t.addedByDj)).toBe(10);
   });
 });

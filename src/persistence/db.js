@@ -121,6 +121,15 @@ export class DatabaseManager {
       logger.info('[Database] Migrated: added is_loop_replay to history table');
     }
 
+    // 1 when themed mode queued the track (FR-027). Such rows also carry a NULL
+    // requested_by_id, so COUNTED_PLAY already skips them; this column records
+    // why. Existing rows read as 0, i.e. member requests.
+    const hasAddedByDj = tableInfo.some((col) => col.name === 'added_by_dj');
+    if (!hasAddedByDj) {
+      this.db.exec('ALTER TABLE history ADD COLUMN added_by_dj INTEGER NOT NULL DEFAULT 0');
+      logger.info('[Database] Migrated: added added_by_dj to history table');
+    }
+
     // Also declared in schema.sql, for the fresh-install path this method returns
     // early on. IF NOT EXISTS keeps both paths idempotent.
     this.db.exec(
@@ -188,7 +197,7 @@ export class DatabaseManager {
   }
 
   // History methods
-  addToHistory(track, guildId = null, { loopReplay = false } = {}) {
+  addToHistory(track, guildId = null, { loopReplay = false, addedByDj = false } = {}) {
     try {
       if (!track?.title || !track?.url) {
         logger.warn('[Database] addToHistory: Missing required track fields', {
@@ -198,7 +207,7 @@ export class DatabaseManager {
         return;
       }
       const stmt = this.db.prepare(
-        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar, is_loop_replay) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar, is_loop_replay, added_by_dj) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       );
       stmt.run(
         guildId,
@@ -209,7 +218,8 @@ export class DatabaseManager {
         track.requestedBy || 'Unknown',
         track.requestedById || null,
         track.requestedByAvatar || null,
-        loopReplay ? 1 : 0
+        loopReplay ? 1 : 0,
+        addedByDj || track.addedByDj === true ? 1 : 0
       );
     } catch (error) {
       logger.error('[Database] addToHistory failed:', error.message, { track: track?.title });
@@ -565,7 +575,8 @@ export class DatabaseManager {
       eventType: 'skip',
       groupColumn: 'target_user_id',
       nameColumn: 'target_user_name',
-      extraPredicate: 'e.target_user_id <> e.actor_id',
+      // Skips of DJ picks carry a NULL target; "the DJ" is never a winner.
+      extraPredicate: 'e.target_user_id IS NOT NULL AND e.target_user_id <> e.actor_id',
       // events records no avatar for the target, only for the actor, and the
       // actor here is the person doing the skipping. The victim's own avatar
       // comes from the plays they queued.
@@ -731,6 +742,50 @@ export class DatabaseManager {
          ON CONFLICT(day) DO UPDATE SET ${field} = ${field} + 1`
       )
       .run(day);
+  }
+
+  /**
+   * Most-played tracks, as history candidates for themed picks (research R8).
+   * Counts COUNTED_PLAY rows only, so loop replays and DJ picks never vote.
+   * With userIds, only those members' plays count. `artist` is the latest
+   * recorded artist, or null when history has none (or no artist column yet).
+   * @param {{ userIds?: string[]|null, limit?: number }} params
+   * @returns {Array<{ url: string, title: string, artist: string|null, count: number,
+   *   duration: number, thumbnail: string|null }>}
+   */
+  getTopTracks({ userIds = null, limit = 30 } = {}) {
+    if (Array.isArray(userIds) && userIds.length === 0) return [];
+    const hasArtist = this.db.pragma('table_info(history)').some((col) => col.name === 'artist');
+    const latest = (column) =>
+      `(SELECT h2.${column} FROM history h2 WHERE h2.url = h.url
+         ORDER BY h2.played_at DESC, h2.id DESC LIMIT 1)`;
+    const artistSelect = hasArtist
+      ? `(SELECT h3.artist FROM history h3 WHERE h3.url = h.url AND h3.artist IS NOT NULL
+           ORDER BY h3.played_at DESC, h3.id DESC LIMIT 1)`
+      : 'NULL';
+    const userFilter = userIds
+      ? `AND h.requested_by_id IN (${userIds.map(() => '?').join(', ')})`
+      : '';
+    const sql = `
+      SELECT
+        h.url                 AS url,
+        ${latest('title')}    AS title,
+        ${artistSelect}       AS artist,
+        COUNT(*)              AS count,
+        ${latest('duration')} AS duration,
+        ${latest('thumbnail')} AS thumbnail,
+        MIN(h.played_at)      AS firstPlayedAt
+      FROM history h
+      WHERE ${COUNTED_PLAY}
+        ${userFilter}
+      GROUP BY h.url
+      ORDER BY count DESC, firstPlayedAt ASC, h.url ASC
+      LIMIT ?
+    `;
+    return this.db
+      .prepare(sql)
+      .all(...(userIds ?? []), limit)
+      .map(({ firstPlayedAt: _first, ...row }) => row);
   }
 
   // Usage rows only matter for today; keep a month for debugging.

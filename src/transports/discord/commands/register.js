@@ -98,6 +98,27 @@ const commands = [
             .setRequired(true)
             .addChoices({ name: '5', value: 5 }, { name: '10', value: 10 })
         )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('theme')
+        .setDescription('Start themed mode, or change the theme')
+        .addStringOption((option) =>
+          option
+            .setName('description')
+            .setDescription('The theme, e.g. "classic rock road trip"')
+            .setRequired(true)
+            .setMaxLength(200)
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName('lookahead')
+            .setDescription('Tracks to keep queued')
+            .addChoices({ name: '5', value: 5 }, { name: '10', value: 10 })
+        )
+    )
+    .addSubcommand((sub) =>
+      sub.setName('theme-stop').setDescription('Stop themed mode; queued picks stay')
     ),
 
   // Utility commands

@@ -4,6 +4,8 @@ import { getPlayer, getQueue } from '../../../services/playback.js';
 import { requireVoiceConnection } from './utils/checks.js';
 import { formatTime } from '../../../shared/formatTime.js';
 import { botEvents } from '../../../events/bus.js';
+import { DJ_ERROR_MESSAGES } from '../../../services/dj/messages.js';
+import { THEMED_MODE_ACTIVE } from '../../../services/dj/errors.js';
 import {
   STATS_EVENT,
   STATS_EVENT_TYPES,
@@ -134,8 +136,15 @@ export async function handleShuffle(interaction) {
     });
   }
 
-  q.shuffle();
-  musicManager.emitQueueUpdate();
+  // Through the mediator, which refuses while themed mode is on (FR-024a).
+  const { shuffled } = musicManager.shuffleQueue();
+  if (!shuffled) {
+    // A refused shuffle changed nothing, so nothing is recorded.
+    return interaction.reply({
+      content: DJ_ERROR_MESSAGES[THEMED_MODE_ACTIVE].text,
+      ephemeral: true
+    });
+  }
 
   // Acts on the queue as a whole, so no track is recorded.
   emitAction(STATS_EVENT_TYPES.SHUFFLE, interaction.user, null);

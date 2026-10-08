@@ -238,3 +238,56 @@ describe('DatabaseManager.migrate() — upgrade from a database without is_loop_
     second.close();
   });
 });
+
+describe('DatabaseManager.migrate() — upgrade from a database without added_by_dj', () => {
+  function seedPreDjDatabase() {
+    const seed = new Database(dbPath);
+    seed.exec(PRE_LOOP_REPLAY_HISTORY_SCHEMA);
+    seed.exec('ALTER TABLE history ADD COLUMN is_loop_replay INTEGER NOT NULL DEFAULT 0');
+    seed
+      .prepare(
+        'INSERT INTO history (title, url, duration, requested_by, requested_by_id) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run('Member Song', 'https://example.com/m', 180, 'dj-A', 'A');
+    expect(columnNames(seed, 'history')).not.toContain('added_by_dj');
+    seed.close();
+  }
+
+  it('adds added_by_dj as INTEGER NOT NULL DEFAULT 0 and existing rows read 0', () => {
+    seedPreDjDatabase();
+
+    const manager = new DatabaseManager(dbPath);
+
+    const column = manager.db
+      .pragma('table_info(history)')
+      .find((col) => col.name === 'added_by_dj');
+    expect(column).toBeDefined();
+    expect(column.type).toBe('INTEGER');
+    expect(column.notnull).toBe(1);
+    expect(column.dflt_value).toBe('0');
+    const row = manager.db.prepare('SELECT added_by_dj FROM history').get();
+    expect(row.added_by_dj).toBe(0);
+
+    manager.close();
+  });
+
+  it('is a no-op when run twice', () => {
+    seedPreDjDatabase();
+
+    new DatabaseManager(dbPath).close();
+
+    let second;
+    expect(() => {
+      second = new DatabaseManager(dbPath);
+    }).not.toThrow();
+    expect(columnNames(second.db, 'history').filter((c) => c === 'added_by_dj')).toHaveLength(1);
+
+    second.close();
+  });
+
+  it('a fresh install has the column too', () => {
+    const manager = new DatabaseManager(dbPath);
+    expect(columnNames(manager.db, 'history')).toContain('added_by_dj');
+    manager.close();
+  });
+});

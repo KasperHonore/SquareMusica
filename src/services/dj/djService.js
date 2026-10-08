@@ -13,7 +13,23 @@ import { getPlayer, getQueue } from '../playback.js';
 import { buildContext } from './context.js';
 import { writeLine } from './lineWriter.js';
 import { createLinePlanner } from './linePlanner.js';
-import { DjError, DJ_UNAVAILABLE, INVALID_INTERVAL, INVALID_LOOKAHEAD } from './errors.js';
+import { createThemeEngine } from './themeEngine.js';
+import { isClean } from './contentFilter.js';
+import { chatJson } from '../../integrations/llm.js';
+import { resolveSpotifyTrack } from '../resolver.js';
+import {
+  DjError,
+  DJ_UNAVAILABLE,
+  INVALID_INTERVAL,
+  INVALID_LOOKAHEAD,
+  INVALID_THEME,
+  NOT_IN_VOICE,
+  NO_TRACKS_FOR_THEME,
+  SERVICE_UNAVAILABLE,
+  CAP_REACHED
+} from './errors.js';
+
+const MAX_THEME_CHARS = 200;
 
 const BREAKER_THRESHOLD = 3;
 const BREAKER_OPEN_MS = 5 * 60 * 1000;
@@ -33,8 +49,10 @@ let usage = { lines: 0, themed_tracks: 0 };
 let midnightTimer = null;
 
 let planner = null;
+let themeEngine = null;
 let onTrackChange = null;
 let onQueueUpdate = null;
+let onPlayerState = null;
 
 // Local calendar day as YYYY-MM-DD. Same value as SQLite's
 // date('now','localtime'): DatabaseManager.checkTimezone() refuses to start if
@@ -126,12 +144,56 @@ export function init() {
     isBreakerOpen,
     canAttempt,
     buildContext,
-    writeLine: writeLineTracked
+    writeLine: writeLineTracked,
+    getTheme: () => themeEngine?.getSession()?.theme ?? null,
+    isIntroPending: () => themeEngine?.getSession()?.introPending === true,
+    clearIntroPending: () => {
+      const session = themeEngine?.getSession();
+      if (session) session.introPending = false;
+    }
   });
-  onTrackChange = (track) => planner.onTrackChange(track);
-  onQueueUpdate = () => planner.onQueueUpdate();
+
+  themeEngine = createThemeEngine({
+    getQueue,
+    addToQueue: (track) => musicManager.addToQueue(track),
+    getLookahead: () => settings.lookahead,
+    chatJson,
+    resolveTrack: resolveSpotifyTrack,
+    getTopTracks: (params) => db.getTopTracks?.(params) ?? [],
+    getPresentMemberIds,
+    isConnected: () => musicManager.getPlayerState().connected === true,
+    hasListeners: () => humansPresent().length > 0,
+    isCapReached: () => capsState().themedTracks.reached,
+    canAttempt,
+    recordSuccess,
+    recordFailure,
+    recordUsage: () => recordUsage('themed_tracks'),
+    onStatusChange: () => broadcast()
+  });
+
+  // Every clear or stop, on any surface, ends themed mode before the emptied
+  // queue is announced, so it is never refilled (FR-024b).
+  musicManager.setOnQueueCleared(() => {
+    if (themeEngine?.getSession()) stopTheme(null, 'queue-cleared');
+  });
+
+  // The theme engine listens first, so a member track it sees in queue:update
+  // is in usedKeys before anything else reacts.
+  onTrackChange = (track) => {
+    themeEngine.onTrackChange(track);
+    planner.onTrackChange(track);
+  };
+  onQueueUpdate = (payload) => {
+    themeEngine.onQueueUpdate(payload);
+    planner.onQueueUpdate();
+  };
+  // Bot leaving voice: the session stalls with NOT_IN_VOICE until it rejoins.
+  // Presence changes re-check NO_LISTENERS the same way.
+  onPlayerState = () => themeEngine.recheck();
   musicManager.on('track:change', onTrackChange);
   musicManager.on('queue:update', onQueueUpdate);
+  musicManager.on('player:state', onPlayerState);
+  musicManager.on('voice:context', onPlayerState);
 
   initialized = true;
   logger.info('[DJ] Service initialised');
@@ -143,10 +205,51 @@ export function shutdown() {
   midnightTimer = null;
   if (onTrackChange) musicManager.off('track:change', onTrackChange);
   if (onQueueUpdate) musicManager.off('queue:update', onQueueUpdate);
+  if (onPlayerState) {
+    musicManager.off('player:state', onPlayerState);
+    musicManager.off('voice:context', onPlayerState);
+  }
   onTrackChange = null;
   onQueueUpdate = null;
+  onPlayerState = null;
   planner?.shutdown();
   planner = null;
+  themeEngine?.shutdown();
+  themeEngine = null;
+}
+
+function humansPresent() {
+  return (musicManager.getVoiceContext()?.connectedUsers ?? []).filter((u) => !u.bot);
+}
+
+// Present members whose plays may seed themed picks: opted-out members are
+// left out (FR-021b), and without US3's opt-out table everyone is opted in.
+function getPresentMemberIds() {
+  const optOuts = db.getShoutoutOptOuts?.() ?? new Set();
+  return humansPresent()
+    .map((u) => u.id)
+    .filter((id) => id && !optOuts.has(id));
+}
+
+function themeState() {
+  const session = themeEngine?.getSession();
+  if (!session) return null;
+  return {
+    theme: session.theme,
+    startedBy: session.startedBy,
+    startedAt: session.startedAt,
+    status: session.status,
+    reason: session.reason
+  };
+}
+
+/**
+ * Where the running session was started, for transport stall notices
+ * (FR-029). Not part of the broadcast DjState.
+ * @returns {{ transport: string, channelId?: string } | null}
+ */
+export function getThemeOrigin() {
+  return themeEngine?.getSession()?.origin ?? null;
 }
 
 // writeLine with its outcome fed to the breaker, and a successful TTS counted
@@ -176,7 +279,7 @@ export function getState() {
     lookahead: settings.lookahead,
     health: health(),
     caps: capsState(),
-    theme: null
+    theme: themeState()
   };
 }
 
@@ -224,6 +327,99 @@ export function setSettings(partial, _actor = null) {
   settings = { ...settings, ...changes };
   if (restartCount) planner?.resetCounter();
   else planner?.refresh();
+  broadcast();
+  return getState();
+}
+
+function requireInitialized() {
+  if (!initialized) {
+    throw new DjError(DJ_UNAVAILABLE, "The DJ isn't set up on this server.");
+  }
+}
+
+/**
+ * Start themed mode, or change the theme when it is already running
+ * (contracts §3). A first start resolves once the first pick is in the queue
+ * and playback has been asked to start (SC-005); the rest of the batch keeps
+ * resolving in the background.
+ * @param {{ theme: string, lookahead?: number }} params
+ * @param {{ id: string, name: string }|null} actor
+ * @param {{ transport: 'discord'|'http'|'socket', channelId?: string }} origin
+ * @returns {Promise<Object>} The new DjState
+ * @throws {DjError}
+ */
+export async function startTheme({ theme, lookahead } = {}, actor = null, origin = null) {
+  requireInitialized();
+
+  const trimmed = typeof theme === 'string' ? theme.trim() : '';
+  if (trimmed.length < 1 || trimmed.length > MAX_THEME_CHARS || !isClean(trimmed)) {
+    throw new DjError(INVALID_THEME, 'Theme must be 1–200 characters.');
+  }
+  if (lookahead !== undefined && lookahead !== null && lookahead !== 5 && lookahead !== 10) {
+    throw new DjError(INVALID_LOOKAHEAD, 'Lookahead must be 5 or 10.');
+  }
+  if (!musicManager.getPlayerState().connected) {
+    throw new DjError(NOT_IN_VOICE);
+  }
+
+  const existing = themeEngine.getSession();
+  if (!existing) {
+    if (isBreakerOpen()) throw new DjError(SERVICE_UNAVAILABLE);
+    if (capsState().themedTracks.reached) throw new DjError(CAP_REACHED);
+  }
+
+  if (lookahead !== undefined && lookahead !== null && lookahead !== settings.lookahead) {
+    db.updateDjSettings({ lookahead });
+    settings = { ...settings, lookahead };
+  }
+
+  if (existing) {
+    themeEngine.changeTheme(trimmed);
+    planner?.prepareIntro();
+    logger.info('[DJ] Theme changed', { theme: trimmed, by: actor?.id ?? null });
+    broadcast();
+    return getState();
+  }
+
+  const queue = getQueue();
+  if (queue) queue.prioritizeMemberTracks = true;
+  // The intro is written while the first picks resolve, ready for the first track.
+  const intro = setTimeout(() => planner?.prepareIntro(), 0);
+  intro.unref?.();
+
+  try {
+    await themeEngine.start({ theme: trimmed, startedBy: actor, origin });
+  } catch (error) {
+    clearTimeout(intro);
+    if (queue) queue.prioritizeMemberTracks = false;
+    if (error?.code === SERVICE_UNAVAILABLE) throw new DjError(SERVICE_UNAVAILABLE);
+    throw new DjError(NO_TRACKS_FOR_THEME, "I couldn't find any tracks for that theme.");
+  }
+
+  logger.info('[DJ] Themed mode started', { theme: trimmed, by: actor?.id ?? null });
+  // Not awaited past the start: playback is the player's business (FR-008).
+  musicManager.ensurePlaying().catch((error) => {
+    logger.warn('[DJ] Could not start playback for themed mode', { detail: error?.message });
+  });
+  broadcast();
+  return getState();
+}
+
+/**
+ * Stop themed mode. Queued picks stay; new member songs append normally
+ * again (US4/AC4). A no-op returning the state when no session exists.
+ * @param {{ id: string, name: string }|null} actor
+ * @param {string} [reason] - For the log, e.g. 'queue-cleared'
+ * @returns {Object} The new DjState
+ */
+export function stopTheme(actor = null, reason = 'member') {
+  requireInitialized();
+  if (!themeEngine.getSession()) return getState();
+
+  themeEngine.stop();
+  const queue = getQueue();
+  if (queue) queue.prioritizeMemberTracks = false;
+  logger.info(`[DJ] Themed mode stopped (${reason})`, { by: actor?.id ?? null });
   broadcast();
   return getState();
 }

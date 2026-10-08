@@ -7,6 +7,8 @@ import { isConnected } from '../../discord/voiceManager.js';
 import { resolveQuery } from '../../../services/trackResolver.js';
 import { db } from '../../../persistence/db.js';
 import { botEvents } from '../../../events/bus.js';
+import { describeDjError } from '../../../services/dj/messages.js';
+import { THEMED_MODE_ACTIVE } from '../../../services/dj/errors.js';
 import {
   STATS_EVENT,
   STATS_EVENT_TYPES,
@@ -185,7 +187,12 @@ router.patch('/reorder', authMiddleware, requireVoiceConnection, (req, res) => {
  * POST /api/queue/shuffle - Shuffle queue
  */
 router.post('/shuffle', authMiddleware, requireVoiceConnection, (req, res) => {
-  musicManager.shuffleQueue();
+  const { shuffled } = musicManager.shuffleQueue();
+  if (!shuffled) {
+    // Refused during themed mode (FR-024a): nothing changed, nothing recorded.
+    const { code, http, message } = describeDjError({ code: THEMED_MODE_ACTIVE });
+    return res.status(http).json({ code, message });
+  }
   // Acts on the queue as a whole, so no track is recorded.
   emitAction(STATS_EVENT_TYPES.SHUFFLE, req.user, null);
   res.json({ success: true });

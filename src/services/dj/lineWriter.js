@@ -25,6 +25,17 @@ export const SYSTEM_PROMPT = [
   'Return JSON {"line": string, "factIds": string[]}.'
 ].join(' ');
 
+// Themed-mode intro (FR-028): introduces the set, not a song.
+export const INTRO_SYSTEM_PROMPT = [
+  'You are the SquareMusica radio DJ, opening a themed set.',
+  'Write ONE or TWO short, upbeat sentences introducing the theme of the set that is about to play.',
+  'Use ONLY the facts provided. Do not name any person or any song.',
+  'Never invent play counts, dates or connections. Spell numbers as words. No emoji.',
+  'Never use insults, slurs or harassment.',
+  'Do not repeat or closely paraphrase any of recentLines.',
+  'Return JSON {"line": string, "factIds": string[]}.'
+].join(' ');
+
 /** A dropped line, with a `kind` for the breaker ('llm', 'validation', or a TTS kind). */
 export class LineError extends Error {
   constructor(kind, message) {
@@ -203,19 +214,26 @@ export function validateLine(response, ctx, recentSpoken = []) {
  * @throws {LineError|Error} with a `kind`
  */
 export async function writeLine(ctx, recentSpoken = []) {
-  const user = {
-    next: ctx.next,
-    previous: ctx.previous,
-    theme: ctx.theme,
-    allowedNames: ctx.allowedNames ?? [],
-    facts: ctx.facts.map(({ id, text }) => ({ id, text })),
-    recentLines: recentSpoken.slice(-PROMPT_RECENT_LINES)
-  };
+  const user = ctx.intro
+    ? {
+        theme: ctx.theme,
+        allowedNames: [],
+        facts: ctx.facts.map(({ id, text }) => ({ id, text })),
+        recentLines: recentSpoken.slice(-PROMPT_RECENT_LINES)
+      }
+    : {
+        next: ctx.next,
+        previous: ctx.previous,
+        theme: ctx.theme,
+        allowedNames: ctx.allowedNames ?? [],
+        facts: ctx.facts.map(({ id, text }) => ({ id, text })),
+        recentLines: recentSpoken.slice(-PROMPT_RECENT_LINES)
+      };
 
   let response;
   try {
     response = await chatJson({
-      system: SYSTEM_PROMPT,
+      system: ctx.intro ? INTRO_SYSTEM_PROMPT : SYSTEM_PROMPT,
       user,
       temperature: LLM_TEMPERATURE,
       timeoutMs: LLM_TIMEOUT_MS
@@ -233,5 +251,12 @@ export async function writeLine(ctx, recentSpoken = []) {
     throw new LineError(error.kind ?? 'network', error.message);
   }
 
-  return { forKey: ctx.next.key, text, pcm, factIds, namedUserIds: [], preparedAt: Date.now() };
+  return {
+    forKey: ctx.next?.key ?? null,
+    text,
+    pcm,
+    factIds,
+    namedUserIds: [],
+    preparedAt: Date.now()
+  };
 }

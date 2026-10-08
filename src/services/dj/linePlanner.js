@@ -35,6 +35,8 @@ function localDay(now = new Date()) {
  * @param {(params: Object) => Object} deps.buildContext
  * @param {(ctx: Object, recentSpoken: string[]) => Promise<Object>} deps.writeLine
  * @param {() => string|null} [deps.getTheme]
+ * @param {() => boolean} [deps.isIntroPending] - Themed intro is due (FR-028)
+ * @param {() => void} [deps.clearIntroPending]
  */
 export function createLinePlanner(deps) {
   let previousTrack = null;
@@ -54,6 +56,11 @@ export function createLinePlanner(deps) {
 
   const spoken = [];
   let lastSpoken = null;
+
+  // The themed-mode intro (FR-028): one theme-only line, prepared as soon as
+  // the intro is pending and spoken over the next track to start, transition
+  // or not (the FR-006 exception). { status, line, promise, discarded }
+  let intro = null;
 
   let statsDay = localDay();
   let dueCount = 0;
@@ -250,6 +257,110 @@ export function createLinePlanner(deps) {
     schedulePrepare();
   }
 
+  function introPending() {
+    return deps.isIntroPending?.() === true;
+  }
+
+  function finishIntro() {
+    if (intro) intro.discarded = true;
+    intro = null;
+    deps.clearIntroPending?.();
+  }
+
+  /** Start writing the themed intro now, so it is ready when the next track starts. */
+  function prepareIntro() {
+    if (!introPending()) return;
+    if (!deps.getSettings()?.enabled) {
+      // Commentary off: themed mode builds the queue silently (FR-028).
+      finishIntro();
+      return;
+    }
+    if (intro && !intro.discarded && intro.status !== 'failed') return;
+    if (deps.isCapReached() || !deps.canAttempt()) {
+      intro = { status: 'failed', reason: deps.isCapReached() ? 'cap' : 'service' };
+      return;
+    }
+
+    const theme = deps.getTheme?.() ?? null;
+    const ctx = {
+      intro: true,
+      previous: null,
+      next: null,
+      theme,
+      present: [],
+      allowedNames: [],
+      facts: [{ id: 'f1', kind: 'theme', text: `Tonight's theme: ${theme}.` }],
+      recentLines: spoken.slice(-5)
+    };
+    const entry = { status: 'pending', line: null, reason: null, discarded: false };
+    entry.startedAt = Date.now();
+    entry.promise = Promise.resolve()
+      .then(() => deps.writeLine(ctx, spoken.slice()))
+      .then(
+        (line) => {
+          entry.status = 'ready';
+          entry.line = line;
+          logger.info('[DJ] Intro prepared', {
+            chars: line.text.length,
+            ms: Date.now() - entry.startedAt
+          });
+        },
+        (error) => {
+          entry.status = 'failed';
+          entry.reason = error?.kind === 'validation' ? 'validation' : 'service';
+          logger.info(`[DJ] Intro preparation failed (${entry.reason})`, {
+            detail: error?.message
+          });
+        }
+      );
+    intro = entry;
+  }
+
+  // Overlay the intro. Unlike speak(), never touches transitionsSinceSpoken.
+  function speakIntro(line, key) {
+    const silent = silenceReason({ forPrepare: false });
+    if (silent) {
+      finishIntro();
+      return drop(silent, key, { intro: true });
+    }
+    if (!deps.getPlayer()?.overlay(line.pcm)) {
+      // Nothing to speak over; keep the line for the next track to start.
+      return drop('not-playing', key, { intro: true });
+    }
+    spokenCount++;
+    spoken.push(line.text);
+    if (spoken.length > SPOKEN_HISTORY) spoken.shift();
+    logger.info('[DJ] Intro spoken', { key, chars: line.text.length });
+    finishIntro();
+  }
+
+  /** The intro is due on this start, transition or not (FR-006 exception). */
+  function handleIntro(key) {
+    if (!deps.getSettings()?.enabled) return finishIntro();
+    if (!intro) prepareIntro();
+    const entry = intro;
+    if (!entry) return;
+    if (entry.status === 'failed') {
+      finishIntro();
+      return drop(entry.reason ?? 'service', key, { intro: true });
+    }
+    if (entry.status === 'ready') return speakIntro(entry.line, key);
+
+    // Still being written: speak it if it lands within 2 s of this start,
+    // otherwise keep it for the next track to start.
+    const startedFor = key;
+    entry.promise.then(() => {
+      if (entry.discarded || intro !== entry) return;
+      if (entry.status === 'failed') {
+        finishIntro();
+        return drop(entry.reason ?? 'service', startedFor, { intro: true });
+      }
+      if (trackKey(currentTrack) !== startedFor) return;
+      if (Date.now() - currentStartedAt > SPEAK_WAIT_MS) return;
+      speakIntro(entry.line, startedFor);
+    });
+  }
+
   function handleDueTransition(key) {
     const silent = silenceReason({ forPrepare: false });
     if (silent) {
@@ -311,8 +422,14 @@ export function createLinePlanner(deps) {
     currentStartedAt = Date.now();
     const key = trackKey(track);
 
-    if (isTransition) {
-      transitionsSinceSpoken++;
+    if (isTransition) transitionsSinceSpoken++;
+
+    if (introPending()) {
+      // The intro takes this start; a regular line for it is not spoken, and
+      // the interval count carries on as it was.
+      discardPrepared();
+      handleIntro(key);
+    } else if (isTransition) {
       const settings = deps.getSettings();
       if (settings?.enabled && transitionsSinceSpoken >= settings.interval) {
         handleDueTransition(key);
@@ -349,6 +466,7 @@ export function createLinePlanner(deps) {
 
   /** Re-plan after a settings change: drop work that is no longer due, schedule what now is. */
   function refresh() {
+    if (introPending() && !deps.getSettings()?.enabled) finishIntro();
     if (!nextTransitionIsDue()) {
       clearPrepareTimer();
       prepareWindowOpen = false;
@@ -359,6 +477,8 @@ export function createLinePlanner(deps) {
   }
 
   function shutdown() {
+    if (intro) intro.discarded = true;
+    intro = null;
     cancelWaiting();
     clearPrepareTimer();
     discardPrepared();
@@ -370,6 +490,7 @@ export function createLinePlanner(deps) {
     onQueueUpdate,
     resetCounter,
     refresh,
+    prepareIntro,
     rollDay,
     shutdown,
     /** For tests and diagnostics. */
@@ -378,6 +499,7 @@ export function createLinePlanner(deps) {
       previousKey: trackKey(previousTrack),
       currentKey: trackKey(currentTrack),
       prepared: prepared && { forKey: prepared.forKey, status: prepared.status },
+      intro: intro && { status: intro.status },
       due: dueCount,
       spoken: spokenCount,
       recentSpoken: spoken.slice()

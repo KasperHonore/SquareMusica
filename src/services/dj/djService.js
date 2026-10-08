@@ -369,12 +369,15 @@ export async function startTheme({ theme, lookahead } = {}, actor = null, origin
     if (capsState().themedTracks.reached) throw new DjError(CAP_REACHED);
   }
 
-  if (lookahead !== undefined && lookahead !== null && lookahead !== settings.lookahead) {
-    db.updateDjSettings({ lookahead });
-    settings = { ...settings, lookahead };
-  }
+  const lookaheadChanged =
+    lookahead !== undefined && lookahead !== null && lookahead !== settings.lookahead;
+  const previousLookahead = settings.lookahead;
+  // In memory now so the first top-up fills to it; persisted only once the
+  // start succeeds, so a failed start leaves the setting as it was.
+  if (lookaheadChanged) settings = { ...settings, lookahead };
 
   if (existing) {
+    if (lookaheadChanged) db.updateDjSettings({ lookahead });
     themeEngine.changeTheme(trimmed);
     planner?.prepareIntro();
     logger.info('[DJ] Theme changed', { theme: trimmed, by: actor?.id ?? null });
@@ -388,20 +391,29 @@ export async function startTheme({ theme, lookahead } = {}, actor = null, origin
   const intro = setTimeout(() => planner?.prepareIntro(), 0);
   intro.unref?.();
 
+  let session;
   try {
-    await themeEngine.start({ theme: trimmed, startedBy: actor, origin });
+    session = await themeEngine.start({ theme: trimmed, startedBy: actor, origin });
   } catch (error) {
     clearTimeout(intro);
     if (queue) queue.prioritizeMemberTracks = false;
+    if (lookaheadChanged && settings.lookahead === lookahead) {
+      settings = { ...settings, lookahead: previousLookahead };
+    }
     if (error?.code === SERVICE_UNAVAILABLE) throw new DjError(SERVICE_UNAVAILABLE);
     if (error?.code === NOT_IN_VOICE) throw new DjError(NOT_IN_VOICE);
     if (error?.code === CAP_REACHED) throw new DjError(CAP_REACHED);
     throw new DjError(NO_TRACKS_FOR_THEME, "I couldn't find any tracks for that theme.");
   }
 
+  if (lookaheadChanged) db.updateDjSettings({ lookahead });
+
   // A clear or stop during the first top-up already ended the session and
   // broadcast it; report the state as it is (theme: null) (FR-024b).
-  if (!themeEngine.getSession()) return getState();
+  if (themeEngine.getSession() !== session) {
+    clearTimeout(intro);
+    return getState();
+  }
 
   logger.info('[DJ] Themed mode started', { theme: trimmed, by: actor?.id ?? null });
   startPlayback();

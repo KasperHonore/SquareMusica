@@ -508,6 +508,50 @@ describe('themeEngine: session end races (FR-024b)', () => {
     expect(queue.length).toBe(0);
   });
 
+  it('a theme change before the first pick lands keeps the session and fills for the new theme', async () => {
+    let releaseLlm;
+    chatJson.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          releaseLlm = () => r(newPicks(9));
+        })
+    );
+    const { engine, queue, settle } = setup();
+    const starting = engine.start({ theme: 'rock' });
+    await vi.advanceTimersByTimeAsync(0);
+    chatJson.mockResolvedValue(newPicks(9, 'lofi'));
+    engine.changeTheme('lo-fi');
+    releaseLlm();
+
+    await expect(starting).resolves.toBe(engine.getSession());
+    expect(engine.getSession()).toMatchObject({ theme: 'lo-fi' });
+    await settle();
+    const titles = queue.tracks.map((t) => t.title);
+    expect(titles.some((t) => /^new/.test(t))).toBe(false);
+    expect(titles).toContain('lofi0');
+  });
+
+  it('a stop before the first pick lands resolves without throwing NO_TRACKS_FOR_THEME', async () => {
+    let releaseLlm;
+    chatJson.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          releaseLlm = () => r(newPicks(9));
+        })
+    );
+    const { engine, queue, settle } = setup();
+    const starting = engine.start({ theme: 'rock' });
+    await vi.advanceTimersByTimeAsync(0);
+    engine.stop();
+    releaseLlm();
+
+    const session = await starting;
+    expect(engine.getSession()).toBeNull();
+    expect(session).not.toBe(engine.getSession());
+    await settle();
+    expect(queue.length).toBe(0);
+  });
+
   it('a theme change drops picks still resolving for the old theme (US4/AC7)', async () => {
     let release;
     const gate = new Promise((r) => {

@@ -449,6 +449,60 @@ describe('djService: themed mode (US4, contracts §3)', () => {
     expect(events.filter((s) => s.theme !== null)).toHaveLength(0);
   });
 
+  it('a clear before the first pick lands reports theme: null, not NO_TRACKS_FOR_THEME', async () => {
+    let releaseLlm;
+    llm.chatJson.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          releaseLlm = () => r(picks(9));
+        })
+    );
+    const starting = dj.startTheme({ theme: 'rock' }, ACTOR, ORIGIN);
+    await vi.advanceTimersByTimeAsync(0);
+    mocks.emitter.onQueueCleared();
+    releaseLlm();
+
+    const state = await starting;
+    expect(state.theme).toBeNull();
+    expect(mocks.queue.length).toBe(0);
+    expect(mocks.queue.prioritizeMemberTracks).toBe(false);
+    expect(mocks.emitter.ensurePlaying).not.toHaveBeenCalled();
+  });
+
+  it('a theme change from another member mid-start keeps themed mode running (US4/AC7)', async () => {
+    let releaseLlm;
+    llm.chatJson.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          releaseLlm = () => r(picks(9));
+        })
+    );
+    const starting = dj.startTheme({ theme: 'rock' }, ACTOR, ORIGIN);
+    await vi.advanceTimersByTimeAsync(0);
+    const changed = await dj.startTheme({ theme: 'lo-fi' }, { id: 'B', name: 'Bob' }, ORIGIN);
+    expect(changed.theme.theme).toBe('lo-fi');
+    releaseLlm();
+
+    const state = await starting;
+    expect(state.theme).toMatchObject({ theme: 'lo-fi', status: 'running' });
+    expect(mocks.queue.prioritizeMemberTracks).toBe(true);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(mocks.queue.length).toBeGreaterThan(0);
+    expect(llm.chatJson.mock.calls.at(-1)[0].user.theme).toBe('lo-fi');
+  });
+
+  it('a failed start leaves the lookahead setting unchanged', async () => {
+    resolver.resolveSpotifyTrack.mockResolvedValue(null);
+    const before = dj.getState().lookahead;
+    await expect(
+      dj.startTheme({ theme: 'zzzzqqqq', lookahead: before === 5 ? 10 : 5 }, ACTOR, ORIGIN)
+    ).rejects.toMatchObject({ code: 'NO_TRACKS_FOR_THEME' });
+    expect(dj.getState().lookahead).toBe(before);
+    expect(mocks.db.updateDjSettings).not.toHaveBeenCalledWith({
+      lookahead: before === 5 ? 10 : 5
+    });
+  });
+
   it('works with commentary disabled (silent build)', async () => {
     expect(dj.getState().enabled).toBe(false);
     const state = await dj.startTheme({ theme: 'rock' }, ACTOR, ORIGIN);

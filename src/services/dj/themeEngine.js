@@ -379,7 +379,8 @@ export function createThemeEngine(deps) {
   /**
    * Start a session and run its first top-up. Resolves once the first pick is
    * in the queue (SC-005); the rest of the batch keeps resolving.
-   * @returns {Promise<Object>} The session
+   * @returns {Promise<Object>} The session; no longer current if a stop or
+   *   clear ended it before the first pick landed
    * @throws {{ code: 'NO_TRACKS_FOR_THEME' | 'SERVICE_UNAVAILABLE' | 'NOT_IN_VOICE' | 'CAP_REACHED' }}
    *   and no session remains
    */
@@ -404,17 +405,21 @@ export function createThemeEngine(deps) {
 
     const run = topUp({ initial: true });
     track(run.done);
+    const firstId = mine.id;
     const outcome = await Promise.race([run.firstAdded.then(() => ({ added: 1 })), run.done]);
 
-    // A lookahead already met by queued DJ picks is a successful start.
-    if (outcome.added > 0 || outcome.satisfied) {
+    // A clear or stop ended the session mid-start (FR-024b): not a failure of
+    // the theme. The caller sees getSession() !== the returned session.
+    if (session !== mine) return mine;
+    // A lookahead already met by queued DJ picks is a successful start. So is
+    // a theme change that arrived mid-start: it dropped this batch and
+    // scheduled a top-up for the new theme (US4/AC7).
+    if (outcome.added > 0 || outcome.satisfied || mine.id !== firstId) {
       mine.started = true;
       return mine;
     }
-    if (session === mine) {
-      session = null;
-      clearTimers();
-    }
+    session = null;
+    clearTimers();
     // NO_TRACKS_FOR_THEME only when the theme itself yielded nothing (FR-029).
     const code = outcome.error ? 'SERVICE_UNAVAILABLE' : (outcome.blocked ?? 'NO_TRACKS_FOR_THEME');
     throw Object.assign(new Error(code), { code });

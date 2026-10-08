@@ -93,7 +93,7 @@ import {
   handleDjThemeStop,
   handlePlayerControl
 } from '../../src/transports/realtime/handlers.js';
-import { handleDj } from '../../src/transports/discord/commands/dj.js';
+import { handleDj, onDjState, setDiscordClient } from '../../src/transports/discord/commands/dj.js';
 import {
   handleClear as discordClear,
   handleShuffle as discordShuffle
@@ -550,6 +550,22 @@ describe('socket throttle', () => {
       'error',
       expect.objectContaining({ message: expect.any(String) })
     );
+  });
+});
+
+describe('Themed-mode stall notice on Discord (FR-029)', () => {
+  it('posts with the client handed over at boot, before any /dj interaction', async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const fetch = vi.fn().mockResolvedValue({ send });
+    setDiscordClient({ channels: { fetch } });
+    djService.getThemeOrigin.mockReturnValueOnce({ transport: 'discord', channelId: 'chan-9' });
+
+    await onDjState({
+      theme: { theme: 'rock', startedAt: 'boot-t', status: 'stalled', reason: 'NO_LISTENERS' }
+    });
+    expect(fetch).toHaveBeenCalledWith('chan-9');
+    expect(send).toHaveBeenCalledTimes(1);
+    await onDjState({ theme: null });
   });
 });
 

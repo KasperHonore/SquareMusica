@@ -33,10 +33,18 @@ const STALL_TEXT = {
   THEME_EXHAUSTED: "I can't find any more tracks for this theme"
 };
 
-// The Discord client, captured from the last /dj interaction, so stall
-// notices can be posted without this module importing client.js.
+// The Discord client, handed over at boot (and refreshed from each /dj
+// interaction), so stall notices can be posted without importing client.js.
 let discordClient = null;
 let lastStall = null;
+
+/**
+ * Give stall notices a client to post with, before any /dj interaction.
+ * @param {import('discord.js').Client} client
+ */
+export function setDiscordClient(client) {
+  discordClient = client ?? null;
+}
 
 /**
  * FR-029, Discord's own affordance: when a session started from Discord

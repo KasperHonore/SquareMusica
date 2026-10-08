@@ -12,7 +12,8 @@ export const ServerEvents = {
   RESOLUTION_PROGRESS: 'resolution:progress',
   VOICE_CONTEXT: 'voice:context',
   HISTORY_CLEARED: 'history:cleared',
-  PLAYLISTS_UPDATE: 'playlists:update'
+  PLAYLISTS_UPDATE: 'playlists:update',
+  DJ_STATE: 'dj:state'
 };
 
 // Events sent from clients to server

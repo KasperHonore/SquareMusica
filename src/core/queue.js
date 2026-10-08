@@ -140,6 +140,20 @@ class Queue {
   }
 
   /**
+   * The track next() would return, without side effects: currentIndex and the
+   * loop-replay flags are left untouched. Used by the DJ to prepare a line for
+   * the upcoming track during the current one.
+   * @returns {Track|null}
+   */
+  peekNext() {
+    if (this.tracks.length === 0) return null;
+    if (this.loopMode === 'track') return this.tracks[this.currentIndex] ?? null;
+    if (this.currentIndex < this.tracks.length - 1) return this.tracks[this.currentIndex + 1];
+    if (this.loopMode === 'queue') return this.tracks[0];
+    return null;
+  }
+
+  /**
    * Flag an entry whose start loop mode chose, so its play is kept in history
    * but excluded from stats (FR-005a). Assigned on every visit, so a flag left
    * by a start that failed is overwritten here. musicManager.onTrackChange()

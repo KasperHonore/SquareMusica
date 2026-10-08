@@ -484,4 +484,64 @@ describe('Queue', () => {
       expect(start(entry)).toBe(false);
     });
   });
+
+  describe('peekNext (side-effect free)', () => {
+    function snapshot(queue) {
+      return {
+        currentIndex: queue.currentIndex,
+        flags: queue.tracks.map((tr) => tr.loopReplay)
+      };
+    }
+
+    it('returns null for an empty queue', () => {
+      expect(queue.peekNext()).toBeNull();
+    });
+
+    it('loop off: returns the next entry, or null at the last index', () => {
+      seed(queue, ['a', 'b', 'c'], 1);
+      const before = snapshot(queue);
+      expect(queue.peekNext().id).toBe('c');
+      expect(snapshot(queue)).toEqual(before);
+
+      queue.currentIndex = 2;
+      expect(queue.peekNext()).toBeNull();
+      expect(queue.tracks).toHaveLength(3);
+      expect(queue.currentIndex).toBe(2);
+    });
+
+    it('loop track: returns the current entry', () => {
+      seed(queue, ['a', 'b'], 0);
+      queue.loopMode = 'track';
+      queue.tracks[0].hasPlayed = true;
+      const before = snapshot(queue);
+      expect(queue.peekNext().id).toBe('a');
+      expect(snapshot(queue)).toEqual(before);
+      expect(queue.tracks[0].loopReplay).toBeUndefined();
+    });
+
+    it('loop queue: returns the next entry, wrapping to tracks[0] at the last index', () => {
+      seed(queue, ['a', 'b', 'c'], 0);
+      queue.loopMode = 'queue';
+      expect(queue.peekNext().id).toBe('b');
+
+      queue.currentIndex = 2;
+      queue.tracks.forEach((tr) => (tr.hasPlayed = true));
+      const before = snapshot(queue);
+      expect(queue.peekNext().id).toBe('a');
+      expect(snapshot(queue)).toEqual(before);
+    });
+
+    it('agrees with what next() then returns', () => {
+      for (const mode of ['off', 'track', 'queue']) {
+        for (const index of [0, 1, 2]) {
+          const q = new Queue();
+          seed(q, ['a', 'b', 'c'], index);
+          q.loopMode = mode;
+          const peeked = q.peekNext();
+          const next = q.next();
+          expect(peeked?.id ?? null, `${mode}@${index}`).toBe(next?.id ?? null);
+        }
+      }
+    });
+  });
 });

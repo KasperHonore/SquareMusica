@@ -642,6 +642,59 @@ export class DatabaseManager {
     return this.db.prepare(sql).get({ since, eventType });
   }
 
+  // AI DJ methods (feature 002)
+  getDjSettings() {
+    this.db.prepare('INSERT OR IGNORE INTO dj_settings (id) VALUES (1)').run();
+    const row = this.db
+      .prepare('SELECT enabled, interval, lookahead FROM dj_settings WHERE id = 1')
+      .get();
+    return { enabled: row.enabled === 1, interval: row.interval, lookahead: row.lookahead };
+  }
+
+  updateDjSettings(partial = {}) {
+    this.db.prepare('INSERT OR IGNORE INTO dj_settings (id) VALUES (1)').run();
+    const sets = [];
+    const params = {};
+    if (partial.enabled !== undefined) {
+      sets.push('enabled = @enabled');
+      params.enabled = partial.enabled ? 1 : 0;
+    }
+    if (partial.interval !== undefined) {
+      sets.push('interval = @interval');
+      params.interval = partial.interval;
+    }
+    if (partial.lookahead !== undefined) {
+      sets.push('lookahead = @lookahead');
+      params.lookahead = partial.lookahead;
+    }
+    sets.push('updated_at = CURRENT_TIMESTAMP');
+    this.db.prepare(`UPDATE dj_settings SET ${sets.join(', ')} WHERE id = 1`).run(params);
+    return this.getDjSettings();
+  }
+
+  getDjUsage(day) {
+    const row = this.db.prepare('SELECT lines, themed_tracks FROM dj_usage WHERE day = ?').get(day);
+    return { lines: row?.lines ?? 0, themed_tracks: row?.themed_tracks ?? 0 };
+  }
+
+  incrementDjUsage(day, field) {
+    // Whitelisted: the column name is interpolated into the SQL.
+    if (field !== 'lines' && field !== 'themed_tracks') {
+      throw new Error(`incrementDjUsage: unknown field "${field}"`);
+    }
+    this.db
+      .prepare(
+        `INSERT INTO dj_usage (day, ${field}) VALUES (?, 1)
+         ON CONFLICT(day) DO UPDATE SET ${field} = ${field} + 1`
+      )
+      .run(day);
+  }
+
+  // Old usage rows are never read; prune them so the table stays small.
+  pruneDjUsage() {
+    this.db.prepare("DELETE FROM dj_usage WHERE day < date('now', 'localtime', '-30 days')").run();
+  }
+
   // Playlist methods
   getPlaylists() {
     const stmt = this.db.prepare('SELECT * FROM playlists ORDER BY created_at DESC');

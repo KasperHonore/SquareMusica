@@ -96,17 +96,38 @@ describe('member facts (FR-016–FR-018)', () => {
   it('group facts never name anyone and may count opted-out members (FR-020)', () => {
     plays('A', NEXT_URL, 2, { name: 'Anna', artist: 'ABBA' });
     plays('B', NEXT_URL, 2, { name: 'Bob', artist: 'ABBA' });
+    plays('C', NEXT_URL, 1, { name: 'Carl', artist: 'ABBA' });
     store.setShoutoutOptOut('A', true);
-    const ctx = buildContext({ previous, next, present: [A, B], store });
+    const ctx = buildContext({ previous, next, present: [A, B, C], store });
     const groups = ctx.facts.filter((f) => f.kind === 'group');
     expect(groups.map((g) => g.text)).toEqual([
-      'People here have played this track 4 times.',
-      '2 of the people here have queued ABBA this week.'
+      'People here have played this track 5 times.',
+      '3 of the people here have queued ABBA this week.'
     ]);
     for (const g of groups) {
       expect(g.userId).toBeUndefined();
-      for (const name of ['Anna', 'Bob', 'anna_u', 'bob_u']) expect(g.text).not.toContain(name);
+      for (const name of ['Anna', 'Bob', 'Carl', 'anna_u', 'bob_u', 'carl_u']) {
+        expect(g.text).not.toContain(name);
+      }
     }
+  });
+
+  it('two people present, one opted out: no group fact, so the other cannot subtract (FR-020)', () => {
+    plays('A', NEXT_URL, 4, { name: 'Anna', artist: 'ABBA' });
+    plays('B', NEXT_URL, 2, { name: 'Bob', artist: 'ABBA' });
+    store.setShoutoutOptOut('A', true);
+    const ctx = buildContext({ previous, next, present: [A, B], store });
+    expect(ctx.facts.filter((f) => f.kind === 'group')).toEqual([]);
+  });
+
+  it('two opted-in people present still get group facts', () => {
+    plays('A', NEXT_URL, 2, { name: 'Anna', artist: 'ABBA' });
+    plays('B', NEXT_URL, 2, { name: 'Bob', artist: 'ABBA' });
+    const ctx = buildContext({ previous, next, present: [A, B], store });
+    expect(ctx.facts.filter((f) => f.kind === 'group').map((g) => g.text)).toEqual([
+      'People here have played this track 4 times.',
+      '2 of the people here have queued ABBA this week.'
+    ]);
   });
 
   it('a known DJ from history who is not present is forbidden; DJ picks are not', () => {

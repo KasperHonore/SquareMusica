@@ -287,6 +287,81 @@ describe('shout-outs: forbidden names and allowed members (R6 step 3, SC-003)', 
     });
   });
 
+  describe('a lowercase display name (Discord falls back to the username)', () => {
+    const a = { id: 'A', username: 'anna', displayName: 'anna' };
+    const k = { id: 'K', username: 'kasper', displayName: 'kasper' };
+
+    it('rejects an opted-out present member named at the start of a sentence (US3/AC3)', async () => {
+      plays('A', 'anna', next.url, 5);
+      store.setShoutoutOptOut('A', true);
+      const ctx = buildContext({ previous, next, present: [a, B], store });
+      expect(ctx.lenientNames).not.toContain('anna');
+      for (const line of [
+        'Anna, this one is for you: Dancing Queen!',
+        'Here we go. Anna, this is Dancing Queen!',
+        'This one is for anna: Dancing Queen!'
+      ]) {
+        reply(line, ['f2']);
+        await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+      }
+      expect(synthesize).not.toHaveBeenCalled();
+    });
+
+    it('rejects an absent member seen in voice named at the start of a sentence (US3/AC2)', async () => {
+      buildContext({ previous, next, present: [k, B], store });
+      const ctx = buildContext({ previous, next, present: [B], store });
+      reply("Kasper, this one's for you: Dancing Queen!", ['f2']);
+      await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+    });
+
+    it('rejects an absent queuer from history whose username is used as a name', async () => {
+      plays('K', 'kasper', 'https://y/k', 1);
+      const ctx = buildContext({ previous, next, present: [B], store });
+      expect(ctx.lenientNames).toContain('kasper');
+      reply('This one goes out to Kasper: Dancing Queen!', ['f2']);
+      await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+    });
+  });
+
+  describe('no invented connection with the listeners (US3/AC4)', () => {
+    it.each([
+      'Dancing Queen is a room favourite, here it is!',
+      'You all love this one: Dancing Queen!',
+      'Everyone here has played it, Dancing Queen!'
+    ])('rejects %j without a member or group fact', async (line) => {
+      const ctx = buildContext({ previous, next, present: [A, B], store });
+      reply(line, ['f2']);
+      await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+      expect(synthesize).not.toHaveBeenCalled();
+    });
+
+    it('accepts a plain music line that mentions what just played', async () => {
+      const ctx = buildContext({ previous, next, present: [A, B], store });
+      reply('We just played Mr. Brightside, now ABBA with Dancing Queen!', ['f1', 'f2']);
+      await expect(writeLine(ctx)).resolves.toBeTruthy();
+    });
+
+    it('accepts a room-level claim backed by a cited group fact', async () => {
+      plays('A', 'anna_u', next.url, 2);
+      plays('B', 'bob_u', next.url, 2);
+      const ctx = buildContext({ previous, next, present: [A, B], store });
+      const group = ctx.facts.find((f) => f.kind === 'group');
+      reply('A room favourite, played four times by people here: Dancing Queen!', ['f2', group.id]);
+      await expect(writeLine(ctx)).resolves.toBeTruthy();
+    });
+  });
+
+  it("rejects another member's count carried to a named member by pronoun (US3/AC1)", async () => {
+    plays('A', 'anna_u', next.url, 3);
+    plays('B', 'bob_u', next.url, 5);
+    const ctx = buildContext({ previous, next, present: [A, B], store });
+    const bobFact = ctx.facts.find((f) => f.kind === 'member' && f.userId === 'B');
+    reply('Anna is here for Dancing Queen. She has played it five times!', ['f2', bobFact.id]);
+    await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+    reply('Bob is here for Dancing Queen. He has played it five times!', ['f2', bobFact.id]);
+    await expect(writeLine(ctx)).resolves.toMatchObject({ namedUserIds: ['B'] });
+  });
+
   describe('a username that is also an ordinary word', () => {
     it('blocks it as a name but not as a word', async () => {
       plays('P', 'party', 'https://y/p', 1);

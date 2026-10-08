@@ -110,8 +110,9 @@ function queuerName(track, presentById) {
  * Member and group facts (FR-016–FR-020, research R6). Only present, opted-in
  * members with a speakable name are ever named; their claims need ≥ 3 counted
  * plays. Group facts are anonymous totals and may include opted-out members.
- * Fills `allowedNames`/`allowedMembers` (who the line may name) and
- * `forbiddenNames` (names the validator rejects).
+ * Fills `allowedNames`/`allowedMembers` (who the line may name),
+ * `forbiddenNames` (names the validator rejects) and `lenientNames` (the subset
+ * that are only history usernames, which may also be ordinary words).
  * @param {Object} ctx
  * @param {{ previousTrack: Object|null, nextTrack: Object, store?: Object|null,
  *   addFact: Function }} input
@@ -121,13 +122,17 @@ export function addMemberFacts(ctx, { previousTrack = null, nextTrack, store = n
   const presentById = new Map(ctx.present.map((m) => [m.userId, m]));
   const named = new Map(); // userId -> speakable name actually referenced by a fact
   const forbidden = new Set();
+  // History usernames with no link to anyone seen in voice. Only these may be
+  // matched leniently as ordinary words ("party"); a display name or a present
+  // member's username is always a name.
+  const historyOnly = new Set();
 
   const refer = (member) => named.set(member.userId, member.speakableName);
-  const forbid = (name) => {
+  const forbid = (name, set = forbidden) => {
     if (!name) return;
-    forbidden.add(name);
+    set.add(name);
     const spoken = speakableName(name);
-    if (spoken) forbidden.add(spoken);
+    if (spoken) set.add(spoken);
   };
 
   // Queuers of the previous and next track.
@@ -187,11 +192,16 @@ export function addMemberFacts(ctx, { previousTrack = null, nextTrack, store = n
     }
 
     // Anonymous group facts: never name anyone, may count opted-out members.
-    if (everyoneIds.length > 0) {
+    // When someone present is opted out, a listener who subtracts their own
+    // share must still be left with at least two contributors, so nobody can
+    // work out one opted-out member's history (FR-020).
+    const anyOptedOut = ctx.present.some((m) => m.optedOut);
+    const minGroup = anyOptedOut ? MIN_GROUP + 1 : MIN_GROUP;
+    if (everyoneIds.length >= minGroup) {
       if (nextUrl) {
         const rows = store.getUserPlayCountsForUrl(nextUrl, everyoneIds);
         const total = rows.reduce((sum, row) => sum + row.count, 0);
-        if (rows.length >= MIN_GROUP && total >= MIN_PLAYS) {
+        if (rows.length >= minGroup && total >= MIN_PLAYS) {
           addFact('group', `People here have played this track ${total} times.`, {
             value: total
           });
@@ -200,7 +210,7 @@ export function addMemberFacts(ctx, { previousTrack = null, nextTrack, store = n
       const artist = ctx.next?.artist;
       if (artist) {
         const queuers = store.getArtistQueuersSince(artist, everyoneIds, GROUP_WINDOW_DAYS);
-        if (queuers >= MIN_GROUP) {
+        if (queuers >= minGroup) {
           addFact('group', `${queuers} of the people here have queued ${artist} this week.`, {
             value: queuers
           });
@@ -211,7 +221,7 @@ export function addMemberFacts(ctx, { previousTrack = null, nextTrack, store = n
     // Known members by history username and by every display name seen in
     // voice: the DJ says display names, so an absent member's spoken name must
     // stay forbidden too (R6 step 3, US3/AC2).
-    for (const name of store.getKnownMemberNames()) forbid(name);
+    for (const name of store.getKnownMemberNames()) forbid(name, historyOnly);
     for (const name of store.getKnownDisplayNames?.() ?? []) forbid(name);
   }
 
@@ -226,7 +236,11 @@ export function addMemberFacts(ctx, { previousTrack = null, nextTrack, store = n
   const allowedLower = new Set(allowedMembers.map((m) => m.name.toLowerCase()));
   ctx.allowedMembers = allowedMembers;
   ctx.allowedNames = allowedMembers.map((m) => m.name);
-  ctx.forbiddenNames = [...forbidden].filter((n) => !allowedLower.has(n.toLowerCase()));
+  const strictLower = new Set([...forbidden].map((n) => n.toLowerCase()));
+  const lenient = [...historyOnly].filter((n) => !strictLower.has(n.toLowerCase()));
+  const notAllowed = (n) => !allowedLower.has(n.toLowerCase());
+  ctx.forbiddenNames = [...new Set([...forbidden, ...lenient])].filter(notAllowed);
+  ctx.lenientNames = lenient.filter(notAllowed);
   return ctx;
 }
 
@@ -277,6 +291,7 @@ export function buildContext({
       allowedNames: [],
       allowedMembers: [],
       forbiddenNames: [],
+      lenientNames: [],
       facts,
       recentLines: recentLines.slice(-5)
     },

@@ -259,6 +259,21 @@ describe('DatabaseManager.migrate() — AI DJ history.artist (feature 002)', () 
     second.close();
   });
 
+  it('creates dj_member_names on an existing database, idempotently', () => {
+    seedLegacyDatabase();
+
+    const manager = new DatabaseManager(dbPath);
+    expect(columnNames(manager.db, 'dj_member_names')).toEqual(
+      expect.arrayContaining(['user_id', 'display_name', 'seen_at'])
+    );
+    manager.recordMemberNames([{ userId: 'K', displayName: 'kasper' }]);
+    manager.close();
+
+    const second = new DatabaseManager(dbPath);
+    expect(second.getKnownDisplayNames()).toEqual(['kasper']);
+    second.close();
+  });
+
   it('creates artist and idx_history_url on a fresh install', () => {
     const manager = new DatabaseManager(dbPath);
     expect(columnNames(manager.db, 'history')).toContain('artist');

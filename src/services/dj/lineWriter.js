@@ -162,15 +162,17 @@ function mentions(text, name) {
 }
 
 /**
- * Whether `text` uses a forbidden `name` as a name. An all-lowercase single-word
- * name (a Discord username such as "music" or "party") is also an ordinary word,
- * so it only counts when written capitalised mid-sentence, or in capitals; any
- * other name (display names, usernames with digits or symbols) matches
- * case-insensitively.
+ * Whether `text` uses a forbidden `name` as a name. Most names match
+ * case-insensitively. A `lenient` name (a history username with no link to anyone
+ * seen in voice) that is a single all-lowercase word such as "music" or "party"
+ * is also an ordinary word, so it only counts when written capitalised
+ * mid-sentence, or in capitals. Display names and present members' usernames are
+ * never lenient: Discord falls back to the lowercase username as the display
+ * name, and "Kasper, this one's for you" must still be caught.
  */
-function namesForbidden(text, name) {
+function namesForbidden(text, name, lenient = false) {
   if (!name) return false;
-  if (!/^\p{Ll}+$/u.test(name)) return mentions(text, name);
+  if (!lenient || !/^\p{Ll}+$/u.test(name)) return mentions(text, name);
   const re = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(name)}(?![\\p{L}\\p{N}])`, 'giu');
   for (const m of text.matchAll(re)) {
     const word = m[0];
@@ -190,6 +192,15 @@ const PLAY_CLAIM_RE =
 const QUEUE_CLAIM_RE =
   /\b(?:queued?|queues|queuing|queueing|picked|picks|requested|chose|choice)\b/i;
 
+// A connection between the track and the people listening ("a room
+// favourite", "you all love this one") needs a cited member or group fact
+// (US3/AC4). Plain "played" is left out so "we just played X" stays a music line.
+const CONNECTION_CLAIM_RE =
+  /\b(?:favou?rites?|most[- ]played|on repeat|constantly|loves?|(?:played|plays|spun|spins|queued|requested)\s+(?:it|this)\b)/i;
+// A pronoun or "you" in a sentence that names nobody refers back to the members
+// named in the sentence before it.
+const PRONOUN_RE = /\b(?:he|she|they|him|her|them|his|hers|their|theirs|you|your|yours)\b/i;
+
 function splitSentences(text) {
   return text.split(/(?<=[.!?…])\s+/).filter((part) => part.trim());
 }
@@ -197,14 +208,18 @@ function splitSentences(text) {
 /**
  * Reject a claim attributed to an allowed member that their own cited facts do
  * not back: a quantity, a play-history claim, or a queue claim in a sentence
- * that names them (US3/AC1: every claim is true).
+ * that names them, or that refers back to them by pronoun (US3/AC1: every claim
+ * is true).
  * @returns {string|null} why the line is rejected
  */
 function misattributedClaim(text, ctx, citedFacts, phrases) {
   const members = ctx.allowedMembers ?? [];
   if (members.length === 0) return null;
+  let previousNamed = [];
   for (const sentence of splitSentences(maskPhrases(text, phrases))) {
-    const named = members.filter((m) => mentions(sentence, m.name));
+    let named = members.filter((m) => mentions(sentence, m.name));
+    if (named.length === 0 && PRONOUN_RE.test(sentence)) named = previousNamed;
+    previousNamed = named;
     if (named.length === 0) continue;
     const namedIds = new Set(named.map((m) => m.userId));
     const factsOf = (userId, kind) =>
@@ -291,9 +306,18 @@ export function validateLine(response, ctx, recentSpoken = []) {
   // allowed). Titles and artists are masked first so a band that shares a
   // member's name can still be introduced.
   const unmasked = maskPhrases(text, phrases);
-  const forbidden = (ctx.forbiddenNames ?? []).find((name) => namesForbidden(unmasked, name));
+  const lenient = new Set(ctx.lenientNames ?? []);
+  const forbidden = (ctx.forbiddenNames ?? []).find((name) =>
+    namesForbidden(unmasked, name, lenient.has(name))
+  );
   if (forbidden) reject('names a member who may not be named');
   const cited = factIds.map((id) => factsById.get(id));
+  if (
+    CONNECTION_CLAIM_RE.test(unmasked) &&
+    !cited.some((f) => f.kind === 'member' || f.kind === 'group')
+  ) {
+    reject('claims a connection with the listeners without a member or group fact');
+  }
   const misattributed = misattributedClaim(text, ctx, cited, phrases);
   if (misattributed) reject(misattributed);
 

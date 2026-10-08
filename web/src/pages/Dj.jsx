@@ -45,6 +45,11 @@ export function Dj() {
     };
   }, [available, setShoutoutsEnabled]);
 
+  // A dj:shoutouts push after a failed load supersedes the load error.
+  useEffect(() => {
+    if (shoutoutsEnabled !== null) setShoutoutsError(null);
+  }, [shoutoutsEnabled]);
+
   if (!djState) {
     return (
       <p style={{ color: 'var(--color-text-muted)', fontSize: '13px', padding: '20px 0' }}>

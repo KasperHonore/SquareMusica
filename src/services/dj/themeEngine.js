@@ -260,8 +260,16 @@ export function createThemeEngine(deps) {
     });
   }
 
-  function djTrack(fields) {
-    return { ...fields, addedByDj: true, requestedBy: DJ_REQUESTER, requestedById: null };
+  // djSessionId lets a session count only its own picks: picks a stopped
+  // session left queued are upcoming tracks like any other (FR-021a).
+  function djTrack(fields, sessionId) {
+    return {
+      ...fields,
+      addedByDj: true,
+      requestedBy: DJ_REQUESTER,
+      requestedById: null,
+      djSessionId: sessionId
+    };
   }
 
   /**
@@ -280,7 +288,8 @@ export function createThemeEngine(deps) {
     }
 
     const queue = getQueue();
-    const needed = getLookahead() - (queue?.countUpcoming((t) => t.addedByDj) ?? 0);
+    const needed =
+      getLookahead() - (queue?.countUpcoming((t) => t.addedByDj && t.djSessionId === mine.id) ?? 0);
     if (needed <= 0) {
       setStatus('running');
       return { added: 0, error: null };
@@ -332,7 +341,10 @@ export function createThemeEngine(deps) {
     // History picks are already playable; add them straight away.
     for (const plan of plans.filter((p) => p.kind === 'history')) {
       const { url, title, artist, duration, thumbnail } = plan.candidate;
-      add(djTrack({ url, title, artist, channel: artist, duration, thumbnail }), plan.keys);
+      add(
+        djTrack({ url, title, artist, channel: artist, duration, thumbnail }, mine.id),
+        plan.keys
+      );
     }
 
     // New picks are resolved first, so an unplayable one never enters the
@@ -352,14 +364,17 @@ export function createThemeEngine(deps) {
         // Two picks can resolve to one video, or to one already played.
         if (!repeatsAllowed && session?.usedKeys.has(resolved.url)) return;
         add(
-          djTrack({
-            url: resolved.url,
-            title: resolved.title ?? plan.title,
-            artist: plan.artist,
-            channel: resolved.channel ?? plan.artist,
-            duration: resolved.duration,
-            thumbnail: resolved.thumbnail ?? null
-          }),
+          djTrack(
+            {
+              url: resolved.url,
+              title: resolved.title ?? plan.title,
+              artist: plan.artist,
+              channel: resolved.channel ?? plan.artist,
+              duration: resolved.duration,
+              thumbnail: resolved.thumbnail ?? null
+            },
+            mine.id
+          ),
           [...plan.keys, resolved.url]
         );
       })

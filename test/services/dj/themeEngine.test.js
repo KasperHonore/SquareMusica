@@ -204,7 +204,8 @@ describe('themeEngine: starting and the lookahead (FR-021a, FR-022)', () => {
     await settle();
 
     const { user, system, temperature, timeoutMs } = chatJson.mock.calls[0][0];
-    expect(user.count).toBe(3 + 4);
+    // Picks queued before this session are not its own: they do not count (FR-021a).
+    expect(user.count).toBe(5 + 4);
     expect(user.theme).toBe('classic rock road trip');
     expect(user.allowRepeats).toBe(false);
     expect(user.candidates.length).toBeLessThanOrEqual(60);
@@ -214,6 +215,50 @@ describe('themeEngine: starting and the lookahead (FR-021a, FR-022)', () => {
     expect(system).toBe(SYSTEM_PROMPT);
     expect(temperature).toBe(0.7);
     expect(timeoutMs).toBe(20000);
+
+    // Play through m0, d0, d1 and the first pick: 3 of this session's picks are
+    // upcoming, so the top-up asks for 2 + 4.
+    chatJson.mockClear();
+    for (let i = 0; i < 4; i++) finishTrack();
+    await settle();
+    expect(chatJson.mock.calls[0][0].user.count).toBe(2 + 4);
+  });
+
+  it('a restart with the previous session’s picks still queued tops up to the full lookahead (FR-021a)', async () => {
+    h = setup({ lookahead: 5 });
+    await startTheme('old theme');
+    await settle();
+    expect(upcomingPicks()).toBe(5);
+
+    // Stopping keeps the picks (US4/AC4); a new theme must not count them.
+    h.engine.stop();
+    const leftover = h.queue.getAll().map((t) => t.url);
+    await expect(startTheme('new theme')).resolves.toBeUndefined();
+    await settle();
+
+    expect(h.engine.session).not.toBeNull();
+    expect(
+      h.queue
+        .getAll()
+        .slice(0, leftover.length)
+        .map((t) => t.url)
+    ).toEqual(leftover);
+    expect(upcomingPicks()).toBe(10);
+    expect(chatJson.mock.calls.at(-1)[0].user.theme).toBe('new theme');
+  });
+
+  it('a restart with only some leftover picks still queues a full lookahead of new-theme picks', async () => {
+    h = setup({ lookahead: 5 });
+    await startTheme('old theme');
+    await settle();
+    finishTrack();
+    finishTrack();
+    h.engine.stop();
+    expect(upcomingPicks()).toBe(3);
+
+    await startTheme('new theme');
+    await settle();
+    expect(upcomingPicks()).toBe(3 + 5);
   });
 
   it('prefers present, opted-in members’ history: their tracks come first, opted-out members are skipped', async () => {

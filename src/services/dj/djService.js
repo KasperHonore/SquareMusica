@@ -88,6 +88,7 @@ function createPlanner() {
     getPlayer,
     getConnectedUsers: () => musicManager.getVoiceContext?.()?.connectedUsers ?? [],
     getOptOuts: () => db.getShoutoutOptOuts?.() ?? new Set(),
+    store: db,
     canAttempt,
     isLineCapReached,
     writeLine,
@@ -106,6 +107,13 @@ function createPlanner() {
 
 const onTrackChange = (track) => planner?.onTrackChange(track);
 const onQueueUpdate = () => planner?.onQueueUpdate();
+// Joins and leaves of the bot's channel (client.js, R7). Discards a prepared line
+// naming someone who left, and lets the planner retry now that a listener may
+// be back (NO_LISTENERS).
+const onVoiceContext = (ctx) => {
+  planner?.onVoiceContext(ctx);
+  planner?.onQueueUpdate();
+};
 
 /**
  * Load settings and usage, register the state getter with the mediator, and
@@ -125,6 +133,7 @@ export function init() {
   planner = createPlanner();
   musicManager.on('track:change', onTrackChange);
   musicManager.on('queue:update', onQueueUpdate);
+  musicManager.on('voice:context', onVoiceContext);
   scheduleMidnightReset();
   logger.info('[DJ] Service initialised');
 }
@@ -203,6 +212,50 @@ export function setSettings(partial = {}, _actor = null) {
 /** Current settings (in memory). */
 export function getSettings() {
   return settings ? { ...settings } : null;
+}
+
+// --- Personal shout-outs (FR-019) ---------------------------------------------
+
+function requireInitialised() {
+  if (!initialised) {
+    throw new DjError(DJ_UNAVAILABLE, "The DJ isn't set up on this server.");
+  }
+}
+
+function requireUserId(userId) {
+  if (typeof userId !== 'string' || userId.length === 0) {
+    throw new TypeError('userId must be a Discord user id');
+  }
+}
+
+/**
+ * A member's own shout-out preference. On by default.
+ * @param {string} userId - Discord user id
+ * @returns {{ enabled: boolean }}
+ */
+export function getShoutouts(userId) {
+  requireInitialised();
+  requireUserId(userId);
+  return { enabled: !db.isShoutoutOptedOut(userId) };
+}
+
+/**
+ * Turn a member's own shout-outs on or off. Emits `dj:shoutouts` exactly once
+ * whichever transport made the change, so every open surface of that member
+ * converges (FR-015). No `dj:state` broadcast: the preference is per member.
+ * @param {string} userId - Discord user id
+ * @param {boolean} enabled
+ * @returns {{ enabled: boolean }}
+ */
+export function setShoutouts(userId, enabled) {
+  requireInitialised();
+  requireUserId(userId);
+  if (typeof enabled !== 'boolean') throw new TypeError('enabled must be a boolean');
+
+  db.setShoutoutOptOut(userId, !enabled);
+  if (!enabled) planner?.onOptOut(userId);
+  musicManager.emit('dj:shoutouts', { userId, enabled });
+  return { enabled };
 }
 
 // --- Circuit breaker (R9) ---------------------------------------------------
@@ -312,6 +365,7 @@ export function _resetForTests() {
   planner = null;
   musicManager.off?.('track:change', onTrackChange);
   musicManager.off?.('queue:update', onQueueUpdate);
+  musicManager.off?.('voice:context', onVoiceContext);
   initialised = false;
   settings = null;
   breaker = null;

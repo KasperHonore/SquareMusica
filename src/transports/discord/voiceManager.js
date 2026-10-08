@@ -139,6 +139,7 @@ export function getChannelInfo(guildId) {
     .map((m) => ({
       id: m.user.id,
       username: m.user.username,
+      displayName: m.displayName,
       avatar: m.user.avatar
     }));
 

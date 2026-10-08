@@ -215,3 +215,115 @@ describe('caps and the planner wiring', () => {
     expect(states).toHaveLength(1);
   });
 });
+
+describe('shout-outs (FR-019, T053)', () => {
+  let pushes;
+  const onShoutouts = (p) => pushes.push(p);
+
+  beforeEach(() => {
+    db.db.exec('DELETE FROM dj_shoutout_optouts;');
+    pushes = [];
+    musicManager.on('dj:shoutouts', onShoutouts);
+  });
+
+  afterEach(() => {
+    musicManager.off('dj:shoutouts', onShoutouts);
+  });
+
+  it('unconfigured: both calls throw DJ_UNAVAILABLE', () => {
+    expect(() => dj.getShoutouts('A')).toThrow(expect.objectContaining({ code: 'DJ_UNAVAILABLE' }));
+    expect(() => dj.setShoutouts('A', false)).toThrow(
+      expect.objectContaining({ code: 'DJ_UNAVAILABLE' })
+    );
+  });
+
+  it('defaults to on; setShoutouts persists and emits dj:shoutouts exactly once, no dj:state', () => {
+    dj.init();
+    expect(dj.getShoutouts('A')).toEqual({ enabled: true });
+
+    expect(dj.setShoutouts('A', false)).toEqual({ enabled: false });
+    expect(db.isShoutoutOptedOut('A')).toBe(true);
+    expect(dj.getShoutouts('A')).toEqual({ enabled: false });
+    expect(pushes).toEqual([{ userId: 'A', enabled: false }]);
+
+    dj.setShoutouts('A', true);
+    expect(db.isShoutoutOptedOut('A')).toBe(false);
+    expect(pushes).toHaveLength(2);
+    expect(states).toHaveLength(0);
+  });
+
+  it('rejects a non-boolean value without writing', () => {
+    dj.init();
+    expect(() => dj.setShoutouts('A', 'no')).toThrow(TypeError);
+    expect(db.isShoutoutOptedOut('A')).toBe(false);
+    expect(pushes).toHaveLength(0);
+  });
+});
+
+describe('prepared lines naming a member are discarded early (T050, T053)', () => {
+  const PCM = Buffer.alloc(16);
+  const track = (id) => ({ title: id, url: `https://y/${id}`, duration: 10 });
+  let queue;
+  let player;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    db.db.exec('DELETE FROM dj_shoutout_optouts;');
+    queue = new Queue();
+    player = { overlay: vi.fn(() => true), isPaused: () => false };
+    getQueue.mockReturnValue(queue);
+    getPlayer.mockReturnValue(player);
+    musicManager.getVoiceContext.mockReturnValue({ connectedUsers: [{ id: 'A' }, { id: 'B' }] });
+    writeLine.mockImplementation(async (ctx) => ({
+      forKey: ctx.forKey,
+      text: `Anna, here is ${ctx.next.title}.`,
+      pcm: PCM,
+      factIds: [],
+      namedUserIds: ['A']
+    }));
+    dj.init();
+    dj.setSettings({ enabled: true, interval: 1 });
+    for (const id of ['a', 'b', 'c']) queue.add(track(id));
+    musicManager.emit('track:change', queue.getCurrent());
+  });
+
+  afterEach(() => {
+    musicManager.getVoiceContext.mockReturnValue({ connectedUsers: [{ id: 'A' }] });
+  });
+
+  it('voice:context without the named member drops the prepared line', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dj._getPlannerForTests().getPrepared()?.namedUserIds).toEqual(['A']);
+
+    writeLine.mockClear();
+    musicManager.getVoiceContext.mockReturnValue({ connectedUsers: [{ id: 'B' }] });
+    musicManager.emit('voice:context', { connectedUsers: [{ id: 'B' }] });
+    // Discarded at once, and a fresh line is prepared for the people present.
+    expect(dj._getPlannerForTests().getPrepared()).toBeNull();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(writeLine).toHaveBeenCalledTimes(1);
+  });
+
+  it('voice:context that still includes the member keeps it', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    musicManager.emit('voice:context', { connectedUsers: [{ id: 'A' }, { id: 'B' }] });
+    expect(dj._getPlannerForTests().getPrepared()?.namedUserIds).toEqual(['A']);
+  });
+
+  it('opting out drops a prepared line naming that member', async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    writeLine.mockImplementation(async (ctx) => ({
+      forKey: ctx.forKey,
+      text: `Here is ${ctx.next.title}.`,
+      pcm: PCM,
+      factIds: [],
+      namedUserIds: []
+    }));
+    dj.setShoutouts('A', false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dj._getPlannerForTests().getPrepared()?.namedUserIds).toEqual([]);
+
+    musicManager.emit('track:change', queue.next());
+    expect(player.overlay).toHaveBeenCalledOnce();
+  });
+});

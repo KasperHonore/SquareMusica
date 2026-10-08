@@ -20,7 +20,7 @@ import {
   createStatsEvent,
   captureTrack
 } from '../../shared/statsEvents.js';
-import { getStateOrUnavailable, setSettings } from '../../services/dj/djService.js';
+import { getStateOrUnavailable, setSettings, setShoutouts } from '../../services/dj/djService.js';
 import { DjError } from '../../services/dj/errors.js';
 import { describeDjError } from '../../services/dj/messages.js';
 import { logger } from '../../utils/logger.js';
@@ -414,6 +414,49 @@ export function handleDjSettings(socket) {
       }
       logger.error('DJ settings error:', err);
       socket.emit('error', { message: 'Failed to change DJ settings. Please try again.' });
+    }
+  };
+}
+
+/**
+ * Handle a member turning their own shout-outs on or off (contracts §3). Keyed by
+ * the socket's Discord id. Acks `{ enabled }`; every surface of that member also
+ * receives the service's `dj:shoutouts` push.
+ * @param {Socket} socket - Socket.io socket instance
+ * @returns {Function} Event handler
+ */
+export function handleDjShoutouts(socket) {
+  return (payload, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    if (isThrottled(socket, 'dj')) {
+      socket.emit('error', {
+        message: 'You are changing DJ settings too quickly. Please slow down.'
+      });
+      return;
+    }
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+      socket.emit('error', { message: 'Shout-out settings must be an object.' });
+      return;
+    }
+
+    try {
+      reply(setShoutouts(socket.user?.discord_id, payload.enabled));
+    } catch (err) {
+      if (err instanceof DjError) {
+        const described = describeDjError(err.code, {
+          resetsAt: getStateOrUnavailable().caps?.resetsAt
+        });
+        if (described) {
+          socket.emit('error', { code: described.code, message: described.text });
+          return;
+        }
+      }
+      if (err instanceof TypeError) {
+        socket.emit('error', { message: err.message });
+        return;
+      }
+      logger.error('DJ shout-outs error:', err);
+      socket.emit('error', { message: 'Failed to change shout-outs. Please try again.' });
     }
   };
 }

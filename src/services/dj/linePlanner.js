@@ -22,6 +22,7 @@ const PREPARE_RETRY_MS = 10 * 1000;
  * @param {() => Object|null} deps.getPlayer - MusicPlayer with overlay()/isPaused()
  * @param {() => Array<{ id: string, bot?: boolean }>} deps.getConnectedUsers
  * @param {() => Set<string>} [deps.getOptOuts]
+ * @param {Object|null} [deps.store] - history and opt-out reads for member facts (db)
  * @param {() => boolean} deps.canAttempt - breaker gate; consumes a half-open slot
  * @param {() => boolean} deps.isLineCapReached
  * @param {(ctx: Object, recent: string[]) => Promise<Object>} deps.writeLine
@@ -35,6 +36,7 @@ export function createLinePlanner(deps) {
     getPlayer,
     getConnectedUsers,
     getOptOuts = () => new Set(),
+    store = null,
     canAttempt,
     isLineCapReached,
     writeLine,
@@ -167,7 +169,8 @@ export function createLinePlanner(deps) {
       next,
       theme: null,
       present: getConnectedUsers() ?? [],
-      recentLines: spoken
+      recentLines: spoken,
+      store
     });
 
     Promise.resolve()
@@ -302,6 +305,32 @@ export function createLinePlanner(deps) {
     if (prepWindowOpen && !prepared && !keyMatches(attemptedKey, next)) prepare();
   }
 
+  /**
+   * Discard the prepared line if it names a member who left or opted out
+   * (FR-017, FR-020). The speak-time re-check is the guarantee; this only makes
+   * the discard happen sooner, so a fresh line can be prepared.
+   * @returns {boolean} whether a line was discarded
+   */
+  function discardIfNaming(isGone) {
+    if (!prepared?.namedUserIds?.some(isGone)) return false;
+    drop('stale-member', prepared.forKey);
+    prepared = null;
+    attemptedKey = null;
+    if (prepWindowOpen) prepare();
+    return true;
+  }
+
+  /** Mediator `voice:context`: someone joined or left the bot's channel. */
+  function onVoiceContext(ctx) {
+    const present = new Set((ctx?.connectedUsers ?? []).map((u) => u.id));
+    discardIfNaming((id) => !present.has(id));
+  }
+
+  /** A member opted out of shout-outs: drop a prepared line naming them. */
+  function onOptOut(userId) {
+    discardIfNaming((id) => id === userId);
+  }
+
   /** Restart the interval count (setting changes, FR-006). */
   function resetCounter() {
     transitionsSinceSpoken = 0;
@@ -327,6 +356,8 @@ export function createLinePlanner(deps) {
   return {
     onTrackChange,
     onQueueUpdate,
+    onVoiceContext,
+    onOptOut,
     resetCounter,
     logDailyStats,
     stop,

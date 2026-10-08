@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../../src/integrations/llm.js', () => ({ chatJson: vi.fn() }));
 vi.mock('../../../src/integrations/elevenlabs.js', () => ({ synthesize: vi.fn() }));
@@ -144,5 +144,93 @@ describe('writeLine prompt and errors', () => {
     reply('Here comes ABBA.', ['f2']);
     synthesize.mockRejectedValueOnce(Object.assign(new Error('slow'), { kind: 'network' }));
     await expect(writeLine(ctxWith())).rejects.toMatchObject({ kind: 'tts' });
+  });
+});
+
+describe('shout-outs: forbidden names and allowed members (R6 step 3, SC-003)', () => {
+  let store;
+  const A = { id: 'A', username: 'anna_u', displayName: 'Anna' };
+  const B = { id: 'B', username: 'bob_u', displayName: 'Bob' };
+  const C = { id: 'C', username: 'carl_u', displayName: 'Carl' };
+
+  function plays(userId, name, url, n) {
+    for (let i = 0; i < n; i++) {
+      store.addToHistory({ title: 'Song', url, requestedBy: name, requestedById: userId });
+    }
+  }
+
+  beforeEach(async () => {
+    const { DatabaseManager } = await import('../../../src/persistence/db.js');
+    store = new DatabaseManager(':memory:');
+  });
+
+  afterEach(() => store.close());
+
+  it('accepts a line naming an allowed member and records namedUserIds', async () => {
+    plays('A', 'Anna', next.url, 3);
+    const ctx = buildContext({ previous, next, present: [A, B], store });
+    const fact = ctx.facts.find((f) => f.kind === 'member');
+    reply('Anna, you have played Dancing Queen three times, here it is!', ['f2', fact.id]);
+    const line = await writeLine(ctx);
+    expect(line.namedUserIds).toEqual(['A']);
+    expect(JSON.parse(chatJson.mock.calls[0][0].user).allowedNames).toEqual(['Anna']);
+  });
+
+  it('rejects a known DJ name that is not in allowedNames', async () => {
+    plays('Z', 'Zed', 'https://y/z', 1);
+    const ctx = buildContext({ previous, next, present: [A], store });
+    reply('Zed would love Dancing Queen!', ['f2']);
+    await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+    expect(synthesize).not.toHaveBeenCalled();
+  });
+
+  it('rejects a line naming an opted-out present member', async () => {
+    plays('A', 'Anna', next.url, 5);
+    store.setShoutoutOptOut('A', true);
+    const ctx = buildContext({ previous, next, present: [A, B], store });
+    reply('This one is for Anna: Dancing Queen!', ['f2']);
+    await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+    reply('This one is for ANNA_U: Dancing Queen!', ['f2']);
+    await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+    expect(synthesize).not.toHaveBeenCalled();
+  });
+
+  it('with no qualifying member facts a general music line is still accepted (US3/AC4)', async () => {
+    plays('A', 'Anna', next.url, 2);
+    const ctx = buildContext({ previous, next, present: [A, B], store });
+    expect(ctx.facts.some((f) => f.kind === 'member')).toBe(false);
+    expect(ctx.allowedNames).toEqual([]);
+    reply('Up next, ABBA with Dancing Queen!', ['f2']);
+    await expect(writeLine(ctx)).resolves.toMatchObject({ namedUserIds: [] });
+  });
+
+  describe('queuer C of the next track', () => {
+    const queuedByC = { ...next, requestedBy: 'carl_u', requestedById: 'C' };
+
+    it('has left and has no history: no queuedBy, and naming C is rejected', async () => {
+      const ctx = buildContext({ previous, next: queuedByC, present: [A], store });
+      expect(ctx.next.queuedBy).toBeUndefined();
+      reply('Shout out to carl_u for Dancing Queen!', ['f2']);
+      await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+    });
+
+    it('is present but opted out: no queuedBy, and naming C is rejected', async () => {
+      store.setShoutoutOptOut('C', true);
+      const ctx = buildContext({ previous, next: queuedByC, present: [A, C], store });
+      expect(ctx.next.queuedBy).toBeUndefined();
+      reply('Carl picked Dancing Queen!', ['f2']);
+      await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+    });
+
+    it('is present and opted in: queuedBy is the speakable name and C is allowed', async () => {
+      const ctx = buildContext({ previous, next: queuedByC, present: [A, C], store });
+      expect(ctx.next.queuedBy).toBe('Carl');
+      expect(ctx.allowedNames).toEqual(['Carl']);
+      reply('Carl picked Dancing Queen, let us go!', ['f2']);
+      await expect(writeLine(ctx)).resolves.toMatchObject({ namedUserIds: ['C'] });
+      const payload = JSON.parse(chatJson.mock.calls.at(-1)[0].user);
+      expect(payload.next.queuedBy).toBe('Carl');
+      expect(payload.allowedNames).toEqual(['Carl']);
+    });
   });
 });

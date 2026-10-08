@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS history (
   requested_by_id TEXT,
   requested_by_avatar TEXT,
   is_loop_replay INTEGER NOT NULL DEFAULT 0,
+  artist TEXT,
   played_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -77,6 +78,8 @@ CREATE INDEX IF NOT EXISTS idx_playlists_created_at ON playlists(created_at);
 -- index created only there would never exist on a new deployment and every
 -- stats query would scan unindexed. IF NOT EXISTS makes the duplication safe.
 CREATE INDEX IF NOT EXISTS idx_history_requested_by_id ON history(requested_by_id);
+-- Per-track play counts for the DJ's member facts (feature 002, FR-018).
+CREATE INDEX IF NOT EXISTS idx_history_url ON history(url);
 CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_actor ON events(actor_id);
 CREATE INDEX IF NOT EXISTS idx_events_target ON events(target_user_id);

@@ -155,14 +155,32 @@ export function countSentences(text, phrases = []) {
   return terminators.length + (trailing ? 0 : 1);
 }
 
+/** Whether `text` contains `name` as a whole word or phrase, case-insensitively. */
+function mentions(text, name) {
+  if (!name) return false;
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(name)}(?![\\p{L}\\p{N}])`, 'iu').test(text);
+}
+
+/**
+ * Discord ids of the allowed members a line names (data-model.md DJ Line
+ * `namedUserIds`); the planner re-checks these right before speaking.
+ * @param {string} text
+ * @param {Object} ctx
+ * @returns {string[]}
+ */
+export function namedUserIdsIn(text, ctx) {
+  return (ctx.allowedMembers ?? [])
+    .filter((member) => mentions(text, member.name))
+    .map((member) => member.userId);
+}
+
 function normalise(text) {
   return text.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 /**
- * Validate a model response against the context (R6 steps 1, 2 and 4, plus the
- * FR-005 quantity check and the content filter). Step 3 (forbidden names) is
- * added in US3.
+ * Validate a model response against the context (R6 steps 1–4, plus the FR-005
+ * quantity check and the content filter).
  * @param {unknown} response
  * @param {Object} ctx
  * @param {string[]} recentSpoken
@@ -198,6 +216,13 @@ export function validateLine(response, ctx, recentSpoken = []) {
   for (const id of factIds) for (const n of factNumbers(factsById.get(id))) allowed.add(n);
   const unsupported = quantitiesIn(text).filter((q) => !allowed.has(q));
   if (unsupported.length > 0) reject(`unsupported quantity ${unsupported.join(', ')}`);
+
+  // R6 step 3: no forbidden name (a known member or a present member who isn't
+  // allowed). Titles and artists are masked first so a band that shares a
+  // member's name can still be introduced.
+  const unmasked = maskPhrases(text, phrases);
+  const forbidden = (ctx.forbiddenNames ?? []).find((name) => mentions(unmasked, name));
+  if (forbidden) reject('names a member who may not be named');
 
   // Real titles and artists can contain a blocked word (e.g. "Gypsy"); the
   // filter judges what the model added around them. Masking is case-sensitive
@@ -251,5 +276,12 @@ export async function writeLine(ctx, recentSpoken = []) {
     throw new LineError(error?.kind === 'quota' ? 'quota' : 'tts', error.message, error);
   }
 
-  return { forKey: ctx.forKey, text, pcm, factIds, namedUserIds: [], preparedAt: Date.now() };
+  return {
+    forKey: ctx.forKey,
+    text,
+    pcm,
+    factIds,
+    namedUserIds: namedUserIdsIn(text, ctx),
+    preparedAt: Date.now()
+  };
 }

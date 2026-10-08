@@ -13,7 +13,8 @@ export const ServerEvents = {
   VOICE_CONTEXT: 'voice:context',
   HISTORY_CLEARED: 'history:cleared',
   PLAYLISTS_UPDATE: 'playlists:update',
-  DJ_STATE: 'dj:state'
+  DJ_STATE: 'dj:state',
+  DJ_SHOUTOUTS: 'dj:shoutouts'
 };
 
 // Events sent from clients to server
@@ -26,5 +27,6 @@ export const ClientEvents = {
   VOICE_LEAVE: 'voice:leave',
   PLAYLIST_CREATE: 'playlist:create',
   PLAYLIST_DELETE: 'playlist:delete',
-  DJ_SETTINGS: 'dj:settings'
+  DJ_SETTINGS: 'dj:settings',
+  DJ_SHOUTOUTS: 'dj:shoutouts'
 };

@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { getStateOrUnavailable, setSettings } from '../../../services/dj/djService.js';
+import {
+  getStateOrUnavailable,
+  getShoutouts,
+  setSettings,
+  setShoutouts
+} from '../../../services/dj/djService.js';
 import { DjError } from '../../../services/dj/errors.js';
 import { describeDjError } from '../../../services/dj/messages.js';
 import { logger } from '../../../utils/logger.js';
@@ -54,6 +59,32 @@ router.patch('/', authMiddleware, (req, res) => {
 
   try {
     res.json(setSettings(body, actorFrom(req.user)));
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+/**
+ * GET /api/dj/shoutouts/me - the caller's own shout-out preference (FR-019).
+ * Keyed by the Discord id, never the internal users.id (R12 Member identity).
+ */
+router.get('/shoutouts/me', authMiddleware, (req, res) => {
+  try {
+    res.json(getShoutouts(req.user?.discord_id));
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+/** PUT /api/dj/shoutouts/me - `{ enabled }` turns the caller's shout-outs on or off. */
+router.put('/shoutouts/me', authMiddleware, (req, res) => {
+  const body = req.body;
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ error: 'Request body must be a JSON object.' });
+  }
+
+  try {
+    res.json(setShoutouts(req.user?.discord_id, body.enabled));
   } catch (error) {
     sendError(res, error);
   }

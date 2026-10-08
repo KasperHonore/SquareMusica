@@ -1,4 +1,9 @@
-import { getStateOrUnavailable, setSettings } from '../../../services/dj/djService.js';
+import {
+  getStateOrUnavailable,
+  getShoutouts,
+  setSettings,
+  setShoutouts
+} from '../../../services/dj/djService.js';
 import { DjError, DJ_UNAVAILABLE } from '../../../services/dj/errors.js';
 import { describeDjError, formatResetTime } from '../../../services/dj/messages.js';
 
@@ -54,8 +59,30 @@ async function handleStatus(interaction) {
   await interaction.reply({ content: formatStatus(state), ephemeral: true });
 }
 
+/**
+ * `/dj shoutouts [enabled]`: set or read the caller's own preference. Personal,
+ * so the reply is ephemeral and always states the current value.
+ */
+async function handleShoutouts(interaction) {
+  const enabled = interaction.options.getBoolean('enabled');
+  let result;
+  try {
+    result =
+      enabled === null
+        ? getShoutouts(interaction.user.id)
+        : setShoutouts(interaction.user.id, enabled);
+  } catch (error) {
+    return replyError(interaction, error);
+  }
+  const content = result.enabled
+    ? 'Shout-outs about you are on: the DJ may mention you by name.'
+    : 'Shout-outs about you are off: the DJ will not mention you by name.';
+  await interaction.reply({ content, ephemeral: true });
+}
+
 const SUBCOMMANDS = {
   status: handleStatus,
+  shoutouts: handleShoutouts,
   on: (interaction) => applySettings(interaction, { enabled: true }, () => 'The DJ is on.'),
   off: (interaction) => applySettings(interaction, { enabled: false }, () => 'The DJ is off.'),
   interval: (interaction) =>

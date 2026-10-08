@@ -117,11 +117,20 @@ export class DatabaseManager {
       logger.info('[Database] Migrated: added is_loop_replay to history table');
     }
 
+    // The AI DJ's group facts read the track's artist (feature 002). Old rows
+    // stay NULL and never match an artist read.
+    const hasArtist = tableInfo.some((col) => col.name === 'artist');
+    if (!hasArtist) {
+      this.db.exec('ALTER TABLE history ADD COLUMN artist TEXT');
+      logger.info('[Database] Migrated: added artist to history table');
+    }
+
     // Also declared in schema.sql, for the fresh-install path this method returns
     // early on. IF NOT EXISTS keeps both paths idempotent.
     this.db.exec(
       'CREATE INDEX IF NOT EXISTS idx_history_requested_by_id ON history(requested_by_id)'
     );
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_history_url ON history(url)');
   }
 
   // User methods
@@ -194,7 +203,7 @@ export class DatabaseManager {
         return;
       }
       const stmt = this.db.prepare(
-        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar, is_loop_replay) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar, is_loop_replay, artist) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       );
       stmt.run(
         guildId,
@@ -205,7 +214,8 @@ export class DatabaseManager {
         track.requestedBy || 'Unknown',
         track.requestedById || null,
         track.requestedByAvatar || null,
-        loopReplay ? 1 : 0
+        loopReplay ? 1 : 0,
+        track.spotifyData?.artists?.[0] ?? track.channel ?? null
       );
     } catch (error) {
       logger.error('[Database] addToHistory failed:', error.message, { track: track?.title });
@@ -693,6 +703,110 @@ export class DatabaseManager {
   // Old usage rows are never read; prune them so the table stays small.
   pruneDjUsage() {
     this.db.prepare("DELETE FROM dj_usage WHERE day < date('now', 'localtime', '-30 days')").run();
+  }
+
+  // Shout-out opt-outs (FR-019). Keyed by Discord user id; a row means opted out.
+  isShoutoutOptedOut(userId) {
+    return Boolean(
+      this.db.prepare('SELECT 1 FROM dj_shoutout_optouts WHERE user_id = ?').get(userId)
+    );
+  }
+
+  setShoutoutOptOut(userId, optedOut) {
+    if (optedOut) {
+      this.db.prepare('INSERT OR IGNORE INTO dj_shoutout_optouts (user_id) VALUES (?)').run(userId);
+    } else {
+      this.db.prepare('DELETE FROM dj_shoutout_optouts WHERE user_id = ?').run(userId);
+    }
+  }
+
+  getShoutoutOptOuts() {
+    const ids = this.db.prepare('SELECT user_id FROM dj_shoutout_optouts').pluck().all();
+    return new Set(ids);
+  }
+
+  // DJ grounding reads (research R6). All use COUNTED_PLAY, so loop replays and
+  // DJ picks (requested_by_id NULL) never feed a fact.
+
+  /**
+   * Counted plays of one track per member.
+   * @param {string} url
+   * @param {string[]} userIds - Discord user ids
+   * @returns {Array<{ userId: string, count: number }>}
+   */
+  getUserPlayCountsForUrl(url, userIds) {
+    if (!url || !userIds?.length) return [];
+    const placeholders = userIds.map(() => '?').join(', ');
+    return this.db
+      .prepare(
+        `SELECT h.requested_by_id AS userId, COUNT(*) AS count
+         FROM history h
+         WHERE ${COUNTED_PLAY} AND h.url = ? AND h.requested_by_id IN (${placeholders})
+         GROUP BY h.requested_by_id
+         ORDER BY count DESC, MIN(h.played_at) ASC, h.requested_by_id ASC`
+      )
+      .all(url, ...userIds);
+  }
+
+  /**
+   * A member's single most-played track.
+   * @param {string} userId
+   * @returns {{ url: string, title: string, count: number }|null}
+   */
+  getUserTopTrack(userId) {
+    const row = this.db
+      .prepare(
+        `SELECT h.url AS url, MAX(h.title) AS title, COUNT(*) AS count
+         FROM history h
+         WHERE ${COUNTED_PLAY} AND h.requested_by_id = ?
+         GROUP BY h.url
+         ORDER BY count DESC, MIN(h.played_at) ASC, h.url ASC
+         LIMIT 1`
+      )
+      .get(userId);
+    return row ?? null;
+  }
+
+  /**
+   * The latest display name of every member who ever queued a track; DJ picks
+   * (requested_by_id NULL) are excluded. Feeds the forbidden-name check.
+   * @returns {string[]}
+   */
+  getKnownMemberNames() {
+    return this.db
+      .prepare(
+        `SELECT h.requested_by
+         FROM history h
+         WHERE h.requested_by_id IS NOT NULL
+           AND h.id = (SELECT MAX(h2.id) FROM history h2 WHERE h2.requested_by_id = h.requested_by_id)
+         ORDER BY h.requested_by`
+      )
+      .pluck()
+      .all();
+  }
+
+  /**
+   * How many of `userIds` have counted plays of `artist` in the last `days`
+   * local days. Anonymous group facts only; a NULL artist never matches.
+   * @param {string} artist
+   * @param {string[]} userIds
+   * @param {number} days
+   * @returns {number}
+   */
+  getArtistQueuersSince(artist, userIds, days) {
+    if (!artist || !userIds?.length) return 0;
+    const placeholders = userIds.map(() => '?').join(', ');
+    return this.db
+      .prepare(
+        `SELECT COUNT(DISTINCT h.requested_by_id)
+         FROM history h
+         WHERE ${COUNTED_PLAY}
+           AND h.artist IS NOT NULL AND LOWER(h.artist) = LOWER(?)
+           AND h.requested_by_id IN (${placeholders})
+           AND date(h.played_at, 'localtime') > date('now', 'localtime', ?)`
+      )
+      .pluck()
+      .get(artist, ...userIds, `-${Number(days)} days`);
   }
 
   // Playlist methods

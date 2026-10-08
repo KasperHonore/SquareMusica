@@ -26,6 +26,8 @@ export function useSocket() {
   const [historyVersion, setHistoryVersion] = useState(0);
   const [botInfo, setBotInfo] = useState(null);
   const [playlists, setPlaylists] = useState([]);
+  // DjState (contracts §1). null until initial:state arrives.
+  const [djState, setDjState] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -99,6 +101,11 @@ export function useSocket() {
       if (Array.isArray(state.playlists)) {
         setPlaylists(state.playlists);
       }
+      setDjState(state.dj || { available: false });
+    });
+
+    newSocket.on('dj:state', (state) => {
+      setDjState(state);
     });
 
     newSocket.on('playlists:update', (updatedPlaylists) => {
@@ -182,6 +189,15 @@ export function useSocket() {
     [socket]
   );
 
+  // Any subset of { enabled, interval, lookahead }. The result arrives as a
+  // dj:state broadcast; a rejected change arrives as error { code, message }.
+  const setDjSettings = useCallback(
+    (partial) => {
+      socket?.emit('dj:settings', partial);
+    },
+    [socket]
+  );
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -202,6 +218,7 @@ export function useSocket() {
     historyVersion,
     botInfo,
     playlists,
+    djState,
     error,
     notice,
     addToQueue,
@@ -212,6 +229,7 @@ export function useSocket() {
     voiceLeave,
     createPlaylist,
     deletePlaylist,
+    setDjSettings,
     clearError,
     clearNotice
   };

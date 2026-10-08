@@ -167,6 +167,12 @@ export function setupSocketServer(httpServer) {
         );
         io.emit(ServerEvents.VOICE_CONTEXT, context);
       }
+    ],
+    [
+      'dj:state',
+      (state) => {
+        io.emit(ServerEvents.DJ_STATE, state);
+      }
     ]
   ];
   for (const [event, handler] of managerListeners) {

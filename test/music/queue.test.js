@@ -485,3 +485,76 @@ describe('Queue', () => {
     });
   });
 });
+
+describe('Queue.peekNext (side-effect free)', () => {
+  let queue;
+
+  beforeEach(() => {
+    queue = new Queue();
+  });
+
+  function snapshot(q) {
+    return {
+      currentIndex: q.currentIndex,
+      flags: q.tracks.map((tr) => tr.loopReplay),
+      ids: q.tracks.map((tr) => tr.id)
+    };
+  }
+
+  it('returns null on an empty queue', () => {
+    expect(queue.peekNext()).toBeNull();
+  });
+
+  it('loop off: returns the following entry', () => {
+    seed(queue, ['a', 'b', 'c'], 0);
+    const before = snapshot(queue);
+    expect(queue.peekNext().id).toBe('b');
+    expect(snapshot(queue)).toEqual(before);
+  });
+
+  it('loop off at the last index: returns null and does not clear the queue', () => {
+    seed(queue, ['a', 'b'], 1);
+    const before = snapshot(queue);
+    expect(queue.peekNext()).toBeNull();
+    expect(snapshot(queue)).toEqual(before);
+  });
+
+  it('loop track: returns the current entry', () => {
+    seed(queue, ['a', 'b'], 1);
+    queue.loopMode = 'track';
+    queue.tracks[1].hasPlayed = true;
+    const before = snapshot(queue);
+    expect(queue.peekNext().id).toBe('b');
+    expect(snapshot(queue)).toEqual(before);
+    expect(queue.tracks[1].loopReplay).toBeUndefined();
+  });
+
+  it('loop queue mid-queue: returns the following entry', () => {
+    seed(queue, ['a', 'b', 'c'], 1);
+    queue.loopMode = 'queue';
+    expect(queue.peekNext().id).toBe('c');
+    expect(queue.currentIndex).toBe(1);
+  });
+
+  it('loop queue at the last index: wraps to tracks[0] without moving', () => {
+    seed(queue, ['a', 'b', 'c'], 2);
+    queue.loopMode = 'queue';
+    queue.tracks[0].hasPlayed = true;
+    const before = snapshot(queue);
+    expect(queue.peekNext().id).toBe('a');
+    expect(snapshot(queue)).toEqual(before);
+  });
+
+  it('agrees with next() for each loop mode', () => {
+    for (const mode of ['off', 'track', 'queue']) {
+      for (let i = 0; i < 3; i++) {
+        const q = new Queue();
+        seed(q, ['a', 'b', 'c'], i);
+        q.loopMode = mode;
+        const peeked = q.peekNext()?.id ?? null;
+        const advanced = q.next()?.id ?? null;
+        expect(peeked).toBe(advanced);
+      }
+    }
+  });
+});

@@ -1,5 +1,11 @@
 import 'dotenv/config';
-import { validateEnv, validateTimezone } from './config/env.js';
+import {
+  validateEnv,
+  validateTimezone,
+  djRequiredVars,
+  validateDjFormats,
+  isDjConfigured
+} from './config/env.js';
 
 // Fail fast with one aggregated error if any required config is missing.
 // This runs BEFORE the rest of the app is imported (those modules open the
@@ -12,10 +18,13 @@ validateEnv([
   'DISCORD_CLIENT_SECRET',
   'JWT_SECRET',
   'OAUTH_REDIRECT_URI',
-  'TZ'
+  'TZ',
+  // The AI DJ group: all four or none, reported in this same error (R10).
+  ...djRequiredVars()
 ]);
 // TZ must also be a real zone: an unknown one silently becomes UTC in SQLite.
 validateTimezone();
+validateDjFormats();
 
 // Loaded dynamically (after validation) so their side effects don't run on a
 // misconfigured environment. Static imports would be hoisted above the check.
@@ -48,8 +57,17 @@ setupCommandHandler();
 registerAllCommands();
 
 // Initialize player and queue so web UI can detect voice connection state
-getPlayer();
+const player = getPlayer();
 getQueue();
+
+// The AI DJ is only constructed when configured. Unconfigured, the player keeps
+// the legacy audio path and nothing DJ-related exists (FR-030, ADR-002).
+let djService = null;
+if (isDjConfigured()) {
+  player.setMixingEnabled(true);
+  djService = await import('./services/dj/djService.js');
+  djService.init();
+}
 
 // Start servers
 async function start() {
@@ -71,6 +89,7 @@ async function start() {
 // Graceful shutdown handling
 process.on('SIGINT', () => {
   logger.info('Shutting down...');
+  djService?.shutdown();
   shutdownSocketServer();
   db.close();
   client.destroy();
@@ -82,6 +101,7 @@ process.on('SIGINT', () => {
 
 process.on('SIGTERM', () => {
   logger.info('Received SIGTERM, shutting down...');
+  djService?.shutdown();
   shutdownSocketServer();
   db.close();
   client.destroy();

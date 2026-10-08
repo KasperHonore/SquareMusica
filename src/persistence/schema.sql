@@ -80,3 +80,26 @@ CREATE INDEX IF NOT EXISTS idx_history_requested_by_id ON history(requested_by_i
 CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_actor ON events(actor_id);
 CREATE INDEX IF NOT EXISTS idx_events_target ON events(target_user_id);
+
+-- AI DJ (feature 002). Single settings row: id is always 1 (single-guild,
+-- ADR-001). The CHECKs are a last line of defence; djService validates first.
+CREATE TABLE IF NOT EXISTS dj_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  enabled INTEGER NOT NULL DEFAULT 0,
+  interval INTEGER NOT NULL DEFAULT 3 CHECK (interval BETWEEN 1 AND 10),
+  lookahead INTEGER NOT NULL DEFAULT 5 CHECK (lookahead IN (5, 10)),
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- A row means that Discord user opted out of personal shout-outs.
+CREATE TABLE IF NOT EXISTS dj_shoutout_optouts (
+  user_id TEXT PRIMARY KEY,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Daily DJ usage for the operator caps. day is date('now','localtime').
+CREATE TABLE IF NOT EXISTS dj_usage (
+  day TEXT PRIMARY KEY,
+  lines INTEGER NOT NULL DEFAULT 0,
+  themed_tracks INTEGER NOT NULL DEFAULT 0
+);

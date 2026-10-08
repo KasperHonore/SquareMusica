@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import { PassThrough } from 'stream';
 import { existsSync } from 'fs';
 import { StreamType } from '@discordjs/voice';
+import ffmpegStaticPath from 'ffmpeg-static';
 import { logger } from '../utils/logger.js';
 
 const execFileAsync = promisify(execFile);
@@ -408,6 +409,122 @@ export async function getStream(url) {
     type: StreamType.Arbitrary,
     cleanup
   };
+}
+
+// FFmpeg for the DJ's PCM path, resolved the way prism-media does: the bundled
+// ffmpeg-static binary, falling back to `ffmpeg` on PATH (research R2).
+const FFMPEG_PATH = ffmpegStaticPath && existsSync(ffmpegStaticPath) ? ffmpegStaticPath : 'ffmpeg';
+const PCM_ARGS = [
+  '-hide_banner',
+  '-loglevel',
+  'error',
+  '-i',
+  'pipe:0',
+  '-f',
+  's16le',
+  '-ar',
+  '48000',
+  '-ac',
+  '2',
+  'pipe:1'
+];
+
+/**
+ * Get a 48 kHz s16le stereo PCM stream for playback through the DJ mixer.
+ * Wraps getStream()'s output in our own FFmpeg child (ADR-002), so the yt-dlp
+ * watchdog and drain semantics are unchanged; the FFmpeg process is folded into
+ * the same idempotent cleanup.
+ * @param {string} url - YouTube URL
+ * @returns {Promise<Object>} { stream, type: StreamType.Raw, cleanup }
+ */
+const noop = () => {};
+
+export async function getPcmStream(url) {
+  const source = await getStream(url);
+  const ffmpeg = spawn(FFMPEG_PATH, PCM_ARGS);
+  const stream = new PassThrough();
+  let cleanedUp = false;
+
+  const cleanup = (err) => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+
+    source.stream.removeListener('error', onSourceError);
+    // Nothing else listens for 'error' on the source once onSourceError is gone
+    // (pipe() adds no error listener), so swallow any late error rather than
+    // let it reach the process-level uncaughtException handler.
+    source.stream.on('error', noop);
+    ffmpeg.removeListener('error', onProcessError);
+    ffmpeg.removeListener('close', onProcessClose);
+    stream.removeListener('error', onStreamError);
+    stream.removeListener('close', onStreamClose);
+
+    // The error is reported on our output stream below; the source only needs
+    // tearing down.
+    source.cleanup();
+
+    if (!ffmpeg.killed && ffmpeg.exitCode === null) {
+      try {
+        ffmpeg.kill('SIGKILL');
+        logger.debug('[Stream] ffmpeg process killed via cleanup');
+      } catch (killErr) {
+        logger.debug('[Stream] ffmpeg kill skipped (already exited):', killErr.message);
+      }
+    }
+
+    if (!stream.destroyed) {
+      stream.destroy(err || undefined);
+    }
+  };
+
+  // yt-dlp failure (including its startup watchdog) destroys the source stream
+  // with an error; take FFmpeg and the output down with it.
+  function onSourceError(err) {
+    cleanup(err);
+  }
+
+  function onProcessError(error) {
+    logger.error('ffmpeg process error:', error);
+    cleanup(error);
+  }
+
+  function onProcessClose(code) {
+    if (code !== 0 && code !== null) {
+      logger.error(`ffmpeg exited with code ${code}`);
+    }
+    // Normal exit: let the output drain; its 'close' runs cleanup.
+  }
+
+  function onStreamError(err) {
+    logger.debug('[Stream] PCM PassThrough error (expected during cleanup):', err.message);
+    cleanup(err);
+  }
+
+  function onStreamClose() {
+    cleanup();
+  }
+
+  try {
+    source.stream.on('error', onSourceError);
+    // EPIPE when FFmpeg exits before yt-dlp is done is expected; cleanup covers it.
+    ffmpeg.stdin.on('error', (err) => logger.debug('[Stream] ffmpeg stdin error:', err.message));
+    ffmpeg.stderr.on('data', (data) => {
+      logger.error('ffmpeg stderr:', data.toString());
+    });
+    source.stream.pipe(ffmpeg.stdin);
+    ffmpeg.stdout.pipe(stream);
+
+    ffmpeg.on('error', onProcessError);
+    ffmpeg.on('close', onProcessClose);
+    stream.on('error', onStreamError);
+    stream.on('close', onStreamClose);
+  } catch (setupError) {
+    logger.error('[Stream] PCM setup failed; tearing down:', setupError);
+    cleanup(setupError);
+    throw setupError;
+  }
+
+  return { stream, type: StreamType.Raw, cleanup };
 }
 
 /**

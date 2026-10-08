@@ -2,10 +2,12 @@ import {
   createAudioPlayer,
   createAudioResource,
   AudioPlayerStatus,
-  NoSubscriberBehavior
+  NoSubscriberBehavior,
+  StreamType
 } from '@discordjs/voice';
 import { EventEmitter } from 'events';
-import { getStream } from '../integrations/youtube.js';
+import { getStream, getPcmStream } from '../integrations/youtube.js';
+import { DuckingMixer } from './audioMixer.js';
 import { resolutionManager, ResolutionManager } from '../services/resolutionManager.js';
 import { logger } from '../utils/logger.js';
 
@@ -22,6 +24,9 @@ class MusicPlayer extends EventEmitter {
     this.pausedAt = null;
     this._currentCleanup = null;
     this._switching = false;
+    // DJ mixing (ADR-002): off keeps the legacy Arbitrary path byte-for-byte.
+    this._mixingEnabled = false;
+    this._mixer = null;
 
     this._setupListeners();
   }
@@ -62,6 +67,34 @@ class MusicPlayer extends EventEmitter {
     });
   }
 
+  /**
+   * Select the PCM + DuckingMixer path for subsequent play() calls. Set once at
+   * boot from isDjConfigured().
+   * @param {boolean} enabled
+   */
+  setMixingEnabled(enabled) {
+    this._mixingEnabled = Boolean(enabled);
+  }
+
+  /**
+   * Mix a DJ line (48 kHz s16le stereo) over the current track with ducking.
+   * @param {Buffer} pcm
+   * @returns {boolean} False if nothing is playing, paused, or mixing is off
+   */
+  overlay(pcm) {
+    if (!this._mixingEnabled || !this._mixer) return false;
+    if (this.audioPlayer.state.status !== AudioPlayerStatus.Playing) return false;
+    this._mixer.overlay(pcm);
+    return true;
+  }
+
+  /**
+   * Drop any DJ line in progress and restore the music. Idempotent.
+   */
+  cancelOverlay() {
+    this._mixer?.cancelOverlay();
+  }
+
   _cleanupCurrentStream() {
     if (this._currentCleanup) {
       try {
@@ -84,6 +117,8 @@ class MusicPlayer extends EventEmitter {
       logger.info('Player.play() called with track:', track?.title);
 
       // Stop player and clean up previous stream before switching tracks
+      this.cancelOverlay();
+      this._mixer = null;
       this._switching = true;
       this.audioPlayer.stop();
       this._cleanupCurrentStream();
@@ -104,12 +139,29 @@ class MusicPlayer extends EventEmitter {
       }
 
       logger.info('Playing track URL:', track.url);
-      const streamResult = await getStream(track.url);
-      this._currentCleanup = streamResult.cleanup || null;
-
-      const resource = createAudioResource(streamResult.stream, {
-        inputType: streamResult.type
-      });
+      let resource;
+      if (this._mixingEnabled) {
+        const streamResult = await getPcmStream(track.url);
+        // One mixer per track, so an overlay can never carry into the next one.
+        const mixer = new DuckingMixer();
+        // The mixer is torn down with the stream it reads from, so a track
+        // switch or stop releases both through the same idempotent cleanup.
+        this._currentCleanup = () => {
+          streamResult.stream.unpipe(mixer);
+          if (!mixer.destroyed) mixer.destroy();
+          streamResult.cleanup?.();
+        };
+        streamResult.stream.on('error', (err) => mixer.destroy(err));
+        streamResult.stream.pipe(mixer);
+        this._mixer = mixer;
+        resource = createAudioResource(mixer, { inputType: StreamType.Raw });
+      } else {
+        const streamResult = await getStream(track.url);
+        this._currentCleanup = streamResult.cleanup || null;
+        resource = createAudioResource(streamResult.stream, {
+          inputType: streamResult.type
+        });
+      }
 
       this.currentTrack = track;
       this.startTime = Date.now();
@@ -134,6 +186,7 @@ class MusicPlayer extends EventEmitter {
    * Pause playback
    */
   pause() {
+    this.cancelOverlay();
     if (this.audioPlayer.state.status === AudioPlayerStatus.Playing) {
       this.pausedAt = Date.now();
       this.audioPlayer.pause();
@@ -162,6 +215,8 @@ class MusicPlayer extends EventEmitter {
    * Stop playback
    */
   stop() {
+    this.cancelOverlay();
+    this._mixer = null;
     this._switching = true;
     this.audioPlayer.stop();
     this._cleanupCurrentStream();

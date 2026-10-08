@@ -1,0 +1,645 @@
+# Spec Kit Nightshift delivery record. Owned by agents working in this repo;
+# never edited from GitHub. See the nightshift design, section 4.
+schema: 1
+feature: specs/002-ai-dj-host
+pieces:
+  foundation:
+    loop: build
+  us1:
+    loop: build
+  us2:
+    loop: build
+  us3:
+    loop: build
+  us4:
+    loop: build
+  polish:
+    loop: build
+protected_paths: []
+issues:
+  parent: 55
+  pieces:
+    foundation: 56
+    us1: 57
+    us2: 58
+    us3: 59
+    us4: 60
+    polish: 61
+  repo: KasperHonore/SquareMusica
+  published:
+    parent: 10ef06b0869ff701
+    foundation: 5fd6f8080ea174a9
+    us1: 4a9d53403784f213
+    us2: 7c4d0f16b1db1e91
+    us3: af2a82ab118e5e31
+    us4: e2a17b78fbbedee1
+    polish: 43584b72665bf853
+approval:
+  approved_at: "2026-10-08T16:38:01+02:00"
+  approved_by: "Kasper (delegated: test loop)"
+  contract: .specify/delivery/002-ai-dj-host/run-contract.md
+  baseline:
+    tasks:
+      T001:
+        fingerprint: db12524a99e95839
+        description: "Write `docs/ADR-002-dj-audio-mixing.md` in the format of `docs/ADR-001-guild-scope.md`, recording research R1/R2: the PCM transcode moves into our code (`getPcmStream`, `ffmpeg -hide_banner -loglevel error -i pipe:0 -f s16le -ar 48000 -ac 2 pipe:1`), a `DuckingMixer` Transform feeds `StreamType.Raw`, the legacy `StreamType.Arbitrary` path is kept byte-for-byte when the DJ is unconfigured, the rejected alternatives (ffmpeg `amix`/`sidechaincompress`, `inlineVolume` only, second AudioPlayer, mixer npm packages), and the volume follow-up (a future volume feature must multiply into the mixer gain)"
+        piece: foundation
+        parallel: true
+        story: ""
+      T002:
+        fingerprint: 2cf66584f41bbb3e
+        description: "Add the DJ env group to `.env.sample` as a commented block: required-together `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `DJ_LLM_BASE_URL`, `DJ_LLM_MODEL` (note \"set all four or none\"); optional `DJ_LLM_API_KEY`, `ELEVENLABS_MODEL_ID` (default `eleven_flash_v2_5`), `DJ_DAILY_LINE_CAP` (default 150), `DJ_DAILY_THEME_TRACK_CAP` (default 100)"
+        piece: foundation
+        parallel: true
+        story: ""
+      T003:
+        fingerprint: e7c407a8828402ec
+        description: "Create the empty service folder `src/services/dj/` with a module-level comment header in `src/services/dj/errors.js` defining `DjError extends Error` with a `code` property and exported constants for every code in contracts §2: `DJ_UNAVAILABLE`, `INVALID_INTERVAL`, `INVALID_LOOKAHEAD`, `INVALID_THEME`, `NOT_IN_VOICE`, `NO_TRACKS_FOR_THEME`, `SERVICE_UNAVAILABLE`, `CAP_REACHED`, `THEMED_MODE_ACTIVE`"
+        piece: foundation
+        parallel: false
+        story: ""
+      T004:
+        fingerprint: 0ebf2107cba12c2a
+        description: "Extend `test/config/env.test.js`: (a) no DJ vars → `djRequiredVars()` returns `[]` and `isDjConfigured()` is false; (b) only `ELEVENLABS_API_KEY` set → `validateEnv([...base, ...djRequiredVars()])` throws ONE aggregated error naming `ELEVENLABS_VOICE_ID`, `DJ_LLM_BASE_URL`, `DJ_LLM_MODEL` alongside any other missing base var; (c) `validateDjFormats()` rejects a non-positive-integer `DJ_DAILY_LINE_CAP`/`DJ_DAILY_THEME_TRACK_CAP` and a `DJ_LLM_BASE_URL` that is not `http:`/`https:`"
+        piece: foundation
+        parallel: true
+        story: ""
+      T005:
+        fingerprint: b3ada386262a4605
+        description: "Create `test/persistence/dj.test.js` (settings/usage part): `getDjSettings()` on a fresh DB returns `{ enabled: false, interval: 3, lookahead: 5 }` and creates row `id = 1`; `updateDjSettings({ interval: 4 })` persists; raw inserts violating `CHECK (id = 1)`, `CHECK (interval BETWEEN 1 AND 10)`, `CHECK (lookahead IN (5, 10))` throw; `incrementDjUsage(day, 'lines')` twice yields `lines = 2` via upsert; `incrementDjUsage(day, 'bogus')` throws (field whitelisted to `lines` | `themed_tracks`)"
+        piece: foundation
+        parallel: true
+        story: ""
+      T006:
+        fingerprint: 8007d47f71f29af6
+        description: "Create `test/core/audioMixer.test.js` on synthetic s16le stereo buffers: passthrough is byte-identical with no overlay; with an overlay the music gain ramps 1.0 → 0.3 over 200 ms (9600 frames) and overlay samples are added; sums clamp to int16 `[-32768, 32767]`; after the overlay is exhausted gain ramps 0.3 → 1.0 over 300 ms; `cancelOverlay()` drops remaining overlay and starts the release ramp; a chunk ending mid-frame (e.g. 3 bytes) is carried into the next chunk with no sample loss"
+        piece: foundation
+        parallel: true
+        story: ""
+      T007:
+        fingerprint: 4ba27de0fd6e5d81
+        description: "Create `test/core/player-overlay.test.js`: with `setMixingEnabled(false)` `play()` builds the resource with the stream's own type (legacy `Arbitrary` path) and `overlay()` returns `false`; with mixing enabled `play()` builds a `StreamType.Raw` resource through a `DuckingMixer`; `overlay(buf)` returns `false` when nothing is playing or paused; `pause()`, `stop()` and `play()` each call `cancelOverlay()` on the current mixer; `musicManager.clearQueue()` and `musicManager.clearUpcomingQueue()` each call `player.cancelOverlay()` while the current track keeps playing (FR-009 queue clear); `musicManager.ensurePlaying()` on an idle player starts the first queued track through `advanceAndPlay` and emits `track:change` and `queue:update`, and returns `false` without starting anything when already playing or paused; when no queued track can be played it returns `false`, calls `player.stop()` and emits `track:change(null)` once. Extend `test/music/queue.test.js` with `peekNext()` cases for loop `off`, `track` and `queue` (including the wrap at the last index) asserting `currentIndex` and `loopReplay` are untouched. Also assert `musicManager.clearAllButCurrent()` calls `player.cancelOverlay()` once, leaves the current track as the only entry with `currentIndex = 0`, and emits one `queue:update`"
+        piece: foundation
+        parallel: true
+        story: ""
+      T008:
+        fingerprint: d9fe7ce0422fce57
+        description: "Create `test/integrations/elevenlabs.test.js` with `fetch` mocked: request is `POST https://api.elevenlabs.io/v1/text-to-speech/{voiceId}?output_format=pcm_48000` with header `xi-api-key` and body `{ text, model_id }`; mono response is returned as stereo (each sample duplicated); a clip longer than 15 s (`bytes / (48000 × 2) > 15` for mono) is rejected; a format rejection retries once with `pcm_24000` and 2× sample-doubling upsample; `401 quota_exceeded` surfaces a `quota` error kind; `429` retries once after 1 s then fails; `422` fails without retry"
+        piece: foundation
+        parallel: true
+        story: ""
+      T009:
+        fingerprint: 135eb014f5673073
+        description: "Create `test/integrations/llm.test.js` with `fetch` mocked: `chatJson()` posts to `${DJ_LLM_BASE_URL}/chat/completions` with `response_format: { type: \"json_object\" }`, sends `Authorization: Bearer` only when `DJ_LLM_API_KEY` is set, parses `choices[0].message.content` as JSON, and throws on malformed JSON, non-2xx, or timeout"
+        piece: foundation
+        parallel: true
+        story: ""
+      T010:
+        fingerprint: 68fca9e64cb138d9
+        description: "Add to `src/config/env.js`: `DJ_GROUP_VARS = ['ELEVENLABS_API_KEY','ELEVENLABS_VOICE_ID','DJ_LLM_BASE_URL','DJ_LLM_MODEL']`; `djRequiredVars()` returning all four names if ANY is set, else `[]`; `isDjConfigured()`; `validateDjFormats()` checking caps are positive integers and the base URL parses as `http(s)`; `getDjConfig()` returning `{ elevenlabs: { apiKey, voiceId, modelId (default 'eleven_flash_v2_5') }, llm: { baseUrl, model, apiKey|null }, caps: { lines (default 150), themedTracks (default 100) } }` (R10)"
+        piece: foundation
+        parallel: false
+        story: ""
+      T011:
+        fingerprint: 69b742aa608d5b0a
+        description: "Update `src/index.js` to append `djRequiredVars()` to the existing `validateEnv([...])` list and call `validateDjFormats()` in the same pre-dynamic-import phase (Constitution IV); after playback is initialised, if `isDjConfigured()` call `player.setMixingEnabled(true)` and dynamically import and `init()` `src/services/dj/djService.js`; when unconfigured construct nothing"
+        piece: foundation
+        parallel: false
+        story: ""
+      T012:
+        fingerprint: 1ef78b7fd0de0812
+        description: "Add to `src/persistence/schema.sql` (all `CREATE TABLE IF NOT EXISTS`): `dj_settings` (`id INTEGER PRIMARY KEY CHECK (id = 1)`, `enabled INTEGER NOT NULL DEFAULT 0`, `interval INTEGER NOT NULL DEFAULT 3 CHECK (interval BETWEEN 1 AND 10)`, `lookahead INTEGER NOT NULL DEFAULT 5 CHECK (lookahead IN (5, 10))`, `updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`); `dj_shoutout_optouts` (`user_id TEXT PRIMARY KEY`, `created_at DATETIME DEFAULT CURRENT_TIMESTAMP`); `dj_usage` (`day TEXT PRIMARY KEY`, `lines INTEGER NOT NULL DEFAULT 0`, `themed_tracks INTEGER NOT NULL DEFAULT 0`)"
+        piece: foundation
+        parallel: false
+        story: ""
+      T013:
+        fingerprint: f2c602266bce0e08
+        description: "Add to `DatabaseManager` in `src/persistence/db.js`: `getDjSettings()` (runs `INSERT OR IGNORE INTO dj_settings (id) VALUES (1)` then returns `{ enabled: boolean, interval, lookahead }`); `updateDjSettings(partial)` as a single UPDATE that also sets `updated_at`; `getDjUsage(day)` returning `{ lines, themed_tracks }` (zeros when no row); `incrementDjUsage(day, field)` with `field` whitelisted to `'lines' | 'themed_tracks'` using `INSERT ... ON CONFLICT(day) DO UPDATE SET <field> = <field> + 1`; optionally prune `dj_usage` rows older than 30 days in the boot path (depends on T012)"
+        piece: foundation
+        parallel: false
+        story: ""
+      T014:
+        fingerprint: f5c56f660631ceb3
+        description: "Create `src/core/audioMixer.js` exporting `DuckingMixer extends Transform` (imports only `node:stream`): s16le stereo (4 bytes/frame), `highWaterMark` 5 frames of 20 ms (5 × 3840 B); `overlay(buffer)` replaces any in-progress overlay; per-sample linear gain ramp toward 0.3 over 200 ms attack and back to 1.0 over 300 ms release; music × gain + overlay, clamped to int16; `cancelOverlay()` drops remaining overlay and begins release; partial frames carried across chunks (R1, contracts §4)"
+        piece: foundation
+        parallel: true
+        story: ""
+      T015:
+        fingerprint: 8dc449dca05c34bc
+        description: "Add `getPcmStream(url)` to `src/integrations/youtube.js`: call the existing `getStream(url)`, pipe its stream into an FFmpeg child resolved from `ffmpeg-static` falling back to `ffmpeg` on `PATH`, args `-hide_banner -loglevel error -i pipe:0 -f s16le -ar 48000 -ac 2 pipe:1`; fold the FFmpeg process kill into the same idempotent `cleanup` and keep the existing startup watchdog/drain semantics; return the same result shape with `type: StreamType.Raw` (R2)"
+        piece: foundation
+        parallel: true
+        story: ""
+      T016:
+        fingerprint: a956c2a69e560a6b
+        description: "Update `src/core/player.js`: add `setMixingEnabled(bool)`; in `play()` when mixing is enabled use `getPcmStream`, pipe through a new `DuckingMixer` per track and create the resource with `StreamType.Raw`, otherwise keep today's code path unchanged; add `overlay(pcm): boolean` (false if nothing playing, paused, or mixing disabled) and idempotent `cancelOverlay()`; call `cancelOverlay()` from `pause()`, `stop()` and at the start of `play()`; no new imports from outside `core/` and `integrations/` (depends on T014, T015)"
+        piece: foundation
+        parallel: false
+        story: ""
+      T017:
+        fingerprint: fe4caffbe9006b8f
+        description: "Create `src/integrations/elevenlabs.js` exporting `synthesize(text)` → 48 kHz s16le stereo `Buffer` using built-in `fetch` (no SDK): endpoint, headers and body per contracts §5c with `AbortSignal.timeout(8000)`; mono→stereo by sample duplication; reject clips > 15 s; on output-format rejection log one `warn`, switch to `pcm_24000` with 2× sample-doubling for the process lifetime; error kinds `quota` (401 `quota_exceeded` / bad key, no retry), `rate` (429, one retry after 1 s), `invalid` (422, no retry) (R3)"
+        piece: foundation
+        parallel: true
+        story: ""
+      T018:
+        fingerprint: f06e2505d907f8f0
+        description: "Create `src/integrations/llm.js` exporting `chatJson({ system, user, temperature, timeoutMs })` using built-in `fetch` to `${baseUrl}/chat/completions` with `model`, `response_format: { type: 'json_object' }`, optional Bearer key, `AbortSignal.timeout(timeoutMs)`, no retries; returns parsed JSON or throws (R4)"
+        piece: foundation
+        parallel: true
+        story: ""
+      T019:
+        fingerprint: f588784eda000657
+        description: "Update `src/core/musicManager.js`: add `setGetDjState(fn)` (same injection pattern as `setGetChannelInfo`) and include `dj: getDjState?.() ?? { available: false }` in `getFullState()`; call `this.player?.cancelOverlay?.()` in `clearQueue()` and `clearUpcomingQueue()` (FR-009); change the existing `ensurePlaying()` (`src/core/musicManager.js:171`) to call `advanceAndPlay({ player: this.player, queue: this.queue, connection, skipCurrent: false })` instead of `tryPlayWithFallback` and return `played` (behaviour change: when nothing can play, `advanceAndPlay` always calls `player.stop()`, emits `track:change(null)` and `queue:update`, and on success also starts lookahead resolution; today's code emits only when `queue.length > 0`; existing transport tests mock `ensurePlaying`, so only the new T007 cases cover it), so member adds and themed picks share one start path (FR-026, Constitution III) and `services/dj/` never needs `transports/` or a new `guildId || GUILD_ID` copy. Also add to `src/core/queue.js` a side-effect-free `peekNext()` mirroring `next()`: loop `track` returns the current entry, loop `queue` at the last index returns `tracks[0]`, otherwise `tracks[currentIndex + 1] ?? null`; it never changes `currentIndex` or loop-replay flags. `getVoiceContext()` and `emitVoiceContext()` already exist (`src/core/musicManager.js:270-280`) and return the full channel info or `null`; do NOT change their shape — DJ code reads `getVoiceContext()?.connectedUsers ?? []`"
+        piece: foundation
+        parallel: false
+        story: ""
+      T019a:
+        fingerprint: 7ced319452f1f97c
+        description: "Add `clearAllButCurrent()` to `src/core/musicManager.js`: keep the current track (if any) as the only entry with `currentIndex = 0`, call `this.player?.cancelOverlay?.()`, and `emitQueueUpdate()` once. Change `handleClear` in `src/transports/discord/commands/queue.js` to compute `clearedCount` first, then call `musicManager.clearAllButCurrent()` in place of assigning `q.tracks`/`q.currentIndex` and calling `emitQueueUpdate()` directly. Keep the `all_but_current` stats variant and the reply unchanged. This makes all three transports' queue clears pass through the mediator, which cancels the overlay (FR-009, Constitution III) (depends on T019)"
+        piece: foundation
+        parallel: false
+        story: ""
+      T020:
+        fingerprint: e0004ae8bdeda501
+        description: "Update `src/transports/realtime/socketServer.js` to add `dj:state` to the `managerListeners` table so every `musicManager.emit('dj:state', state)` is re-broadcast to all sockets; add `DJ_STATE: 'dj:state'` to `src/transports/realtime/events.js`"
+        piece: foundation
+        parallel: false
+        story: ""
+      T021:
+        fingerprint: 0cc5155113c28a9e
+        description: "Create `src/services/dj/djService.js` skeleton: `init()` loads settings via `db.getDjSettings()`, registers `musicManager.setGetDjState(getState)`; `getState()` returns the `DjState` shape from contracts §1 (`available`, `enabled`, `interval`, `lookahead`, `health`, `caps { lines, themedTracks, resetsAt }`, `theme: null`), and `{ available: false }` when not initialised; private `broadcast()` that emits exactly one `musicManager.emit('dj:state', getState())`; `resetsAt` is the next local midnight as an ISO string with offset; never imports `src/transports/` (depends on T003, T010, T013, T019)"
+        piece: foundation
+        parallel: false
+        story: ""
+      T022:
+        fingerprint: a0eccc74e4899d10
+        description: "Add `setSettings({ enabled?, interval?, lookahead? }, actor)` to `src/services/dj/djService.js`: throw `DJ_UNAVAILABLE` when not configured; validate the whole partial before writing — `interval` an integer from 1 to 10 inclusive else `INVALID_INTERVAL`, `lookahead` exactly 5 or 10 else `INVALID_LOOKAHEAD`, `enabled` boolean; on success call `db.updateDjSettings` once, update in-memory state, broadcast once; on error state is unchanged; also export a non-throwing `getStateOrUnavailable()` helper used by transports when the service was never constructed"
+        piece: foundation
+        parallel: false
+        story: ""
+      T023:
+        fingerprint: 2ecfc2771c217271
+        description: "Add the breaker and caps to `src/services/dj/djService.js` (R9): `recordFailure(kind)` / `recordSuccess()`; after 3 consecutive failures open for 5 min, half-open allows one attempt, `quota` opens for 30 min; `health: 'degraded'` while open; every failure logged at `warn` with cause via `src/utils/logger.js`; caps read limits from `getDjConfig().caps` and usage from `db.getDjUsage(today)` where `today` is `date('now','localtime')`; `caps.*.reached` computed as `used >= limit`; broadcast when health or a `reached` flag flips; schedule a timer for `caps.resetsAt` that re-reads usage for the new day, recomputes `reached`, broadcasts once, and reschedules itself for the following midnight (FR-034)"
+        piece: foundation
+        parallel: false
+        story: ""
+      T024:
+        fingerprint: 33070ee0ea242227
+        description: "Create `test/services/dj/lineWriter.test.js` with `llm.chatJson` and `elevenlabs.synthesize` mocked: accepts a 1–2 sentence line ≤ 240 characters whose `factIds` all exist; rejects 3 sentences, > 240 characters, an unknown fact id, an exact repeat of any of the last 20 spoken lines, malformed JSON, a line stating a quantity (digits, or a number word followed by a count noun, e.g. \"twelve times\") that does not equal a numeric value in one of its cited facts (FR-005) — while accepting \"Hey Kasper, this one's for you.\" and \"Here's one more classic.\" with no numeric facts — and a line containing a term from `contentFilter.js` (spec edge case: no slurs or harassment); a rejected line never calls `synthesize`; the prompt includes only the last 5 lines in `recentLines`"
+        piece: us1
+        parallel: true
+        story: US1
+      T025:
+        fingerprint: 4f780a1314f63c83
+        description: "Create `test/services/dj/linePlanner.test.js` with fake timers and a fake player: interval 3 over 6 transitions speaks exactly 2 times; a dropped line does not reset `transitionsSinceSpoken`; seven tracks played back to back from an idle queue are six transitions (the first `track:change` after `track:change(null)` or a cold start is NOT a transition, FR-006); `resetCounter()` restarts the count so with interval 4 the next line is at the 4th transition after the call; a skip counts as a transition; the predicted next track comes from `queue.peekNext()`, so with loop `track` or loop `queue` at the last index the prepared line matches the track that actually starts; preparation is scheduled at `max(0, duration − 30 s)` and immediately when duration is unknown or < 30 s; a prepared line whose `forKey` ≠ the started track's key is discarded (rapid skip); a line still in flight 2 s after track start is dropped and the track is never delayed; no preparation when disabled, paused, the queue has no next track, the breaker is open, the line cap is reached, or `connectedUsers` has no human (FR-010); a `queue:update` that changes the predicted next track discards and re-prepares; loop replays count as transitions but the same text is not spoken twice in a row for the same track; a prepared line with `namedUserIds: ['A']` is dropped (`stale-member`) when A is missing from `connectedUsers` at speak time, even though no `voice:context` event fired; the same applies when A has opted out since preparation; the counter is not reset by either drop"
+        piece: us1
+        parallel: true
+        story: US1
+      T026:
+        fingerprint: e8aed3b0e0d00010
+        description: "Create `test/services/dj/djService.test.js` (settings/breaker/caps part): `setSettings({ interval: 11 })` throws `INVALID_INTERVAL` and state is unchanged; `setSettings({ lookahead: 7 })` throws `INVALID_LOOKAHEAD`; a valid mutation emits exactly one `dj:state`; changing `interval`, or `enabled` from false to true, calls the planner's `resetCounter()` once, while a `lookahead`-only change does not (FR-006); 3 consecutive failures set `health: 'degraded'`, and after 5 min one success restores `'ok'`; a `quota` failure keeps it open 30 min; usage increments only on successful TTS and `caps.lines.reached` flips at the limit; unconfigured service rejects mutations with `DJ_UNAVAILABLE`; with fake timers, when `caps.lines.reached` is true, crossing local midnight flips it to false, moves `resetsAt` forward a day, and emits exactly one `dj:state`"
+        piece: us1
+        parallel: true
+        story: US1
+      T027:
+        fingerprint: 77d8f6a816937eb8
+        description: "Create `src/services/dj/context.js` exporting `trackKey(track)` (`url` when resolved, else `spotifyData.spotifyId`, else `` `${title}|${addedAt}` ``) and `buildContext({ previous, next, theme, present, recentLines })` producing the Listening Context shape from data-model.md with `track` facts (previous and next: title, artist/channel) and a `theme` fact when `theme` is set; the track's queuer is NOT included in US1 (T051 adds it under the member rules); member/group facts are added in US3 — leave a clearly named extension point `addMemberFacts(ctx)` returning `ctx` unchanged for now"
+        piece: us1
+        parallel: true
+        story: US1
+      T028:
+        fingerprint: fdbc9888aab90bb9
+        description: "Create `src/services/dj/lineWriter.js` exporting `writeLine(ctx, recentSpoken)`: build the system prompt from contracts §5a (one or two short sentences, only provided facts, only `allowedNames`, spell numbers as words, no emoji, return `{\"line\",\"factIds\"}`) and the user payload `{ next, previous, theme, allowedNames, facts, recentLines }` (last 5); call `llm.chatJson` with `temperature 0.9`, `timeoutMs 10000`; validate per R6 steps 1, 2 and 4 (1–2 sentences, ≤ 240 characters; every `factIds` entry exists; not identical to any of the last 20 spoken lines) plus two checks run before TTS: (a) every quantity in the line — digits, or an English number word from zero to one hundred immediately followed by a count noun (`plays`, `times`, `tracks`, `songs`, `spins`, `days`, `weeks`, `people`, `of you`) — must equal a numeric value in one of the cited facts, otherwise reject (FR-005); number words used as ordinary words (\"this one's for you\", \"one more\") are not quantities; (b) `isClean(text)` from a new `src/services/dj/contentFilter.js` — a module-level lowercase word list of slurs and harassment terms matched case-insensitively on word boundaries — must pass, otherwise reject; the system prompt also forbids insults, slurs and personal information beyond the provided facts. Step 3 (forbidden names) is added in US3; on pass call `elevenlabs.synthesize(text)` and return `{ forKey, text, pcm, factIds, namedUserIds: [], preparedAt }`; on any failure throw with a `kind` the breaker understands (depends on T027)"
+        piece: us1
+        parallel: false
+        story: US1
+      T029:
+        fingerprint: cfacc2538a367bc9
+        description: "Create `src/services/dj/linePlanner.js` implementing R5: transition counter `transitionsSinceSpoken`; a transition is a non-null `track:change` whose previous `track:change` was also non-null — `track:change(null)` (stop, empty queue) and the first start after boot set `previous = null` so the next start is not counted (FR-006); export `resetCounter()` setting the counter to 0; on `track:change` schedule preparation for the predicted next track (`queue.peekNext()`, T019) at `max(0, duration − 30 s)`; one preparation in flight at a time; on `queue:update` discard and re-prepare if the predicted next key changed; on the next `track:change` if due and the prepared `forKey` matches, call `player.overlay(pcm)`, else wait up to 2 s for an in-flight preparation then drop; reset counter only after a line is actually overlaid; never `await` inside the playback call path; check all silence conditions from R5 step 5 before preparing and before speaking; immediately before `player.overlay(pcm)`, re-read `getVoiceContext()?.connectedUsers ?? []` and `db.getShoutoutOptOuts()`, and if any `namedUserIds` entry is absent or opted out, drop the line with reason `stale-member` and do not reset `transitionsSinceSpoken` (R7, FR-017, FR-020); until US3, `namedUserIds` is always `[]`, so the check passes trivially; keep a 20-entry ring buffer of spoken texts (depends on T028)"
+        piece: us1
+        parallel: false
+        story: US1
+      T030:
+        fingerprint: 0b58f3be9d18572d
+        description: "Wire the planner into `src/services/dj/djService.js`: subscribe to the mediator's `track:change` and `queue:update` in `init()`; pass getters for settings, `musicManager.getVoiceContext()`, the queue and `player` from `src/services/playback.js` (getters only, no transport imports); call `recordSuccess()`/`recordFailure(kind)` around `writeLine`; call `db.incrementDjUsage(today, 'lines')` when TTS succeeds and refresh caps; in `setSettings` call `planner.resetCounter()` when `interval` changes or `enabled` goes false→true (FR-006); do NOT add a second broadcast here — `setSettings` (T022) already emits exactly one `dj:state` (depends on T029, T023)"
+        piece: us1
+        parallel: false
+        story: US1
+      T031:
+        fingerprint: bd207aca89e11502
+        description: "Add structured `info`/`warn` logging in `src/services/dj/linePlanner.js` for: line prepared (key, chars, ms), line spoken, line dropped (reason: stale, stale-member, late, validation, service, cap, no-listeners), never logging the TTS buffer or the API keys; keep daily `due` and `spoken` counters (a due line is a transition selected by the interval while no silence condition holds) and log `due`, `spoken` and the ratio at `info` on each local-day rollover and on shutdown, so SC-002's 90% target can be checked"
+        piece: us1
+        parallel: false
+        story: US1
+      T032:
+        fingerprint: 35bb64969cb039f1
+        description: "Create `test/http/routes/dj.test.js` mirroring `test/http/routes/stats.test.js`: `GET /api/dj` returns `DjState` (and `{ available: false }` when unconfigured); `PATCH /api/dj` accepts any subset of `{ enabled, interval, lookahead }`, calls `djService.setSettings` once, returns the new state; error codes map to HTTP per contracts §2 (`DJ_UNAVAILABLE` 503, `INVALID_INTERVAL` 400, `INVALID_LOOKAHEAD` 400) with body `{ code, message }`; unauthenticated requests are rejected by `authMiddleware`"
+        piece: us2
+        parallel: true
+        story: US2
+      T033:
+        fingerprint: 2fe22db90a96d377
+        description: "Create `test/transports/djParity.test.js` modelled on `test/transports/statsParity.test.js`: against a mocked `djService`, drive the \"Read state\", \"Enable / disable\", \"Set interval\" and \"Set lookahead\" rows of contracts §3 through Discord (`/dj status|on|off|interval|lookahead`), HTTP and Socket (`dj:settings`) and assert the same service call, the same arguments, and the same error-code mapping (HTTP status / Discord ephemeral text / socket `error {code,message}`); structure the matrix as a table so US3 and US4 append rows. Add a \"Clear queue during a DJ line\" row: Discord `/clear`, HTTP `DELETE /api/queue`, and socket `player:control { action: 'clear' }` each result in exactly one `player.cancelOverlay()` call (FR-009)"
+        piece: us2
+        parallel: true
+        story: US2
+      T034:
+        fingerprint: 9d4f5ae0dd3107ed
+        description: "Create `src/services/dj/messages.js` exporting the shared error-code table from contracts §2: `{ code → { http, text } }` with the exact Discord texts (\"The DJ isn't set up on this server.\", \"Interval must be a whole number from 1 to 10.\", \"Lookahead must be 5 or 10.\", \"Theme must be 1–200 characters.\", the existing not-in-voice text, \"I couldn't find any tracks for that theme.\", \"The DJ's music brain is unavailable right now, try again soon.\", \"The DJ has hit today's limit; it resets at HH:MM.\" with HH:MM from `caps.resetsAt`, \"Shuffle is off while themed mode is running.\"); every transport uses this table so mappings cannot diverge"
+        piece: us2
+        parallel: true
+        story: US2
+      T035:
+        fingerprint: e3fd2b8a31d85568
+        description: "Create `src/transports/http/routes/dj.js` (depends on T034): `GET /` → `djService.getState()` (or `{ available: false }`); `PATCH /` → validates body is an object, calls `djService.setSettings(body, actor)` with `actor = { id, name }` from the JWT user, returns state; maps `DjError` via `messages.js` to `res.status(http).json({ code, message })`"
+        piece: us2
+        parallel: false
+        story: US2
+      T036:
+        fingerprint: fcc82c3c6b0b9516
+        description: "Mount `/api/dj` in `src/transports/http/index.js` behind `authMiddleware`, with the existing `mutationLimiter` on non-GET methods (depends on T035)"
+        piece: us2
+        parallel: false
+        story: US2
+      T037:
+        fingerprint: 2f2ff01debfb8eca
+        description: "Add `handleDjSettings(socket, payload)` (depends on T034) to `src/transports/realtime/handlers.js`: per-user `isThrottled` with key `dj` at 1000 ms, adding `'dj': 1000` to `THROTTLE_INTERVALS_MS` (keys missing from that table are never throttled); calls `djService.setSettings(payload, actor)`; on `DjError` emits `error { code, message }` from `messages.js`; add `DJ_SETTINGS: 'dj:settings'` to `src/transports/realtime/events.js`"
+        piece: us2
+        parallel: false
+        story: US2
+      T038:
+        fingerprint: ffaff1c057072787
+        description: "Register `dj:settings` → `handleDjSettings` in `src/transports/realtime/socketServer.js` (depends on T037)"
+        piece: us2
+        parallel: false
+        story: US2
+      T039:
+        fingerprint: e64b52c44400225e
+        description: "Create `src/transports/discord/commands/dj.js` (depends on T034) with subcommands `status`, `on`, `off`, `interval every:<1-10>`, `lookahead size:<5|10>`: thin adapters over `djService.getState()`/`setSettings()`; settings changes reply publicly like `/loop`; errors reply ephemerally with `messages.js` text; `status` shows enabled, interval, lookahead, health and caps (used/limit, reset time); never posts DJ line text (FR-001a)"
+        piece: us2
+        parallel: false
+        story: US2
+      T040:
+        fingerprint: 96085ff982ed42b7
+        description: "Add the `/dj` `SlashCommandBuilder` (subcommands from T039; `every` integer min 1 max 10; `size` integer choices 5 and 10) to `src/transports/discord/commands/register.js` and route `dj` to the handler in `src/transports/discord/commands/index.js` (depends on T039)"
+        piece: us2
+        parallel: false
+        story: US2
+      T041:
+        fingerprint: 144fc44ef9135cf2
+        description: "Extend `web/src/hooks/useSocket.js` to hold `djState` from `initial:state.dj` and `dj:state` events, and expose `setDjSettings(partial)` emitting `dj:settings`; expose both through `web/src/context/SocketContext.jsx`"
+        piece: us2
+        parallel: true
+        story: US2
+      T042:
+        fingerprint: a4daad57d6ed1986
+        description: "Create `web/src/pages/Dj.jsx`: when `djState.available === false` show \"The DJ isn't set up on this server.\" and no controls; otherwise an on/off toggle, an interval selector 1–10, a lookahead selector 5/10, a health badge (`ok`/`degraded`) and caps (`used / limit`, \"limit reached, resets at HH:MM\" when reached); never displays DJ line text; matches existing Tailwind patterns in `web/src/pages/Stats.jsx`"
+        piece: us2
+        parallel: true
+        story: US2
+      T043:
+        fingerprint: 77997019cfb22d5c
+        description: "Add a \"DJ\" nav item to `web/src/components/layout/Sidebar.jsx` and render `Dj` for it in `web/src/components/center/CenterPanel.jsx` (depends on T042)"
+        piece: us2
+        parallel: false
+        story: US2
+      T044:
+        fingerprint: cffe8f0991e844de
+        description: "Extend `test/persistence/dj.test.js`: `setShoutoutOptOut(uid, true)` then `isShoutoutOptedOut(uid)` is true and `getShoutoutOptOuts()` contains it; `setShoutoutOptOut(uid, false)` deletes the row; `getUserPlayCountsForUrl(url, ids)` excludes loop replays (`is_loop_replay = 1`) and rows with `requested_by_id IS NULL`; `getUserTopTrack(uid)` returns `null` when the user has no counted plays; `getKnownMemberNames()` returns the latest `requested_by` per `requested_by_id` and never includes `'SquareMusica DJ'` or other rows with `requested_by_id IS NULL`; `getArtistQueuersSince(artist, userIds, days)` counts distinct present `requested_by_id` with counted plays of that artist in the window and never matches rows whose `artist` is `NULL`; extend `test/persistence/migration.test.js`: an existing DB gains nullable `history.artist` idempotently and old rows read as `null`"
+        piece: us3
+        parallel: true
+        story: US3
+      T045:
+        fingerprint: 81d022ff6cb906c1
+        description: "Extend `test/services/dj/lineWriter.test.js` and add context cases: a member fact is emitted only when count ≥ 3; absent members and opted-out members never appear in `allowedNames` or member facts; group facts never name anyone; a model line containing a known DJ name not in `allowedNames` is rejected; a line naming an opted-out present member is rejected; with no qualifying member facts the line is still accepted as a general music line; a next track queued by member C who has no history rows and has left the channel produces no `queuedBy` in the facts, and a model line naming C is rejected; the same happens when C is present but opted out; when C is present and opted in, `queuedBy` uses C's speakable name and C is in `allowedNames`"
+        piece: us3
+        parallel: true
+        story: US3
+      T046:
+        fingerprint: d00a25904af69f2c
+        description: "Add `speakableName` cases to a new `test/services/dj/context.test.js`: emoji/symbols stripped, whitespace collapsed, names over 20 characters cut to the first word, emoji-only names return `null`"
+        piece: us3
+        parallel: true
+        story: US3
+      T046a:
+        fingerprint: 325700bedf05b9fc
+        description: "Create `test/transports/voiceContext.test.js`: a `VoiceStateUpdate` where a member joins the bot's channel emits `voice:context` once; a leave emits it once; an update in an unrelated channel emits nothing; with no cached bot channel it emits nothing"
+        piece: us3
+        parallel: true
+        story: US3
+      T047:
+        fingerprint: 95f5b9c86f0f88e5
+        description: "Add `CREATE INDEX IF NOT EXISTS idx_history_url ON history(url)` to `src/persistence/schema.sql` and to the boot path in `src/persistence/db.js` for existing databases; add a nullable `artist TEXT` column to `history` in `schema.sql` plus a guarded `ALTER TABLE history ADD COLUMN artist TEXT` in `migrate()` following the existing pattern, and write it in `addToHistory` as `track.spotifyData?.artists?.[0] ?? track.channel ?? null`"
+        piece: us3
+        parallel: false
+        story: US3
+      T048:
+        fingerprint: a661161210404c61
+        description: "Add to `src/persistence/db.js` reusing `COUNTED_PLAY`: `isShoutoutOptedOut(userId)`, `setShoutoutOptOut(userId, optedOut)` (insert-or-ignore / delete), `getShoutoutOptOuts()` → `Set<string>`, `getUserPlayCountsForUrl(url, userIds)` → `[{ userId, count }]` (`url = ?` and `requested_by_id IN (...)`), `getUserTopTrack(userId)` → `{ url, title, count } | null`, `getKnownMemberNames()` → `string[]` (rows with `requested_by_id IS NULL`, i.e. DJ picks, excluded); `getArtistQueuersSince(artist, userIds, days)` → number, counting distinct `requested_by_id` in `userIds` with counted plays where `artist = ?` (case-insensitive) in the last `days` local days; `NULL` artist never matches (depends on T047)"
+        piece: us3
+        parallel: false
+        story: US3
+      T049:
+        fingerprint: 9bb1c298475ade33
+        description: "Add `displayName: m.displayName` to each `connectedUsers` entry in `getChannelInfo` in `src/transports/discord/voiceManager.js` (R7)"
+        piece: us3
+        parallel: true
+        story: US3
+      T050a:
+        fingerprint: 8fa1886e0e40d465
+        description: "In `src/transports/discord/client.js` `VoiceStateUpdate`, call `musicManager.emitVoiceContext()` on every join or leave of the bot's channel, right after the `!leftBotChannel && !joinedBotChannel` early return and before the human-count branch, so it fires on both the cached and the fetch path (R7). Today it fires only from the inactivity-timer callback and `voiceDisconnected`"
+        piece: us3
+        parallel: true
+        story: US3
+      T050:
+        fingerprint: e371e47d5910c48c
+        description: "In `init()` of `src/services/dj/djService.js`, subscribe to the mediator event `voice:context` (sent on every join or leave of the bot's channel by T050a). On each event, discard a prepared line whose `namedUserIds` includes a member no longer in `connectedUsers` (FR-017), and let the theme engine re-check `NO_LISTENERS`. This event only makes discarding happen sooner; T029's speak-time re-check is what guarantees FR-017 (depends on T030, T050a)"
+        piece: us3
+        parallel: false
+        story: US3
+      T051:
+        fingerprint: b5ce6fc7d3c2d027
+        description: "Implement member and group facts in `src/services/dj/context.js`: `speakableName(displayName)` per R7; `present` built from `connectedUsers` with `optedOut` from `db.getShoutoutOptOuts()`; for present, opted-in members with a non-null speakable name emit `member` facts for counted plays of the next track (only when ≥ 3, FR-018) and their top track (only when ≥ 3); `group` facts are anonymous totals that may include opted-out members (FR-020); compute `allowedNames` (present, opted-in, referenced by a fact) and `forbiddenNames` (`db.getKnownMemberNames()` plus present opted-out display names, minus `allowedNames`); add a `queuedBy` field to a `track` fact only when the queuer (`requestedById`) is present, opted in, and has a non-null speakable name, using that speakable name, otherwise leave it out; DJ picks (`addedByDj`) get `queuedBy: 'the DJ'`; add every queuer's display name that was not allowed, plus their `requestedBy` username, to `forbiddenNames`, so a first-time queuer with no history rows is still covered (FR-017, FR-020) (depends on T048)"
+        piece: us3
+        parallel: false
+        story: US3
+      T052:
+        fingerprint: aa9865aadd00a33c
+        description: "Add R6 validation step 3 to `src/services/dj/lineWriter.js`: reject any line whose text contains a `forbiddenNames` entry (case-insensitive, word-boundary match); set `namedUserIds` from allowed names that appear in the text (depends on T051)"
+        piece: us3
+        parallel: false
+        story: US3
+      T053:
+        fingerprint: 5f72aa4ec3c628b8
+        description: "Add `getShoutouts(userId)` → `{ enabled }` and `setShoutouts(userId, enabled)` to `src/services/dj/djService.js` (throws `DJ_UNAVAILABLE` when unconfigured; validates boolean; after writing, emits `musicManager.emit('dj:shoutouts', { userId, enabled })` exactly once whichever transport made the change, so every open surface of that member converges (Constitution III, FR-015); no `dj:state` broadcast since the preference is per-member); if a prepared line names that user and they opt out, discard it"
+        piece: us3
+        parallel: false
+        story: US3
+      T054:
+        fingerprint: 6492a2ade508a365
+        description: "Add `GET /shoutouts/me` → `{ enabled }` and `PUT /shoutouts/me` `{ enabled }` to `src/transports/http/routes/dj.js` using the JWT user id"
+        piece: us3
+        parallel: true
+        story: US3
+      T055:
+        fingerprint: 106275ccb3395b2a
+        description: "Add `handleDjShoutouts(socket, { enabled }, ack)` to `src/transports/realtime/handlers.js` (throttle key `dj`), ack `{ enabled }`; add `DJ_SHOUTOUTS: 'dj:shoutouts'` to `events.js`; register in `src/transports/realtime/socketServer.js`; on connection join each socket with a `discord_id` to room `user:<discord_id>`, and add a `managerListeners` entry forwarding `dj:shoutouts` only to `io.to('user:' + userId)` as `dj:shoutouts { enabled }`"
+        piece: us3
+        parallel: true
+        story: US3
+      T056:
+        fingerprint: b61cce6ff54c4421
+        description: "Add `/dj shoutouts enabled:<true|false>` to `src/transports/discord/commands/dj.js` and `src/transports/discord/commands/register.js`; reply ephemerally stating the current value"
+        piece: us3
+        parallel: true
+        story: US3
+      T057:
+        fingerprint: c522533abf3d5bb2
+        description: "Append the \"Own shout-outs\" row to the matrix in `test/transports/djParity.test.js`, and assert that a change made from Discord, HTTP or Socket results in exactly one `dj:shoutouts { enabled }` push to that member's `user:<id>` room and none to other members' sockets (depends on T054–T056)"
+        piece: us3
+        parallel: false
+        story: US3
+      T058:
+        fingerprint: f814c6cc673f19c9
+        description: "Create `web/src/components/dj/ListenerList.jsx` showing present members from `voice:context` / `initial:state` (display name, avatar) and add a \"Shout-outs about me\" toggle to `web/src/pages/Dj.jsx` that loads `GET /api/dj/shoutouts/me` once, saves via `dj:shoutouts`, and updates from `dj:shoutouts` pushes so a change made in Discord shows without refresh; wire `voice:context` and `setShoutouts` through `web/src/hooks/useSocket.js` and `web/src/context/SocketContext.jsx`"
+        piece: us3
+        parallel: true
+        story: US3
+      T059:
+        fingerprint: fa9cbbe39b1ae529
+        description: "Extend `test/music/queue.test.js`: `insertAt(index, track)` clamps to `[currentIndex + 1, length]` and sets `addedAt`; with `prioritizeMemberTracks = true`, `add()` of a non-DJ track inserts before the first upcoming `addedByDj` entry and multiple member adds keep FIFO order; with the flag `false` `add()` appends as today; `countUpcoming(t => t.addedByDj)` counts only entries after `currentIndex`"
+        piece: us4
+        parallel: true
+        story: US4
+      T060:
+        fingerprint: 4f9674aced30293e
+        description: "Extend `test/persistence/migration.test.js`: an existing DB without `history.added_by_dj` gains it as `INTEGER NOT NULL DEFAULT 0` and migration is idempotent; extend `test/persistence/dj.test.js`: `getTopTracks({ userIds, limit })` excludes loop replays and DJ rows; `getDjSkipAward` ignores skip events with `target_user_id IS NULL`"
+        piece: us4
+        parallel: true
+        story: US4
+      T061:
+        fingerprint: 2232ea86c7c78d45
+        description: "Create `test/services/dj/themeEngine.test.js` with `llm.chatJson` and `resolveSpotifyTrack` mocked: start on an empty queue tops up to the lookahead counting only `addedByDj` upcoming entries; existing upcoming member tracks are kept and not counted (FR-021a); each request asks for `needed + 4` picks with ≤ 60 history candidates, and the system prompt asks for about half of the picks from candidates when enough fit (FR-021b); unknown `candidateId` ignored; picks in `avoid`/`usedKeys` ignored; unresolvable new picks are dropped and replaced (FR-026); a batch emptied by dedupe triggers one `allowRepeats` retry (FR-025); zero playable tracks on start throws `NO_TRACKS_FOR_THEME` and no session exists; top-up stalls with `NO_LISTENERS`, `NOT_IN_VOICE`, `CAP_REACHED`, `SERVICE_UNAVAILABLE`, `THEME_EXHAUSTED` and resumes when the condition clears; debounce 1 s with one top-up in flight; member-queued tracks and every track that starts playing during the session are added to `usedKeys` and are never picked again (FR-025); `startTheme` resolves as soon as the first pick is in the queue, and the rest of the batch keeps resolving in the background (SC-005)"
+        piece: us4
+        parallel: true
+        story: US4
+      T062:
+        fingerprint: 830056eefca63c21
+        description: "Extend `test/services/dj/djService.test.js`: `startTheme` rejects empty or > 200-character trimmed theme, or a theme failing `contentFilter.isClean`, with `INVALID_THEME`, bot not connected with `NOT_IN_VOICE`, breaker open with `SERVICE_UNAVAILABLE`, themed cap reached with `CAP_REACHED`; `startTheme` while running changes theme, keeps `usedKeys` and sets `introPending`; `stopTheme` clears `prioritizeMemberTracks`, keeps queued picks, and broadcasts once; themed mode works with commentary disabled (silent build); the hook passed to `musicManager.setOnQueueCleared` in `init()` calls `stopTheme` when a session exists (clears `prioritizeMemberTracks`, broadcasts exactly one `dj:state` with `theme: null`) and is a no-op with no broadcast when no session exists (FR-024b)"
+        piece: us4
+        parallel: true
+        story: US4
+      T061a:
+        fingerprint: e7689354ebfe0ce4
+        description: "Extend `test/core/player-overlay.test.js` (musicManager part) and `test/music/queue.test.js`: with `queue.prioritizeMemberTracks = true`, `musicManager.shuffleQueue()` returns `{ shuffled: false, reason: 'THEMED_MODE_ACTIVE' }`, leaves `tracks` and `currentIndex` identical and emits no `queue:update`; with the flag `false` it shuffles, emits one `queue:update` and returns `{ shuffled: true }`; with a hook set by `setOnQueueCleared(fn)`, each of `clearQueue()`, `clearUpcomingQueue()`, `clearAllButCurrent()` and `stop()` calls `fn` exactly once and **before** its `queue:update` emit (assert call order); with no hook set none of them throws (FR-024a, FR-024b)"
+        piece: us4
+        parallel: true
+        story: US4
+      T061b:
+        fingerprint: 680a8de1045f4ae2
+        description: "Extend `test/services/dj/themeEngine.test.js`: when the session ends (stop or clear) while a top-up is still resolving picks, picks that resolve afterwards are not added and `themed_tracks` usage is not incremented for them; a new session started straight after does not receive the old session's late picks (session `id` check, FR-024b); after the clear hook fires, the following `queue:update` with an empty queue triggers no top-up"
+        piece: us4
+        parallel: true
+        story: US4
+      T062a:
+        fingerprint: 4ee14c19d1fa6b7a
+        description: "Extend `test/services/dj/linePlanner.test.js` with themed-intro cases (FR-006 exception, FR-028): with `introPending` set on an empty queue, the intro is spoken over the first themed track even though it is not a transition; after a theme change, the intro is spoken over the next track to start; neither intro changes `transitionsSinceSpoken`; with commentary disabled, `introPending` is cleared and nothing is spoken"
+        piece: us4
+        parallel: true
+        story: US4
+      T063:
+        fingerprint: c139a2460de23f1b
+        description: "Add to `src/core/queue.js` (no new imports): `insertAt(index, track)` clamped to `[currentIndex + 1, length]` setting `addedAt`; `prioritizeMemberTracks` boolean default `false`, making `add(track)` with `!track.addedByDj` insert before the first upcoming `addedByDj` entry; `countUpcoming(predicate)`; ensure `addedByDj` survives in `queue:update` payloads"
+        piece: us4
+        parallel: false
+        story: US4
+      T063a:
+        fingerprint: bffd2be95fff4e38
+        description: "Update `src/core/musicManager.js` (no new imports): `shuffleQueue()` returns `{ shuffled: false, reason: 'THEMED_MODE_ACTIVE' }` without touching the queue or emitting when `this.queue.prioritizeMemberTracks` is true, else shuffles, emits `queue:update` and returns `{ shuffled: true }`; add `setOnQueueCleared(fn)` (same injection pattern as `setGetDjState`) and call the hook synchronously at the start of the emit section of `clearQueue()`, `clearUpcomingQueue()`, `clearAllButCurrent()` and `stop()`, before any `queue:update` (contracts §4) (depends on T019a, T063)"
+        piece: us4
+        parallel: false
+        story: US4
+      T063b:
+        fingerprint: ac5342828de778d5
+        description: "Route the queue-changing Discord commands through the mediator (Constitution III): in `src/transports/discord/commands/queue.js` `handleShuffle` calls `musicManager.shuffleQueue()` in place of `q.shuffle()` + `emitQueueUpdate()`, and on `shuffled: false` replies ephemerally with the `THEMED_MODE_ACTIVE` text from `messages.js` and records **no** `SHUFFLE` stats event; in `src/transports/discord/commands/playback.js` `handleStop` calls `musicManager.stop()` in place of `p.stop(); q.clear(); emitQueueUpdate(); emit('track:change', null)` (same events, keeps recording nothing). In `src/transports/http/routes/queue.js` `POST /shuffle` and in `src/transports/realtime/handlers.js` `case 'shuffle'`, read the result: on refusal answer 409 `{ code: 'THEMED_MODE_ACTIVE', message }` / socket `error { code, message }` from `messages.js` and skip `emitAction(SHUFFLE…)`. Update the `shuffleQueue` mocks in `test/transports/statsParity.test.js` and `test/http/routes/queue.test.js` to return `{ shuffled: true }` so existing tests keep their meaning (depends on T034, T063a)"
+        piece: us4
+        parallel: false
+        story: US4
+      T064:
+        fingerprint: 6480b5abc9ebba1e
+        description: "Add `added_by_dj INTEGER NOT NULL DEFAULT 0` to `history` in `src/persistence/schema.sql` and a guarded `ALTER TABLE history ADD COLUMN added_by_dj INTEGER NOT NULL DEFAULT 0` in `migrate()` in `src/persistence/db.js` following the existing pattern; write it from `track.addedByDj` in `addToHistory`; add `getTopTracks({ userIds?, limit })` → `[{ url, title, artist, count, duration, thumbnail }]` using `COUNTED_PLAY` (`artist` from T047, may be `null`); add `AND e.target_user_id IS NOT NULL` to `getDjSkipAward`; `incrementDjUsage(day, 'themed_tracks')` already exists from T013"
+        piece: us4
+        parallel: false
+        story: US4
+      T065:
+        fingerprint: c6548c703dec2eaf
+        description: "Pass `addedByDj` through `addToHistory` in `src/core/musicManager.js` so DJ picks are recorded with `requested_by = 'SquareMusica DJ'`, `requested_by_id = NULL`, `added_by_dj = 1` (FR-027) (depends on T064)"
+        piece: us4
+        parallel: false
+        story: US4
+      T066:
+        fingerprint: cf1c744accb2ed21
+        description: "Create `src/services/dj/themeEngine.js` implementing R8: session `{ theme (trimmed, 1–200 characters), startedBy { id, name }, startedAt, origin { transport: 'discord'|'http'|'socket', channelId? }, usedKeys: Set, status: 'running'|'stalled', reason: null|'NO_LISTENERS'|'NOT_IN_VOICE'|'CAP_REACHED'|'SERVICE_UNAVAILABLE'|'THEME_EXHAUSTED', introPending }`; `topUp()` computes `needed = lookahead − queue.countUpcoming(t => t.addedByDj)`, builds ≤ 60 deduped history candidates from present opted-in members' `getTopTracks` plus server top tracks, calls `llm.chatJson` (`temperature 0.7`, `timeoutMs 20000`) with the contracts §5b payload and a system prompt that asks for about half of the picks from the history candidates when enough fit the theme, and all new songs when none fit (FR-021b; a target, not validated), adds history picks directly and resolves new picks through `resolveSpotifyTrack({ title, artists: [artist] })` from `src/services/resolver.js` before adding, tags picks `{ addedByDj: true, requestedBy: 'SquareMusica DJ', requestedById: null }`, history candidates carry `artist` or `null`; records keys in `usedKeys` — the URL for every pick, plus normalised `artist - title` when the artist is known — — also adding the key of every member-queued track seen in `queue:update` and every track seen in `track:change` while the session exists (FR-025) —; adds each pick to the queue as soon as it resolves (not after the whole batch) and exposes a promise for the first added pick so the caller can start playback early (SC-005); increments `themed_tracks` usage per added pick, retries once with `allowRepeats` when dedupe empties a batch; triggered on `track:change`/`queue:update` debounced 1 s, one in flight; sets `stalled` + reason when blocked and back to `running` when cleared; each session gets an incrementing `id`, each top-up captures it, and a pick that resolves after `session?.id` has changed is dropped without being added or counted (FR-024b) (depends on T063, T064)"
+        piece: us4
+        parallel: false
+        story: US4
+      T067:
+        fingerprint: a99fe1d26b9f8711
+        description: "Add `startTheme({ theme, lookahead? }, actor, origin)` and `stopTheme(actor)` to `src/services/dj/djService.js`: validate theme (trimmed 1–200 characters and `contentFilter.isClean`, else `INVALID_THEME`), optional lookahead (`INVALID_LOOKAHEAD`, persisted via `setSettings`), `musicManager.getPlayerState().connected` else `NOT_IN_VOICE` (do NOT copy the `musicManager.guildId || process.env.GUILD_ID` idiom), breaker open → `SERVICE_UNAVAILABLE`, themed cap reached → `CAP_REACHED`; first start sets `queue.prioritizeMemberTracks = true`, runs the first top-up and awaits only its first added pick — calling `musicManager.ensurePlaying()` (T019) as soon as it lands — or the batch's end; throws `NO_TRACKS_FOR_THEME` and discards the session if the batch ended with zero tracks added; never imports `src/transports/` or reads `process.env.GUILD_ID`; existing session → change theme (`introPending = true`, keep `usedKeys`); `stopTheme` discards the session and clears the flag; include `ThemeState` in `getState()`; broadcast once per mutation; on bot leaving voice mark `stalled NOT_IN_VOICE`; in `init()` call `musicManager.setOnQueueCleared(() => { if (session) stopTheme(null, 'queue-cleared') })` so every clear or stop, on any transport, ends themed mode before the engine sees the emptied queue (FR-024b; log at `info` with the reason) (depends on T066, T063a; `contentFilter.js` from T028)"
+        piece: us4
+        parallel: false
+        story: US4
+      T068:
+        fingerprint: fcf36c0035cea7d3
+        description: "Add the themed intro to `src/services/dj/linePlanner.js` and `src/services/dj/lineWriter.js`: when `introPending`, the next `track:change` to a non-null track is due whether or not it is a transition (FR-006 exception) — so on an empty queue the intro is spoken over the first themed track — and the prompt asks for a one-or-two-sentence intro to the theme; the intro does not reset `transitionsSinceSpoken`; start preparing the intro as soon as `introPending` is set; clear `introPending` once spoken or if commentary is disabled (FR-028). (depends on T062a)"
+        piece: us4
+        parallel: false
+        story: US4
+      T069:
+        fingerprint: 3c20676100ecef0c
+        description: "Add `POST /theme` `{ theme, lookahead? }` → 200 `DjState` and `DELETE /theme` → 200 `DjState` to `src/transports/http/routes/dj.js` with `origin = { transport: 'http' }`, mapping `INVALID_THEME` 400, `NOT_IN_VOICE` 409, `NO_TRACKS_FOR_THEME` 422, `SERVICE_UNAVAILABLE` 503, `CAP_REACHED` 429"
+        piece: us4
+        parallel: true
+        story: US4
+      T070:
+        fingerprint: 7b971dfdac1ac255
+        description: "Add `handleDjThemeStart` (`dj:theme:start` `{ theme, lookahead? }`) and `handleDjThemeStop` (`dj:theme:stop`) to `src/transports/realtime/handlers.js` with throttle key `dj` and `origin = { transport: 'socket' }`; add both names to `events.js` and register them in `src/transports/realtime/socketServer.js`"
+        piece: us4
+        parallel: true
+        story: US4
+      T071:
+        fingerprint: 25759f748c51ee51
+        description: "Add `/dj theme description:<text, max 200> [lookahead:<5|10>]` and `/dj theme-stop` to `src/transports/discord/commands/dj.js` and `register.js` with `origin = { transport: 'discord', channelId: interaction.channelId }`; `/dj theme` MUST call `interaction.deferReply()` before `startTheme` (the first top-up can take up to 20 s, past Discord's 3 s limit) and answer with `editReply`, as `commands/playback.js:51` does; in `dj.js` subscribe to `dj:state` and when the session `origin.transport === 'discord'` transitions to `stalled`, post one message per stall to `origin.channelId` stating the reason (FR-029, transport affordance only)"
+        piece: us4
+        parallel: true
+        story: US4
+      T072:
+        fingerprint: c50752803e6a2c1a
+        description: "Append the \"Start / change theme\", \"Stop theme\", \"Shuffle during themed mode\" and \"Clear / stop during themed mode\" rows to the matrix in `test/transports/djParity.test.js`: with `musicManager.shuffleQueue` mocked to refuse, Discord `/shuffle`, `POST /api/queue/shuffle` and socket `player:control { action: 'shuffle' }` each map to `THEMED_MODE_ACTIVE` (ephemeral text / 409 / socket `error`) and none emits a `shuffle` stats event; Discord `/clear` and `/stop`, `DELETE /api/queue`, `POST /api/playback/stop`, and socket `clear`/`stop` each reach a `musicManager` clear/stop method exactly once (FR-024a, FR-024b) (depends on T063b, T069–T071)"
+        piece: us4
+        parallel: false
+        story: US4
+      T073:
+        fingerprint: 4da78a9ae8bd7c2e
+        description: "Create `web/src/components/dj/ThemeControl.jsx`: theme text input (max 200), lookahead 5/10, Start/Change and Stop buttons emitting `dj:theme:start`/`dj:theme:stop`; shows active theme, who started it, `running`/`stalled` with a human-readable reason; render it in `web/src/pages/Dj.jsx` and wire actions through `web/src/hooks/useSocket.js` / `SocketContext.jsx`"
+        piece: us4
+        parallel: true
+        story: US4
+      T073a:
+        fingerprint: 7ed0a57a8d811655
+        description: "In the web client, when `djState.theme` is not null, disable the queue's shuffle control and show the tooltip \"Shuffle is off while themed mode is running.\"; find the control with `grep -rn shuffle web/src` and keep the server-side refusal as the source of truth (FR-024a)"
+        piece: us4
+        parallel: true
+        story: US4
+      T074:
+        fingerprint: 9cc4c55e6e8980cb
+        description: "Show a \"DJ\" attribution badge instead of a member name when `addedByDj` is true in `web/src/components/QueueItemDefault.jsx` and `web/src/components/QueueItemCompact.jsx`"
+        piece: us4
+        parallel: true
+        story: US4
+      T075:
+        fingerprint: fd405621e0bfccc5
+        description: "Document the DJ in `README.md`: the env group (all four or none, optional vars and defaults), `/dj` subcommands, `npm run register`, the ElevenLabs `pcm_48000` plan-tier caveat and fallback, and a link to `docs/ADR-002-dj-audio-mixing.md`"
+        piece: polish
+        parallel: true
+        story: ""
+      T076:
+        fingerprint: 09ee4bed683ee4c6
+        description: "Verify layering by grep: no file under `src/core/` or `src/services/dj/` imports from `src/transports/`; no new `guildId || process.env.GUILD_ID` occurrences; fix any found"
+        piece: polish
+        parallel: true
+        story: ""
+      T077:
+        fingerprint: ce7ec8937c3589fc
+        description: "Run `npm run lint && npm run format:check && npm test` and `cd web && npm run lint && npm run format:check && npm run build`; fix failures without weakening `test/import-resolution.test.js`"
+        piece: polish
+        parallel: false
+        story: ""
+      T078:
+        fingerprint: 6ca8795c076aa89c
+        description: "Build the Docker image (`docker build -t kasperhonore/discord-music .`) and run it with no DJ vars; confirm `/api/health` returns `{\"status\":\"ok\"}` and `GET /api/dj` returns `{ \"available\": false }`"
+        piece: polish
+        parallel: false
+        story: ""
+      T079:
+        fingerprint: dd5fb2a8ed093345
+        description: "Run quickstart.md §2–§8 against a live guild, ElevenLabs account and LiteLLM endpoint; record results (including whether `pcm_48000` was accepted, and the T031 `spoken / due` ratio against SC-002's 90%) in `specs/002-ai-dj-host/quickstart.md` or the PR description"
+        piece: polish
+        parallel: false
+        story: ""
+    acceptance:
+      US1/AC1:
+        hash: 0289b0147bb948c31ac80d727d34f88585ee4f5ec9981f6f645da5244f8c7e27
+        quote: "**Given** the DJ is enabled with an interval of every 1 track and the queue has a next track, **When** the current track ends, **Then** the DJ speaks one or two sentences that reference the next or previous track over the opening of the next track, with the music lowered while it speaks and restored to normal volume when it finishes."
+      US1/AC2:
+        hash: c8552812c8ce3f62f538023458c5a24fead354448504ddce9e263665ca0263d7
+        quote: "**Given** the DJ is enabled with an interval of every 3 tracks, **When** seven tracks play back to back (six transitions), **Then** the DJ speaks at exactly two transitions."
+      US1/AC3:
+        hash: 603f8b69408fdf137ac9629f9453b258418dadd88888422a53f1332024b8bf37
+        quote: "**Given** the DJ is disabled, **When** tracks play, **Then** the DJ never speaks."
+      US1/AC4:
+        hash: e78a3ae5016e13d2a493ec5059af01e24c303e02d28bc4e1644ead1ab7d0c6fb
+        quote: "**Given** the DJ cannot produce a line in time (for example, the voice or text service is slow or unavailable), **When** a DJ transition is due, **Then** the next track starts on time at normal volume and the line for that transition is dropped (FR-008)."
+      US1/AC5:
+        hash: 53cd3fe19e2b5058db0e50eb9c0f94d72c8b5f56fe9027113c7817f139c50ec3
+        quote: "**Given** a member skips the current track while the DJ is speaking, **When** the skip is received, **Then** the DJ stops talking and the next track plays at normal volume."
+      US2/AC1:
+        hash: ecdb7b3e46bf78cb6be033824ed6515b2880716606f9223a641e84723ce325e2
+        quote: "**Given** the DJ is off, **When** a member enables it from either Discord or the dashboard, **Then** the DJ is on and every open surface shows it as on without refresh."
+      US2/AC2:
+        hash: a040e7c2f5417ae3988199c4a254ac651a633580de223796c26f04807e68d6d4
+        quote: "**Given** the DJ is on, **When** a member sets the interval to \"every 4 tracks\", **Then** the next DJ line is spoken at the fourth transition after the change."
+      US2/AC3:
+        hash: 67a82ce47634586a949586e5ef0d0cbd9ba216e1fc999ae55bad0daa88b5e3ff
+        quote: "**Given** a member enters an interval outside the allowed range (FR-012), **When** they submit it, **Then** the change is rejected with a message stating the allowed range and the previous interval stays in effect."
+      US2/AC4:
+        hash: 095a8c14d1c1f8177c16959c5871070541db6b469c9662995b5f97fe348068ae
+        quote: "**Given** the DJ is enabled with a custom interval, **When** the bot restarts, **Then** the DJ is still enabled with the same interval."
+      US3/AC1:
+        hash: 043bd24e8fa17600e4eb277cc945ad5a29087c14ece8aac77a41ff8329afe923
+        quote: "**Given** member A is in the voice channel and has played the upcoming track 3 or more times, **When** the DJ speaks before that track, **Then** the DJ MAY address member A by name and reference that history, and every claim it makes is true per the history."
+      US3/AC2:
+        hash: 2adb8c6f7546881acdaa623053e01564a4b45a07e0238a15980397a3b191ad55
+        quote: "**Given** member B has left the voice channel, **When** the DJ next speaks, **Then** it does not mention member B by name."
+      US3/AC3:
+        hash: 8935a12642d7e6184c6bcffc98d23a2511478bc088fe89e2e3aaa8d51940720d
+        quote: "**Given** a member has opted out of personal shout-outs, **When** the DJ speaks while that member is present, **Then** the DJ does not name them or reference their history."
+      US3/AC4:
+        hash: 82a90a66e32c387d5251dddb336571d237a699183f32068c7c2a68102afd8b5b
+        quote: "**Given** nobody present has relevant history with the upcoming track, **When** the DJ speaks, **Then** it falls back to a general music line rather than inventing a connection."
+      US4/AC1:
+        hash: fca6e73bb23fb09ec16984eece64b17bc0ef9fa40d8fa8924dca186c96507746
+        quote: "**Given** themed mode is off and the queue is empty, **When** a member starts themed mode with a theme and lookahead of 10, **Then** the DJ queues 10 tracks matching the theme, playback starts, and the DJ speaks a one-or-two-sentence intro to the set."
+      US4/AC2:
+        hash: c1347fbbbc313bd0ba4d8465d87b9bf9f9450bf674fa8246a11e1f583342810d
+        quote: "**Given** themed mode is on with lookahead 5, **When** a track finishes and fewer than 5 upcoming tracks remain, **Then** the DJ adds tracks until 5 are upcoming again."
+      US4/AC3:
+        hash: 6181dbff7e3c18dc6c7114496ae93a8db0033214f2f2598e47457b1a704115b5
+        quote: "**Given** themed mode is on, **When** a member queues their own song, **Then** that song is placed ahead of the DJ's upcoming picks and plays next (after any earlier member requests); themed mode does not remove it."
+      US4/AC4:
+        hash: 9d41c4e1e91cac0c75696699294095b458ab6e6fd60a0e0be548e72dcf423128
+        quote: "**Given** themed mode is on, **When** a member stops it, **Then** no further tracks are added automatically, already-queued tracks remain, and DJ commentary continues only if the DJ itself is still enabled."
+      US4/AC5:
+        hash: 05f9197cdd60f6c83dad33ad02cc6979296bdfb41ee6d58aa521fabcfaa36cb6
+        quote: "**Given** a theme for which the DJ cannot find any playable tracks, **When** a member starts themed mode, **Then** the member is told no tracks could be found for that theme and themed mode does not start."
+      US4/AC6:
+        hash: 8be9938ebf5e69cabd0ecedd4f326d482e09f23b92827b130e367e284121288d
+        quote: "**Given** the queue already has 3 upcoming member-queued tracks, **When** a member starts themed mode with lookahead 5, **Then** those 3 tracks stay in place and play first, and 5 themed picks are queued behind them."
+      US4/AC7:
+        hash: a02e7794c998f96159269841d153f4770a4edd7b333fd536bae6065490d55451
+        quote: "**Given** themed mode is on, **When** a member changes the theme, **Then** tracks added from that point fit the new theme and previously queued themed tracks are left in place."
+      US4/AC8:
+        hash: 2f853203a115a2787107f327582a41724f1a4d2af5d602d24d75fc10a96af446
+        quote: "**Given** themed mode is on, **When** a member shuffles the queue, **Then** the shuffle is rejected with a message saying it is unavailable during themed mode and the queue order is unchanged (FR-024a)."
+      US4/AC9:
+        hash: f8128643b45adf42d3b94e15ab56bc54fb083550ef9e7fc3d53cade5cd8a4e9c
+        quote: "**Given** themed mode is on, **When** a member clears the queue or stops playback, **Then** themed mode stops and no further tracks are added, not even after a moment (FR-024b)."
+  grounded_at: 52d3db1a7bc12924ae2600ca86c19bbb791052bb
+  grounding_docs:
+    - plan.md
+    - research.md
+    - data-model.md
+    - quickstart.md
+    - contracts/dj-api.md
+    - tasks.md

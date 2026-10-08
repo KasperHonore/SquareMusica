@@ -564,6 +564,19 @@ describe('themeEngine: session end while picks resolve (FR-024b, T061b)', () => 
     expect(upcomingPicks()).toBe(5);
   });
 
+  it('stop before the first pick lands resolves start() instead of NO_TRACKS_FOR_THEME', async () => {
+    h = setup({ lookahead: 5 });
+    const resolvers = slowResolver();
+    const p = startTheme();
+    await settle(0);
+
+    h.engine.stop();
+    resolvers.forEach((r) => r());
+    await expect(p).resolves.toBeUndefined();
+    expect(h.engine.session).toBeNull();
+    expect(h.queue.length).toBe(0);
+  });
+
   it('after stop, a queue:update with an empty queue triggers no top-up', async () => {
     h = setup({ lookahead: 5 });
     await startTheme();

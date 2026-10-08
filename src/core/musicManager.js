@@ -215,7 +215,11 @@ class MusicManager extends EventEmitter {
   // success and the stop/track:change(null) reset when nothing can play.
   async ensurePlaying() {
     if (!this.player || !this.queue) return false;
-    if (this.player.isPlaying() || this.player.isPaused()) return false;
+    // Buffering counts as busy: the track has been handed over, and playing it
+    // again would restart it from the beginning and cut any overlay.
+    if (this.player.isPlaying() || this.player.isPaused() || this.player.isBuffering?.()) {
+      return false;
+    }
 
     const connection = this.getConnection?.(this.guildId);
     const { played } = await advanceAndPlay({

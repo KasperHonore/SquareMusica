@@ -253,6 +253,14 @@ class MusicPlayer extends EventEmitter {
   }
 
   /**
+   * Check if a track has been handed over and is still buffering
+   * @returns {boolean}
+   */
+  isBuffering() {
+    return this.audioPlayer.state.status === AudioPlayerStatus.Buffering;
+  }
+
+  /**
    * Check if paused
    * @returns {boolean}
    */

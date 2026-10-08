@@ -77,6 +77,10 @@ export class DatabaseManager {
     this.migrate();
     const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf8');
     this.db.exec(schema);
+    // Decided once: getTopTracks runs twice per themed top-up.
+    this.historyHasArtist = this.db
+      .pragma('table_info(history)')
+      .some((col) => col.name === 'artist');
     logger.info('[Database] Schema initialized successfully');
   }
 
@@ -760,7 +764,6 @@ export class DatabaseManager {
    */
   getTopTracks({ userIds = null, limit } = {}) {
     if (Array.isArray(userIds) && userIds.length === 0) return [];
-    const hasArtist = this.db.pragma('table_info(history)').some((col) => col.name === 'artist');
     const latest = (column) => `(SELECT h2.${column} FROM history h2
              WHERE h2.url = h.url
              ORDER BY h2.played_at DESC, h2.id DESC LIMIT 1)`;
@@ -769,7 +772,7 @@ export class DatabaseManager {
       .prepare(
         `SELECT h.url AS url, COUNT(*) AS count, MIN(h.played_at) AS firstPlayedAt,
            ${latest('title')} AS title,
-           ${hasArtist ? latest('artist') : 'NULL'} AS artist,
+           ${this.historyHasArtist ? latest('artist') : 'NULL'} AS artist,
            ${latest('duration')} AS duration,
            ${latest('thumbnail')} AS thumbnail
          FROM history h

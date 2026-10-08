@@ -95,7 +95,11 @@ import {
   handleDjThemeStop,
   handlePlayerControl
 } from '../../src/transports/realtime/handlers.js';
-import { handleDj, onDjState } from '../../src/transports/discord/commands/dj.js';
+import {
+  handleDj,
+  onDjState,
+  registerDjStateListener
+} from '../../src/transports/discord/commands/dj.js';
 import { client } from '../../src/transports/discord/client.js';
 import {
   handleClear as discordClear,
@@ -531,6 +535,14 @@ describe('themed-mode rows reach the same djService call on every surface', () =
     expect(i.editReply).toHaveBeenCalledTimes(1);
     expect(i.reply).not.toHaveBeenCalled();
   });
+
+  it('Discord /dj theme says so when a clear ended themed mode before it started', async () => {
+    djMock.startTheme.mockImplementation(async () => djState({ theme: null }));
+    const i = interaction('theme', {}, { description: 'rock' });
+    await handleDj(i);
+    expect(i.editReply).toHaveBeenCalledWith(expect.stringMatching(/cleared/));
+    expect(i.followUp).not.toHaveBeenCalled();
+  });
 });
 
 const THEME_ERRORS = [
@@ -676,6 +688,15 @@ describe('Discord stall notices (FR-029, Discord-only affordance)', () => {
 
   afterEach(() => {
     djMock.origin = null;
+  });
+
+  it('the listener is registered by the bootstrap, once however often it is called', () => {
+    musicManager.off('dj:state', onDjState);
+    expect(musicManager.listeners('dj:state')).not.toContain(onDjState);
+    registerDjStateListener();
+    registerDjStateListener();
+    expect(musicManager.listeners('dj:state').filter((l) => l === onDjState)).toHaveLength(1);
+    musicManager.off('dj:state', onDjState);
   });
 
   it('posts one message per stall to the originating channel', async () => {

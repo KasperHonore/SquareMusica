@@ -425,6 +425,7 @@ export function createThemeEngine(deps) {
   /**
    * Start a session and run its first top-up. Resolves as soon as the first
    * pick is in the queue; the rest of the batch keeps resolving (SC-005).
+   * Also resolves, with no session left, when stop() ends it first (FR-024b).
    * @param {{ theme: string, startedBy: Object, origin: Object }} params
    * @returns {Promise<void>}
    * @throws {DjError} NO_TRACKS_FOR_THEME, SERVICE_UNAVAILABLE, CAP_REACHED or
@@ -461,7 +462,10 @@ export function createThemeEngine(deps) {
         if (settled) return;
         settled = true;
         if (added > 0) return resolve();
-        if (session?.id === id) session = null;
+        // A clear or stop ended the session before any pick landed: that is not
+        // a theme with no tracks, so resolve and let the caller see theme null.
+        if (session?.id !== id) return resolve();
+        session = null;
         const code = [SERVICE_UNAVAILABLE, CAP_REACHED, NOT_IN_VOICE].includes(error)
           ? error
           : NO_TRACKS_FOR_THEME;

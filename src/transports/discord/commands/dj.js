@@ -61,7 +61,14 @@ export function onDjState(state) {
     .catch((error) => logger.warn('[DJ] Could not post themed-mode stall notice:', error?.message));
 }
 
-musicManager.on('dj:state', onDjState);
+/**
+ * Subscribe the stall notices to the mediator. Called once from the Discord
+ * bootstrap; calling it again does not add a second listener.
+ */
+export function registerDjStateListener() {
+  musicManager.off('dj:state', onDjState);
+  musicManager.on('dj:state', onDjState);
+}
 
 function formatCap(label, cap, resetTime) {
   const reached = cap.reached ? ` (limit reached, resets at ${resetTime})` : '';
@@ -131,10 +138,14 @@ async function handleTheme(interaction) {
       transport: 'discord',
       channelId: interaction.channelId
     });
+    if (!state.theme) {
+      // The queue was cleared or playback stopped before the first pick landed.
+      return interaction.editReply('Themed mode stopped before it started: the queue was cleared.');
+    }
     await interaction.editReply(
       wasOn
-        ? `Theme changed to "${state.theme?.theme ?? input.theme}".`
-        : `Themed mode on: "${state.theme?.theme ?? input.theme}", keeping ${state.lookahead} tracks queued ahead.`
+        ? `Theme changed to "${state.theme.theme}".`
+        : `Themed mode on: "${state.theme.theme}", keeping ${state.lookahead} tracks queued ahead.`
     );
   } catch (error) {
     if (error instanceof DjError) {

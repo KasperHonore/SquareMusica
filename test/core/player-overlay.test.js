@@ -149,6 +149,8 @@ describe('MusicPlayer mixing path (R1, contracts §4)', () => {
     player.once('trackStart', () => (accepted = player.overlay(Buffer.alloc(8))));
     await player.play(track('a'), connection);
     expect(player.audioPlayer.state.status).toBe('buffering');
+    expect(player.isBuffering()).toBe(true);
+    expect(player.isPlaying()).toBe(false);
     expect(accepted).toBe(true);
     expect(h.mixers[0].overlay).toHaveBeenCalled();
   });
@@ -213,6 +215,7 @@ async function fakePlayer({ playable = true } = {}) {
   p.state = 'idle';
   p.isPlaying = vi.fn(() => p.state === 'playing');
   p.isPaused = vi.fn(() => p.state === 'paused');
+  p.isBuffering = vi.fn(() => p.state === 'buffering');
   p.stop = vi.fn(() => {
     p.state = 'idle';
   });
@@ -328,6 +331,16 @@ describe('musicManager.ensurePlaying() shared start path (FR-026)', () => {
     musicManager.queue = seedQueue(['a'], 0);
     expect(await musicManager.ensurePlaying()).toBe(false);
     expect(advanceAndPlay).not.toHaveBeenCalled();
+  });
+
+  it('returns false and does not restart the track while it is buffering', async () => {
+    const player = await fakePlayer();
+    player.state = 'buffering';
+    musicManager.setPlayer(player);
+    musicManager.queue = seedQueue(['a'], 0);
+    expect(await musicManager.ensurePlaying()).toBe(false);
+    expect(advanceAndPlay).not.toHaveBeenCalled();
+    expect(player.play).not.toHaveBeenCalled();
   });
 
   it('when nothing can play: returns false, stops the player, emits track:change(null) once', async () => {

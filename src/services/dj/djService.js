@@ -224,7 +224,15 @@ function stopThemeEngine() {
 /** Start playback when a pick lands in an idle queue (SC-005). Never awaited. */
 function startPlaybackIfIdle() {
   const player = getPlayer();
-  if (startingPlayback || !player || player.isPlaying?.() || player.isPaused?.()) return;
+  if (
+    startingPlayback ||
+    !player ||
+    player.isPlaying?.() ||
+    player.isPaused?.() ||
+    player.isBuffering?.()
+  ) {
+    return;
+  }
   startingPlayback = true;
   Promise.resolve()
     .then(() => musicManager.ensurePlaying())
@@ -242,7 +250,8 @@ function startPlaybackIfIdle() {
  * @param {{ theme: string, lookahead?: number }} input
  * @param {{ id: string|null, name: string|null }|null} actor
  * @param {{ transport: 'discord'|'http'|'socket', channelId?: string }} origin
- * @returns {Promise<Object>} The new DjState
+ * @returns {Promise<Object>} The new DjState; `theme` is null when a clear or
+ *   stop ended themed mode before its first pick landed
  * @throws {DjError} DJ_UNAVAILABLE, INVALID_THEME, INVALID_LOOKAHEAD,
  *   NOT_IN_VOICE, SERVICE_UNAVAILABLE, CAP_REACHED, NO_TRACKS_FOR_THEME
  */
@@ -301,6 +310,8 @@ export async function startTheme(input, actor = null, origin = { transport: 'htt
     throw error;
   }
   settings = before;
+  // A clear or stop during the first batch already ended it (FR-024b).
+  if (!themes?.session) return getState();
   writeLookahead();
   logger.info(`[DJ] Themed mode started by ${actor?.name ?? 'unknown'}: "${theme}"`);
   startPlaybackIfIdle();

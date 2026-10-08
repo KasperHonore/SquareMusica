@@ -101,6 +101,7 @@ beforeEach(() => {
     status: 'idle',
     isPaused: () => false,
     isPlaying: () => h.player.status === 'playing',
+    isBuffering: () => h.player.status === 'buffering',
     overlay: vi.fn(() => h.player.status === 'playing')
   };
   writeLine.mockReset();
@@ -372,6 +373,19 @@ describe('djService: themed mode (US4, contracts §3)', () => {
     expect(h.queue.countUpcoming((t) => t.addedByDj)).toBeGreaterThanOrEqual(9);
   });
 
+  it('picks landing while the first track buffers do not restart playback', async () => {
+    // Like MusicPlayer: after play() hands over the resource it sits in Buffering.
+    musicManager.ensurePlaying.mockImplementation(async () => {
+      h.player.status = 'buffering';
+      return true;
+    });
+    await dj.startTheme({ theme: 'classic rock', lookahead: 10 }, actor, origin);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(h.queue.countUpcoming((t) => t.addedByDj)).toBeGreaterThanOrEqual(9);
+    expect(musicManager.ensurePlaying).toHaveBeenCalledTimes(1);
+    musicManager.ensurePlaying.mockImplementation(async () => true);
+  });
+
   it('startTheme while running changes the theme, keeps usedKeys and sets introPending (US4/AC7)', async () => {
     dj.setSettings({ enabled: true });
     await dj.startTheme({ theme: 'old' }, actor, origin);
@@ -436,6 +450,23 @@ describe('djService: themed mode (US4, contracts §3)', () => {
     expect(emitted).toHaveLength(1);
     expect(emitted[0].theme).toBeNull();
     expect(dj.getState().theme).toBeNull();
+  });
+
+  it('a clear before the first pick lands resolves startTheme with theme null', async () => {
+    const resolvers = [];
+    resolveSpotifyTrack.mockImplementation(
+      ({ title }) =>
+        new Promise((r) => resolvers.push(() => r({ url: `https://yt/${title}`, title })))
+    );
+    const p = dj.startTheme({ theme: 'rock' }, actor, origin);
+    await vi.advanceTimersByTimeAsync(0);
+
+    musicManager.onQueueCleared();
+    resolvers.forEach((r) => r());
+    const state = await p;
+    expect(state.theme).toBeNull();
+    expect(h.queue.prioritizeMemberTracks).toBe(false);
+    expect(h.queue.countUpcoming((t) => t.addedByDj)).toBe(0);
   });
 
   it('the queue-cleared hook is a no-op with no broadcast when no theme runs', () => {

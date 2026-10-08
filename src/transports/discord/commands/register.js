@@ -68,6 +68,39 @@ const commands = [
         )
     ),
 
+  // DJ commands
+  new SlashCommandBuilder()
+    .setName('dj')
+    .setDescription('Control the AI DJ')
+    .addSubcommand((sub) => sub.setName('status').setDescription('Show the DJ settings'))
+    .addSubcommand((sub) => sub.setName('on').setDescription('Turn the DJ on'))
+    .addSubcommand((sub) => sub.setName('off').setDescription('Turn the DJ off'))
+    .addSubcommand((sub) =>
+      sub
+        .setName('interval')
+        .setDescription('How often the DJ speaks')
+        .addIntegerOption((option) =>
+          option
+            .setName('every')
+            .setDescription('Speak every N tracks')
+            .setRequired(true)
+            .setMinValue(1)
+            .setMaxValue(10)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('lookahead')
+        .setDescription('How many tracks the DJ plans ahead')
+        .addIntegerOption((option) =>
+          option
+            .setName('size')
+            .setDescription('Tracks to plan ahead')
+            .setRequired(true)
+            .addChoices({ name: '5', value: 5 }, { name: '10', value: 10 })
+        )
+    ),
+
   // Utility commands
   new SlashCommandBuilder().setName('webui').setDescription('Get the link to the web control panel')
 ];

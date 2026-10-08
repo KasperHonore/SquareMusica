@@ -7,6 +7,7 @@ import { SearchBar } from './SearchBar';
 import { useTrackSearch } from './useTrackSearch';
 import { History } from '../../pages/History';
 import { Stats } from '../../pages/Stats';
+import { Dj } from '../../pages/Dj';
 
 // Time-aware greeting
 function getGreeting() {
@@ -53,6 +54,8 @@ export function CenterPanel({
         return 'PLAY HISTORY';
       case 'stats':
         return 'DJ STATS';
+      case 'dj':
+        return 'DJ';
       case 'playlists':
         return selectedPlaylist ? selectedPlaylist.name : 'PLAYLISTS';
       default:
@@ -96,6 +99,8 @@ export function CenterPanel({
         return <History addToQueue={addToQueue} historyVersion={historyVersion} />;
       case 'stats':
         return <Stats />;
+      case 'dj':
+        return <Dj />;
       case 'playlists':
         return (
           <PlaylistsView

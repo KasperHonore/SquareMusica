@@ -12,7 +12,8 @@ import {
   handleQueueReorder,
   handlePlayerControl,
   handleVoiceJoin,
-  handleVoiceLeave
+  handleVoiceLeave,
+  handleDjSettings
 } from './handlers.js';
 
 let io;
@@ -103,6 +104,7 @@ export function setupSocketServer(httpServer) {
     socket.on(ClientEvents.PLAYER_CONTROL, handlePlayerControl(socket));
     socket.on(ClientEvents.VOICE_JOIN, handleVoiceJoin(socket));
     socket.on(ClientEvents.VOICE_LEAVE, handleVoiceLeave(socket));
+    socket.on(ClientEvents.DJ_SETTINGS, handleDjSettings(socket));
 
     // Playlist event handlers
     socket.on(ClientEvents.PLAYLIST_CREATE, ({ name, spotifyUrl, coverImage }) => {

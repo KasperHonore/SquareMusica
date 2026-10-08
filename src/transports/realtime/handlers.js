@@ -20,6 +20,9 @@ import {
   createStatsEvent,
   captureTrack
 } from '../../shared/statsEvents.js';
+import * as djService from '../../services/dj/djService.js';
+import { describeDjError } from '../../services/dj/messages.js';
+import { toActor } from '../../shared/statsEvents.js';
 import { logger } from '../../utils/logger.js';
 
 // Minimum interval (ms) between accepted events of a given type. Lightweight
@@ -28,7 +31,8 @@ import { logger } from '../../utils/logger.js';
 // open tabs can't multiply their budget by the number of connections.
 const THROTTLE_INTERVALS_MS = {
   'queue:add': 1000,
-  'voice:join': 3000
+  'voice:join': 3000,
+  dj: 1000
 };
 
 // Longest throttle window. An entry older than this can never trigger a denial,
@@ -364,6 +368,41 @@ export function handleVoiceLeave(socket) {
     } catch (err) {
       logger.error('Voice leave error:', err);
       socket.emit('error', { message: 'Failed to leave the voice channel. Please try again.' });
+    }
+  };
+}
+
+/**
+ * Handle DJ settings changes from web clients (`dj:settings`). The new state
+ * reaches every client through the `dj:state` broadcast, so success emits
+ * nothing back to this socket.
+ * @param {Socket} socket - Socket.io socket instance
+ * @returns {Function} Event handler
+ */
+export function handleDjSettings(socket) {
+  return (payload) => {
+    if (isThrottled(socket, 'dj')) {
+      socket.emit('error', { message: 'Too many DJ changes. Please wait a moment.' });
+      return;
+    }
+
+    const { enabled, interval, lookahead } = payload ?? {};
+    const partial = {};
+    if (enabled !== undefined) partial.enabled = enabled;
+    if (interval !== undefined) partial.interval = interval;
+    if (lookahead !== undefined) partial.lookahead = lookahead;
+
+    try {
+      const { id, name } = toActor(socket.user) ?? {};
+      djService.setSettings(partial, { id, name });
+    } catch (err) {
+      const described = describeDjError(err, djService.getStateOrUnavailable());
+      if (described) {
+        socket.emit('error', { code: described.code, message: described.message });
+        return;
+      }
+      logger.error('DJ settings error:', err);
+      socket.emit('error', { message: 'Failed to change DJ settings. Please try again.' });
     }
   };
 }

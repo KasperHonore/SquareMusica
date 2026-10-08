@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // A minimal stand-in for @discordjs/voice: an AudioPlayer whose status follows
 // play/pause/unpause/stop, and a createAudioResource that records its inputs so
@@ -261,4 +261,68 @@ describe('musicManager overlay cancel and start path (FR-009, FR-026)', () => {
     expect(changes).toEqual([['track:change', null]]);
     expect(names()).toContain('queue:update');
   });
+});
+
+describe('musicManager themed-mode seams (FR-024a, FR-024b, contracts §4)', () => {
+  let player;
+  let queue;
+  let order;
+
+  beforeEach(() => {
+    player = {
+      cancelOverlay: vi.fn(),
+      isPlaying: vi.fn(() => true),
+      isPaused: vi.fn(() => false),
+      play: vi.fn(async () => true),
+      stop: vi.fn(),
+      getPosition: vi.fn(() => 0)
+    };
+    queue = new Queue();
+    for (const id of ['a', 'b', 'c', 'd']) queue.add(track(id));
+    musicManager.player = player;
+    musicManager.queue = queue;
+    musicManager.removeAllListeners();
+    musicManager.setOnQueueCleared(null);
+    order = [];
+    musicManager.on('queue:update', () => order.push('queue:update'));
+  });
+
+  afterEach(() => {
+    musicManager.setOnQueueCleared(null);
+  });
+
+  it('shuffleQueue() refuses while prioritizeMemberTracks is set, without touching the queue', () => {
+    queue.prioritizeMemberTracks = true;
+    queue.currentIndex = 1;
+    const before = queue.tracks.slice();
+    expect(musicManager.shuffleQueue()).toEqual({
+      shuffled: false,
+      reason: 'THEMED_MODE_ACTIVE'
+    });
+    expect(queue.tracks).toEqual(before);
+    expect(queue.currentIndex).toBe(1);
+    expect(order).toEqual([]);
+  });
+
+  it('shuffleQueue() shuffles and emits one queue:update when the flag is false', () => {
+    expect(musicManager.shuffleQueue()).toEqual({ shuffled: true });
+    expect(order).toEqual(['queue:update']);
+  });
+
+  const CLEARS = ['clearQueue', 'clearUpcomingQueue', 'clearAllButCurrent', 'stop'];
+
+  for (const method of CLEARS) {
+    it(`${method}() calls the clear hook exactly once, before queue:update`, () => {
+      const hook = vi.fn(() => order.push('hook'));
+      musicManager.setOnQueueCleared(hook);
+      musicManager[method]();
+      expect(hook).toHaveBeenCalledTimes(1);
+      expect(order[0]).toBe('hook');
+      expect(order).toContain('queue:update');
+    });
+
+    it(`${method}() does not throw with no hook set`, () => {
+      expect(() => musicManager[method]()).not.toThrow();
+    });
+  }
 });

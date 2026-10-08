@@ -198,6 +198,19 @@ export function useSocket() {
     [socket]
   );
 
+  // Start themed mode, or change the theme when it runs. The result arrives
+  // as a dj:state broadcast; a rejection as error { code, message }.
+  const startTheme = useCallback(
+    (theme, lookahead) => {
+      socket?.emit('dj:theme:start', lookahead ? { theme, lookahead } : { theme });
+    },
+    [socket]
+  );
+
+  const stopTheme = useCallback(() => {
+    socket?.emit('dj:theme:stop');
+  }, [socket]);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -230,6 +243,8 @@ export function useSocket() {
     createPlaylist,
     deletePlaylist,
     setDjSettings,
+    startTheme,
+    stopTheme,
     clearError,
     clearNotice
   };

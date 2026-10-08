@@ -8,7 +8,10 @@ import express from 'express';
 vi.mock('../../src/services/dj/djService.js', () => ({
   getState: vi.fn(),
   getStateOrUnavailable: vi.fn(),
-  setSettings: vi.fn()
+  setSettings: vi.fn(),
+  startTheme: vi.fn(),
+  stopTheme: vi.fn(),
+  getThemeOrigin: vi.fn(() => null)
 }));
 vi.mock('../../src/transports/http/middleware/auth.js', () => ({
   authMiddleware: (req, _res, next) => {
@@ -70,16 +73,34 @@ import {
   DjError,
   DJ_UNAVAILABLE,
   INVALID_INTERVAL,
-  INVALID_LOOKAHEAD
+  INVALID_LOOKAHEAD,
+  INVALID_THEME,
+  NOT_IN_VOICE,
+  NO_TRACKS_FOR_THEME,
+  SERVICE_UNAVAILABLE,
+  CAP_REACHED,
+  THEMED_MODE_ACTIVE
 } from '../../src/services/dj/errors.js';
 import { DJ_ERROR_MESSAGES } from '../../src/services/dj/messages.js';
 import { musicManager } from '../../src/core/musicManager.js';
 import { Queue } from '../../src/core/queue.js';
 import djRouter from '../../src/transports/http/routes/dj.js';
 import queueRouter from '../../src/transports/http/routes/queue.js';
-import { handleDjSettings, handlePlayerControl } from '../../src/transports/realtime/handlers.js';
-import { handleDj } from '../../src/transports/discord/commands/dj.js';
-import { handleClear as discordClear } from '../../src/transports/discord/commands/queue.js';
+import playbackRouter from '../../src/transports/http/routes/playback.js';
+import {
+  handleDjSettings,
+  handleDjThemeStart,
+  handleDjThemeStop,
+  handlePlayerControl
+} from '../../src/transports/realtime/handlers.js';
+import { handleDj, onDjState, setDiscordClient } from '../../src/transports/discord/commands/dj.js';
+import {
+  handleClear as discordClear,
+  handleShuffle as discordShuffle
+} from '../../src/transports/discord/commands/queue.js';
+import { handleStop as discordStop } from '../../src/transports/discord/commands/playback.js';
+import { botEvents } from '../../src/events/bus.js';
+import { STATS_EVENT } from '../../src/shared/statsEvents.js';
 
 const STATE = {
   available: true,
@@ -104,11 +125,17 @@ beforeEach(async () => {
   djService.getState.mockReturnValue(STATE);
   djService.getStateOrUnavailable.mockReturnValue(STATE);
   djService.setSettings.mockImplementation((partial) => ({ ...STATE, ...partial }));
+  djService.startTheme.mockImplementation(async ({ theme }) => ({
+    ...STATE,
+    theme: { theme, status: 'running', reason: null }
+  }));
+  djService.stopTheme.mockImplementation(() => STATE);
 
   const app = express();
   app.use(express.json());
   app.use('/api/dj', djRouter);
   app.use('/api/queue', queueRouter);
+  app.use('/api/player', playbackRouter);
   server = app.listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
@@ -125,17 +152,24 @@ function socket() {
   return { emit: vi.fn(), user: { username: 'member', discord_id: `socket-${socketUserSeq}` } };
 }
 
-function interaction(subcommand, { integers = {} } = {}) {
-  return {
+function interaction(subcommand, { integers = {}, strings = {} } = {}) {
+  const i = {
     guildId: 'g1',
+    channelId: 'text-1',
     user: { id: 'member-1', username: 'member' },
+    deferred: false,
     options: {
       getSubcommand: vi.fn(() => subcommand),
       getInteger: vi.fn((name) => integers[name] ?? null),
-      getString: vi.fn(() => null)
+      getString: vi.fn((name) => strings[name] ?? null)
     },
-    reply: vi.fn().mockResolvedValue(undefined)
+    reply: vi.fn().mockResolvedValue(undefined),
+    editReply: vi.fn().mockResolvedValue(undefined)
   };
+  i.deferReply = vi.fn(async () => {
+    i.deferred = true;
+  });
+  return i;
 }
 
 const ACTOR = { id: 'member-1', name: 'member' };
@@ -177,19 +211,69 @@ const OPERATIONS = [
     discord: () => interaction('lookahead', { integers: { size: 10 } }),
     http: { method: 'PATCH', body: { lookahead: 10 } },
     socket: { handler: handleDjSettings, payload: { lookahead: 10 } }
+  },
+  {
+    name: 'Start / change theme',
+    service: 'startTheme',
+    args: [{ theme: 'classic rock road trip', lookahead: 5 }, ACTOR],
+    origin: {
+      discord: { transport: 'discord', channelId: 'text-1' },
+      http: { transport: 'http' },
+      socket: { transport: 'socket' }
+    },
+    // Deferred first (the first top-up can outlast Discord's 3 s), so
+    // errors arrive through editReply.
+    discordDeferred: true,
+    errors: [
+      DJ_UNAVAILABLE,
+      INVALID_THEME,
+      INVALID_LOOKAHEAD,
+      NOT_IN_VOICE,
+      NO_TRACKS_FOR_THEME,
+      SERVICE_UNAVAILABLE,
+      CAP_REACHED
+    ],
+    discord: () =>
+      interaction('theme', {
+        strings: { description: 'classic rock road trip' },
+        integers: { lookahead: 5 }
+      }),
+    http: {
+      method: 'POST',
+      path: '/theme',
+      body: { theme: 'classic rock road trip', lookahead: 5 }
+    },
+    socket: {
+      handler: handleDjThemeStart,
+      payload: { theme: 'classic rock road trip', lookahead: 5 }
+    }
+  },
+  {
+    name: 'Stop theme',
+    service: 'stopTheme',
+    args: [ACTOR],
+    errors: [DJ_UNAVAILABLE],
+    discord: () => interaction('theme-stop'),
+    http: { method: 'DELETE', path: '/theme' },
+    socket: { handler: handleDjThemeStop, payload: undefined }
   }
 ];
 
 // Socket actors are per-test users (see socket()), so their id is checked by
 // shape rather than literally.
 function expectActorArgs(call, row, surface) {
-  const [partial, actor] = call;
-  expect(partial).toEqual(row.args[0]);
-  if (surface === 'socket') {
-    expect(actor).toEqual({ id: expect.stringMatching(/^socket-/), name: 'member' });
-  } else {
-    expect(actor).toEqual(row.args[1]);
+  const actorIndex = row.args.indexOf(ACTOR);
+  row.args.forEach((expected, index) => {
+    if (index === actorIndex && surface === 'socket') {
+      expect(call[index]).toEqual({ id: expect.stringMatching(/^socket-/), name: 'member' });
+    } else {
+      expect(call[index]).toEqual(expected);
+    }
+  });
+  if (row.origin) {
+    expect(call[row.args.length]).toEqual(row.origin[surface]);
   }
+  expect(call).toHaveLength(row.args.length + (row.origin ? 1 : 0));
 }
 
 const SURFACES = {
@@ -199,10 +283,10 @@ const SURFACES = {
     return { interaction: i };
   },
   http: async (row) => {
-    const res = await fetch(`${baseUrl}/api/dj`, {
+    const res = await fetch(`${baseUrl}/api/dj${row.http.path ?? ''}`, {
       method: row.http.method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(row.http.body)
+      ...(row.http.body ? { body: JSON.stringify(row.http.body) } : {})
     });
     return { res };
   },
@@ -266,16 +350,23 @@ describe('the same djService call and arguments on every surface', () => {
 const ERROR_CASES = [DJ_UNAVAILABLE, INVALID_INTERVAL, INVALID_LOOKAHEAD];
 
 describe('the same error-code mapping on every surface', () => {
-  for (const code of ERROR_CASES) {
-    for (const row of OPERATIONS) {
+  for (const row of OPERATIONS) {
+    for (const code of row.errors ?? ERROR_CASES) {
       it(`${row.name} → ${code}`, async () => {
         djService[row.service].mockImplementation(() => {
           throw new DjError(code);
         });
-        const { http, text } = DJ_ERROR_MESSAGES[code];
+        const entry = DJ_ERROR_MESSAGES[code];
+        const http = entry.http;
+        const text = typeof entry.text === 'function' ? entry.text(STATE) : entry.text;
 
         const { interaction: i } = await SURFACES.discord(row);
-        expect(i.reply).toHaveBeenCalledWith({ content: text, ephemeral: true });
+        if (row.discordDeferred) {
+          expect(i.deferReply).toHaveBeenCalledTimes(1);
+          expect(i.editReply).toHaveBeenCalledWith(text);
+        } else {
+          expect(i.reply).toHaveBeenCalledWith({ content: text, ephemeral: true });
+        }
 
         const { res } = await SURFACES.http(row);
         expect(res.status).toBe(http);
@@ -324,6 +415,129 @@ describe('Clear queue during a DJ line (FR-009)', () => {
   }
 });
 
+describe('Start theme on Discord defers before calling the service', () => {
+  it('deferReply() runs before startTheme and the answer is an editReply', async () => {
+    const order = [];
+    const i = interaction('theme', { strings: { description: 'rock' } });
+    i.deferReply.mockImplementation(async () => {
+      order.push('defer');
+      i.deferred = true;
+    });
+    djService.startTheme.mockImplementation(async () => {
+      order.push('startTheme');
+      return { ...STATE, theme: { theme: 'rock', status: 'running', reason: null } };
+    });
+    await handleDj(i);
+    expect(order).toEqual(['defer', 'startTheme']);
+    expect(i.editReply).toHaveBeenCalledWith(expect.stringContaining('rock'));
+    expect(djService.startTheme.mock.calls[0][0]).toEqual({ theme: 'rock' });
+  });
+});
+
+describe('Shuffle during themed mode (FR-024a)', () => {
+  let statsEvents;
+  const record = (event) => statsEvents.push(event);
+
+  beforeEach(() => {
+    const queue = new Queue();
+    for (const id of ['a', 'b', 'c']) queue.add({ title: id, url: `https://example.com/${id}` });
+    shared.queue = queue;
+    shared.player = { on: vi.fn(), cancelOverlay: vi.fn() };
+    musicManager.queue = queue;
+    vi.spyOn(musicManager, 'shuffleQueue').mockReturnValue({
+      shuffled: false,
+      reason: THEMED_MODE_ACTIVE
+    });
+    statsEvents = [];
+    botEvents.on(STATS_EVENT, record);
+  });
+
+  afterEach(() => {
+    botEvents.off(STATS_EVENT, record);
+    musicManager.shuffleQueue.mockRestore();
+    musicManager.queue = null;
+  });
+
+  const { http, text } = DJ_ERROR_MESSAGES[THEMED_MODE_ACTIVE];
+
+  it('Discord /shuffle replies ephemerally with the THEMED_MODE_ACTIVE text', async () => {
+    const i = interaction(null);
+    await discordShuffle(i);
+    expect(musicManager.shuffleQueue).toHaveBeenCalledTimes(1);
+    expect(i.reply).toHaveBeenCalledWith({ content: text, ephemeral: true });
+    expect(statsEvents).toEqual([]);
+  });
+
+  it('POST /api/queue/shuffle answers 409 { code, message }', async () => {
+    const res = await fetch(`${baseUrl}/api/queue/shuffle`, { method: 'POST' });
+    expect(musicManager.shuffleQueue).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(http);
+    expect(await res.json()).toEqual({ code: THEMED_MODE_ACTIVE, message: text });
+    expect(statsEvents).toEqual([]);
+  });
+
+  it('socket player:control shuffle emits error { code, message }', async () => {
+    const s = socket();
+    await handlePlayerControl(s)({ action: 'shuffle' });
+    expect(musicManager.shuffleQueue).toHaveBeenCalledTimes(1);
+    expect(s.emit).toHaveBeenCalledWith('error', { code: THEMED_MODE_ACTIVE, message: text });
+    expect(statsEvents).toEqual([]);
+  });
+});
+
+describe('Clear / stop during themed mode (FR-024b)', () => {
+  // The real musicManager mediates every clear and stop; the clear hook is
+  // what ends themed mode, so each surface must fire it exactly once.
+  let hook;
+  const METHODS = ['clearQueue', 'clearUpcomingQueue', 'clearAllButCurrent', 'stop'];
+
+  beforeEach(() => {
+    const queue = new Queue();
+    for (const id of ['a', 'b', 'c']) queue.add({ title: id, url: `https://example.com/${id}` });
+    const player = {
+      on: vi.fn(),
+      cancelOverlay: vi.fn(),
+      stop: vi.fn(),
+      isPlaying: vi.fn(() => true),
+      isPaused: vi.fn(() => false),
+      getPosition: vi.fn(() => 0)
+    };
+    shared.queue = queue;
+    shared.player = player;
+    musicManager.setPlayer(player);
+    musicManager.setQueue(queue);
+    hook = vi.fn();
+    musicManager.setOnQueueCleared(hook);
+    for (const method of METHODS) vi.spyOn(musicManager, method);
+  });
+
+  afterEach(() => {
+    for (const method of METHODS) musicManager[method].mockRestore();
+    musicManager.setOnQueueCleared(null);
+    musicManager.player = null;
+    musicManager.queue = null;
+  });
+
+  const totalCalls = () => METHODS.reduce((n, m) => n + musicManager[m].mock.calls.length, 0);
+
+  const CASES = {
+    'Discord /clear': () => discordClear(interaction(null)),
+    'Discord /stop': () => discordStop(interaction(null)),
+    'HTTP DELETE /api/queue': () => fetch(`${baseUrl}/api/queue`, { method: 'DELETE' }),
+    'HTTP POST /api/player/stop': () => fetch(`${baseUrl}/api/player/stop`, { method: 'POST' }),
+    'socket clear': () => handlePlayerControl(socket())({ action: 'clear' }),
+    'socket stop': () => handlePlayerControl(socket())({ action: 'stop' })
+  };
+
+  for (const [name, run] of Object.entries(CASES)) {
+    it(`${name} reaches one musicManager clear/stop method once and fires the hook once`, async () => {
+      await run();
+      expect(totalCalls()).toBe(1);
+      expect(hook).toHaveBeenCalledTimes(1);
+    });
+  }
+});
+
 describe('socket throttle', () => {
   it('throttles a second dj:settings from the same user within 1000 ms', async () => {
     const s = socket();
@@ -336,6 +550,22 @@ describe('socket throttle', () => {
       'error',
       expect.objectContaining({ message: expect.any(String) })
     );
+  });
+});
+
+describe('Themed-mode stall notice on Discord (FR-029)', () => {
+  it('posts with the client handed over at boot, before any /dj interaction', async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const fetch = vi.fn().mockResolvedValue({ send });
+    setDiscordClient({ channels: { fetch } });
+    djService.getThemeOrigin.mockReturnValueOnce({ transport: 'discord', channelId: 'chan-9' });
+
+    await onDjState({
+      theme: { theme: 'rock', startedAt: 'boot-t', status: 'stalled', reason: 'NO_LISTENERS' }
+    });
+    expect(fetch).toHaveBeenCalledWith('chan-9');
+    expect(send).toHaveBeenCalledTimes(1);
+    await onDjState({ theme: null });
   });
 });
 

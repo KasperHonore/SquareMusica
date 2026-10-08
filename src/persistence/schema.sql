@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS history (
   requested_by_id TEXT,
   requested_by_avatar TEXT,
   is_loop_replay INTEGER NOT NULL DEFAULT 0,
+  added_by_dj INTEGER NOT NULL DEFAULT 0,
   played_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

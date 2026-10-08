@@ -20,6 +20,9 @@ class MusicManager extends EventEmitter {
     this.isConnected = null;
     // Injected by services/dj/djService.js when the DJ is configured.
     this.getDjState = null;
+    // Injected by djService: ends themed mode before an emptied queue is
+    // announced, so the theme engine never refills it (FR-024b).
+    this.onQueueCleared = null;
     this._resolutionListenersSetup = false;
   }
 
@@ -80,6 +83,10 @@ class MusicManager extends EventEmitter {
     this.getDjState = fn;
   }
 
+  setOnQueueCleared(fn) {
+    this.onQueueCleared = fn;
+  }
+
   // Helper to emit queue updates with currentIndex
   emitQueueUpdate() {
     this.emit('queue:update', {
@@ -120,6 +127,7 @@ class MusicManager extends EventEmitter {
     if (!this.queue) return false;
     this.queue.clear();
     this.player?.cancelOverlay?.();
+    this.onQueueCleared?.();
     this.emitQueueUpdate();
     return true;
   }
@@ -128,6 +136,7 @@ class MusicManager extends EventEmitter {
     if (!this.queue) return false;
     this.queue.clearUpcoming();
     this.player?.cancelOverlay?.();
+    this.onQueueCleared?.();
     this.emitQueueUpdate();
     return true;
   }
@@ -139,15 +148,21 @@ class MusicManager extends EventEmitter {
     this.queue.tracks = current ? [current] : [];
     this.queue.currentIndex = 0;
     this.player?.cancelOverlay?.();
+    this.onQueueCleared?.();
     this.emitQueueUpdate();
     return true;
   }
 
+  // Refused while themed mode is on (FR-024a): shuffling would mix the DJ's
+  // picks in among member requests. The queue flag is the themed-mode signal.
   shuffleQueue() {
-    if (!this.queue) return false;
+    if (!this.queue) return { shuffled: false };
+    if (this.queue.prioritizeMemberTracks) {
+      return { shuffled: false, reason: 'THEMED_MODE_ACTIVE' };
+    }
     this.queue.shuffle();
     this.emitQueueUpdate();
-    return true;
+    return { shuffled: true };
   }
 
   // Playback operations
@@ -229,6 +244,7 @@ class MusicManager extends EventEmitter {
     if (this.queue) {
       this.queue.clear(); // clear() already resets currentIndex to 0
     }
+    this.onQueueCleared?.();
     this.emit('queue:update', { tracks: [], currentIndex: 0 });
     this.emit('track:change', null);
     this.emitState();
@@ -281,7 +297,7 @@ class MusicManager extends EventEmitter {
       // Read once and cleared, so a later non-loop start of the same entry (e.g.
       // after loop is switched off) is counted.
       const loopReplay = track.loopReplay === true;
-      db.addToHistory(track, this.guildId, { loopReplay });
+      db.addToHistory(track, this.guildId, { loopReplay, addedByDj: track.addedByDj === true });
       track.loopReplay = false;
       track.hasPlayed = true;
     }

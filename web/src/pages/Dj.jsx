@@ -1,4 +1,5 @@
 import { useSocketContext } from '../context/SocketContext';
+import { ThemeControl } from '../components/dj/ThemeControl';
 
 const INTERVALS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const LOOKAHEADS = [5, 10];
@@ -82,6 +83,13 @@ export function Dj() {
               {health}
             </span>
           </Row>
+        </Card>
+      </section>
+
+      <section style={{ minWidth: 0 }}>
+        <SectionHeading>Themed mode</SectionHeading>
+        <Card>
+          <ThemeControl theme={djState.theme} lookahead={lookahead} />
         </Card>
       </section>
 

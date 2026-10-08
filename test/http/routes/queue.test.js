@@ -16,7 +16,7 @@ vi.mock('../../../src/core/musicManager.js', () => ({
     addTracks: vi.fn(() => ({ tracks: [], lazyResolution: false })),
     removeFromQueue: vi.fn(() => true),
     reorderQueue: vi.fn(() => true),
-    shuffleQueue: vi.fn(),
+    shuffleQueue: vi.fn(() => ({ shuffled: true })),
     clearQueue: vi.fn()
   }
 }));

@@ -10,10 +10,16 @@ import {
   handleClear
 } from './queue.js';
 import { handleLoop } from './settings.js';
-import { handleDj } from './dj.js';
+import { handleDj, setDiscordClient } from './dj.js';
 import { handleWebUI } from './utility.js';
 
-export function registerAllCommands() {
+/**
+ * @param {import('discord.js').Client} [client] - Lets commands that post
+ *   unprompted (DJ stall notices) reach channels before any interaction
+ */
+export function registerAllCommands(client) {
+  if (client) setDiscordClient(client);
+
   // Voice
   registerCommand('join', handleJoin);
   registerCommand('leave', handleLeave);

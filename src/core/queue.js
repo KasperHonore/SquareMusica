@@ -26,6 +26,7 @@
  * @property {ResolutionStatus} [status] - Resolution status for Spotify tracks
  * @property {boolean} [hasPlayed] - This entry has started at least once
  * @property {boolean} [loopReplay] - This start was chosen by loop mode
+ * @property {boolean} [addedByDj] - Queued by themed mode, not by a member
  */
 
 class Queue {
@@ -33,10 +34,15 @@ class Queue {
     this.tracks = [];
     this.currentIndex = 0;
     this.loopMode = 'off'; // 'off' | 'track' | 'queue'
+    // Set by the DJ while themed mode runs (FR-024): member tracks then go
+    // ahead of the DJ's upcoming picks instead of to the end.
+    this.prioritizeMemberTracks = false;
   }
 
   /**
-   * Add a track to the end of the queue
+   * Add a track to the end of the queue. While prioritizeMemberTracks is set,
+   * a member track is inserted before the first upcoming DJ pick instead, so
+   * member requests stay in FIFO order ahead of every DJ pick.
    * @param {Track} track
    */
   add(track) {
@@ -44,10 +50,43 @@ class Queue {
     if (this.tracks.length === 0) {
       this.currentIndex = 0;
     }
+    if (this.prioritizeMemberTracks && !track.addedByDj) {
+      const firstDjPick = this.tracks.findIndex(
+        (entry, i) => i > this.currentIndex && entry.addedByDj
+      );
+      if (firstDjPick !== -1) {
+        this.insertAt(firstDjPick, track);
+        return;
+      }
+    }
     this.tracks.push({
       ...track,
       addedAt: new Date()
     });
+  }
+
+  /**
+   * Insert a track at index, clamped to [currentIndex + 1, length] so it can
+   * never land on or before the track that is playing.
+   * @param {number} index
+   * @param {Track} track
+   */
+  insertAt(index, track) {
+    if (this.tracks.length === 0) {
+      this.currentIndex = 0;
+    }
+    const min = Math.min(this.currentIndex + 1, this.tracks.length);
+    const at = Math.max(min, Math.min(index, this.tracks.length));
+    this.tracks.splice(at, 0, { ...track, addedAt: new Date() });
+  }
+
+  /**
+   * Count entries after currentIndex matching predicate.
+   * @param {(track: Track) => boolean} predicate
+   * @returns {number}
+   */
+  countUpcoming(predicate) {
+    return this.tracks.slice(this.currentIndex + 1).filter(predicate).length;
   }
 
   /**

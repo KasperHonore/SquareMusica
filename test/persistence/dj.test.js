@@ -89,3 +89,96 @@ describe('dj_shoutout_optouts table', () => {
     expect(cols.find((c) => c.name === 'user_id')?.pk).toBe(1);
   });
 });
+
+describe('history.added_by_dj and getTopTracks (FR-021b, FR-027)', () => {
+  const member = (id, url, title = url, extra = {}) => ({
+    title,
+    url,
+    duration: 200,
+    thumbnail: `thumb-${url}`,
+    requestedBy: `name-${id}`,
+    requestedById: id,
+    ...extra
+  });
+  const djPick = (url) => ({
+    title: url,
+    url,
+    duration: 180,
+    requestedBy: 'SquareMusica DJ',
+    requestedById: null,
+    addedByDj: true
+  });
+
+  it('records added_by_dj = 1 for DJ picks and 0 for member tracks', () => {
+    manager.addToHistory(djPick('https://yt/dj'), 'g', { addedByDj: true });
+    manager.addToHistory(member('A', 'https://yt/m'), 'g');
+    const rows = manager.db
+      .prepare('SELECT url, added_by_dj, requested_by, requested_by_id FROM history ORDER BY id')
+      .all();
+    expect(rows).toEqual([
+      {
+        url: 'https://yt/dj',
+        added_by_dj: 1,
+        requested_by: 'SquareMusica DJ',
+        requested_by_id: null
+      },
+      { url: 'https://yt/m', added_by_dj: 0, requested_by: 'name-A', requested_by_id: 'A' }
+    ]);
+  });
+
+  it('orders by counted plays and excludes loop replays and DJ rows', () => {
+    manager.addToHistory(member('A', 'https://yt/1'), 'g');
+    manager.addToHistory(member('B', 'https://yt/2'), 'g');
+    manager.addToHistory(member('A', 'https://yt/2'), 'g');
+    // Loop replays and DJ picks of /3 must not lift it above /1.
+    manager.addToHistory(member('A', 'https://yt/3'), 'g', { loopReplay: true });
+    manager.addToHistory(member('A', 'https://yt/3'), 'g', { loopReplay: true });
+    manager.addToHistory(djPick('https://yt/3'), 'g', { addedByDj: true });
+    manager.addToHistory(djPick('https://yt/4'), 'g', { addedByDj: true });
+
+    const top = manager.getTopTracks({ limit: 10 });
+    expect(top.map((t) => [t.url, t.count])).toEqual([
+      ['https://yt/2', 2],
+      ['https://yt/1', 1]
+    ]);
+    expect(top[0]).toEqual({
+      url: 'https://yt/2',
+      title: 'https://yt/2',
+      artist: null,
+      count: 2,
+      duration: 200,
+      thumbnail: 'thumb-https://yt/2'
+    });
+  });
+
+  it('filters by userIds and honours limit', () => {
+    manager.addToHistory(member('A', 'https://yt/1'), 'g');
+    manager.addToHistory(member('B', 'https://yt/2'), 'g');
+    manager.addToHistory(member('B', 'https://yt/2'), 'g');
+    expect(manager.getTopTracks({ userIds: ['A'], limit: 10 }).map((t) => t.url)).toEqual([
+      'https://yt/1'
+    ]);
+    expect(manager.getTopTracks({ limit: 1 }).map((t) => t.url)).toEqual(['https://yt/2']);
+    expect(manager.getTopTracks({ userIds: [], limit: 10 })).toEqual([]);
+  });
+});
+
+describe('getDjSkipAward ignores skips of DJ picks (R8 awards gap)', () => {
+  function skip(actorId, targetId) {
+    manager.db
+      .prepare(
+        `INSERT INTO events (event_type, actor_id, actor_name, target_user_id, target_user_name)
+         VALUES ('skip', ?, ?, ?, ?)`
+      )
+      .run(actorId, `name-${actorId}`, targetId, targetId ? `name-${targetId}` : null);
+  }
+
+  it('never returns a NULL-target group', () => {
+    skip('A', null);
+    skip('B', null);
+    skip('C', null);
+    expect(manager.getDjSkipAward({})).toBeUndefined();
+    skip('A', 'B');
+    expect(manager.getDjSkipAward({})).toMatchObject({ userId: 'B', value: 1 });
+  });
+});

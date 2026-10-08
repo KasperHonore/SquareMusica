@@ -54,7 +54,7 @@ registerStatsRecorder();
 
 // Setup Discord command handler
 setupCommandHandler();
-registerAllCommands();
+registerAllCommands(client);
 
 // Initialize player and queue so web UI can detect voice connection state
 const player = getPlayer();

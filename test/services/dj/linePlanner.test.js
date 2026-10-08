@@ -30,8 +30,10 @@ function fakeQueue(tracks) {
   };
 }
 
-function setup({ tracks = [], interval = 1, enabled = true, writeLine } = {}) {
+function setup({ tracks = [], interval = 1, enabled = true, writeLine, theme = null } = {}) {
   const state = {
+    theme,
+    introPending: false,
     settings: { enabled, interval },
     queue: fakeQueue(tracks),
     player: { overlay: vi.fn(() => true), isPaused: vi.fn(() => false) },
@@ -44,8 +46,10 @@ function setup({ tracks = [], interval = 1, enabled = true, writeLine } = {}) {
   const write =
     writeLine ??
     vi.fn(async (ctx) => ({
-      forKey: ctx.next.key,
-      text: `Line ${++counter} for ${ctx.next.title}.`,
+      forKey: ctx.next?.key ?? null,
+      text: ctx.intro
+        ? `Intro ${++counter} for ${ctx.theme}.`
+        : `Line ${++counter} for ${ctx.next.title}.`,
       pcm: PCM,
       factIds: ['f1'],
       namedUserIds: [],
@@ -61,7 +65,12 @@ function setup({ tracks = [], interval = 1, enabled = true, writeLine } = {}) {
     isBreakerOpen: () => state.breakerOpen,
     canAttempt: () => !state.breakerOpen,
     buildContext,
-    writeLine: write
+    writeLine: write,
+    getTheme: () => state.theme,
+    isIntroPending: () => state.introPending,
+    clearIntroPending: () => {
+      state.introPending = false;
+    }
   });
 
   // Start the track at index i, as the player + mediator would.
@@ -393,5 +402,80 @@ describe('linePlanner: speaking', () => {
     await h.start(1);
     h.planner.shutdown();
     expect(logger.info).toHaveBeenCalledWith(expect.stringMatching(/due=1 spoken=1 ratio=1\.00/));
+  });
+});
+
+describe('linePlanner: themed intro (FR-006 exception, FR-028)', () => {
+  const introCalls = (h) => h.write.mock.calls.filter(([ctx]) => ctx.intro === true);
+
+  it('speaks the intro over the first themed track on an empty queue, though it is not a transition', async () => {
+    const h = setup({ tracks: [track(0), track(1)], interval: 3, theme: 'classic rock' });
+    h.planner.onTrackChange(null);
+    h.state.introPending = true;
+    h.planner.prepareIntro();
+    await vi.advanceTimersByTimeAsync(0);
+
+    await h.start(0);
+    expect(h.state.player.overlay).toHaveBeenCalledTimes(1);
+    expect(introCalls(h)).toHaveLength(1);
+    const [ctx] = introCalls(h)[0];
+    expect(ctx.theme).toBe('classic rock');
+    expect(ctx.facts).toEqual([expect.objectContaining({ kind: 'theme' })]);
+    expect(h.state.introPending).toBe(false);
+    expect(h.planner.getDebugState().transitionsSinceSpoken).toBe(0);
+  });
+
+  it('after a theme change, the intro is spoken over the next track to start', async () => {
+    const h = setup({ tracks: Array.from({ length: 4 }, (_, i) => track(i)), interval: 5 });
+    await h.start(0);
+    await h.start(1); // one transition
+    h.state.theme = 'rainy day lo-fi';
+    h.state.introPending = true;
+    h.planner.prepareIntro();
+    await vi.advanceTimersByTimeAsync(0);
+
+    await h.start(2);
+    expect(h.state.player.overlay).toHaveBeenCalledTimes(1);
+    expect(introCalls(h)).toHaveLength(1);
+    // The intro neither counts as the interval's line nor resets the count.
+    expect(h.planner.getDebugState().transitionsSinceSpoken).toBe(2);
+    expect(h.state.introPending).toBe(false);
+  });
+
+  it('does not reset transitionsSinceSpoken: the next regular line keeps its place', async () => {
+    const h = setup({ tracks: Array.from({ length: 6 }, (_, i) => track(i, 10)), interval: 2 });
+    h.state.theme = 'rock';
+    await h.start(0);
+    await h.start(1); // transition 1
+    h.state.introPending = true;
+    h.planner.prepareIntro();
+    await vi.advanceTimersByTimeAsync(0);
+    await h.start(2); // transition 2: intro instead of the regular line
+    expect(h.planner.getDebugState().transitionsSinceSpoken).toBe(2);
+    await h.start(3); // transition 3: still due
+    expect(h.state.player.overlay).toHaveBeenCalledTimes(2);
+    expect(h.planner.getDebugState().transitionsSinceSpoken).toBe(0);
+  });
+
+  it('prepares the intro as soon as it is pending, before any track starts', async () => {
+    const h = setup({ tracks: [track(0)], theme: 'rock' });
+    h.state.introPending = true;
+    h.planner.prepareIntro();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(introCalls(h)).toHaveLength(1);
+    expect(h.planner.getDebugState().intro).toEqual({ status: 'ready' });
+  });
+
+  it('with commentary disabled, introPending is cleared and nothing is spoken', async () => {
+    const h = setup({ tracks: [track(0), track(1)], enabled: false, theme: 'rock' });
+    h.state.introPending = true;
+    h.planner.prepareIntro();
+    expect(h.state.introPending).toBe(false);
+
+    h.state.introPending = true;
+    await h.start(0);
+    expect(h.state.introPending).toBe(false);
+    expect(h.write).not.toHaveBeenCalled();
+    expect(h.state.player.overlay).not.toHaveBeenCalled();
   });
 });

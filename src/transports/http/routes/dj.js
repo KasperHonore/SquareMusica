@@ -55,4 +55,37 @@ router.patch('/', authMiddleware, (req, res) => {
   }
 });
 
+/**
+ * POST /api/dj/theme - Start themed mode, or change the theme when it runs.
+ * Body { theme, lookahead? }. Answers once the first pick is queued (SC-005).
+ */
+router.post('/theme', authMiddleware, async (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ error: 'Request body must be a JSON object.' });
+  }
+  const { theme, lookahead } = body;
+  const params = { theme };
+  if (lookahead !== undefined) params.lookahead = lookahead;
+
+  try {
+    const { id, name } = toActor(req.user) ?? {};
+    res.json(await djService.startTheme(params, { id, name }, { transport: 'http' }));
+  } catch (error) {
+    sendDjError(res, error);
+  }
+});
+
+/**
+ * DELETE /api/dj/theme - Stop themed mode. Queued picks stay.
+ */
+router.delete('/theme', authMiddleware, (req, res) => {
+  try {
+    const { id, name } = toActor(req.user) ?? {};
+    res.json(djService.stopTheme({ id, name }));
+  } catch (error) {
+    sendDjError(res, error);
+  }
+});
+
 export default router;

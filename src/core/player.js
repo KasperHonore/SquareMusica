@@ -84,7 +84,12 @@ class MusicPlayer extends EventEmitter {
    */
   overlay(pcm) {
     if (!this._mixingEnabled || !this._mixer) return false;
-    if (this.audioPlayer.state.status !== AudioPlayerStatus.Playing) return false;
+    // Right after play() the player is still Buffering; the mixer holds the
+    // overlay until audio flows, so a line ready at track start is accepted.
+    const { status } = this.audioPlayer.state;
+    if (status !== AudioPlayerStatus.Playing && status !== AudioPlayerStatus.Buffering) {
+      return false;
+    }
     this._mixer.overlay(pcm);
     return true;
   }

@@ -63,10 +63,12 @@ getQueue();
 // AI DJ (feature 002): only constructed when its env group is configured.
 // Unconfigured, the player keeps the legacy audio path and every DJ surface
 // reports { available: false }.
+let shutdownDj = () => {};
 if (isDjConfigured()) {
   player.setMixingEnabled(true);
-  const { init: initDj } = await import('./services/dj/djService.js');
+  const { init: initDj, shutdown } = await import('./services/dj/djService.js');
   initDj();
+  shutdownDj = shutdown;
 }
 
 // Start servers
@@ -89,6 +91,7 @@ async function start() {
 // Graceful shutdown handling
 process.on('SIGINT', () => {
   logger.info('Shutting down...');
+  shutdownDj();
   shutdownSocketServer();
   db.close();
   client.destroy();
@@ -100,6 +103,7 @@ process.on('SIGINT', () => {
 
 process.on('SIGTERM', () => {
   logger.info('Received SIGTERM, shutting down...');
+  shutdownDj();
   shutdownSocketServer();
   db.close();
   client.destroy();

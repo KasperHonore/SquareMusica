@@ -2,6 +2,7 @@ import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { PassThrough } from 'stream';
 import { existsSync } from 'fs';
+import { createRequire } from 'module';
 import { StreamType } from '@discordjs/voice';
 import { logger } from '../utils/logger.js';
 
@@ -408,6 +409,145 @@ export async function getStream(url) {
     type: StreamType.Arbitrary,
     cleanup
   };
+}
+
+/**
+ * Resolve the FFmpeg binary the way prism-media does: ffmpeg-static when its
+ * binary is present, otherwise `ffmpeg` on PATH (the Docker image installs it).
+ * @returns {string}
+ */
+function getFfmpegPath() {
+  try {
+    const require = createRequire(import.meta.url);
+    const ffmpegStatic = require('ffmpeg-static');
+    const path = ffmpegStatic?.path || ffmpegStatic;
+    if (typeof path === 'string' && existsSync(path)) return path;
+  } catch {
+    // Not installed or no binary for this platform: fall through to PATH.
+  }
+  return 'ffmpeg';
+}
+
+let ffmpegPath = null;
+
+/**
+ * Get a 48 kHz s16le stereo PCM stream for playback through the DJ mixer
+ * (ADR-002, R2).
+ *
+ * Wraps getStream(): its yt-dlp output is piped into our own FFmpeg child,
+ * which does the transcode @discordjs/voice would otherwise do internally for
+ * StreamType.Arbitrary. FFmpeg's teardown is folded into the same idempotent
+ * cleanup, so every terminal path (watchdog, errors, consumer abort, external
+ * cleanup) kills both children. The startup watchdog lives in getStream and is
+ * unchanged; a watchdog kill destroys the source, which ends FFmpeg's input.
+ *
+ * @param {string} url - YouTube URL
+ * @returns {Promise<{ stream: import('stream').Readable, type: string, cleanup: Function }>}
+ */
+export async function getPcmStream(url) {
+  const source = await getStream(url);
+
+  ffmpegPath ??= getFfmpegPath();
+  const ffmpeg = spawn(ffmpegPath, [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-i',
+    'pipe:0',
+    '-f',
+    's16le',
+    '-ar',
+    '48000',
+    '-ac',
+    '2',
+    'pipe:1'
+  ]);
+  const stream = new PassThrough();
+
+  let cleanedUp = false;
+
+  const cleanup = (err) => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+
+    ffmpeg.removeListener('error', onProcessError);
+    ffmpeg.removeListener('close', onProcessClose);
+    stream.removeListener('error', onStreamError);
+    stream.removeListener('close', onStreamClose);
+    source.stream.removeListener('error', onSourceError);
+
+    try {
+      source.stream.unpipe(ffmpeg.stdin);
+    } catch {
+      // Already unpiped.
+    }
+    source.cleanup?.(err);
+
+    if (!ffmpeg.killed && ffmpeg.exitCode === null) {
+      try {
+        ffmpeg.kill('SIGKILL');
+        logger.debug('[Stream] ffmpeg process killed via cleanup');
+      } catch (killErr) {
+        logger.debug('[Stream] ffmpeg kill skipped (already exited):', killErr.message);
+      }
+    }
+
+    if (!stream.destroyed) {
+      stream.destroy(err || undefined);
+    }
+  };
+
+  function onProcessError(error) {
+    logger.error('ffmpeg process error:', error);
+    cleanup(error);
+  }
+
+  function onProcessClose(code) {
+    if (code !== 0 && code !== null) {
+      logger.error(`ffmpeg exited with code ${code}`);
+    }
+    // Normal exit: let buffered PCM drain; the stream's own 'close' cleans up.
+  }
+
+  function onSourceError(err) {
+    logger.debug('[Stream] source error feeding ffmpeg:', err.message);
+    cleanup(err);
+  }
+
+  function onStreamError(err) {
+    logger.debug('[Stream] PCM PassThrough error (expected during cleanup):', err.message);
+    cleanup(err);
+  }
+
+  function onStreamClose() {
+    cleanup();
+  }
+
+  try {
+    // EPIPE on stdin happens whenever ffmpeg is killed mid-write; cleanup
+    // already handles the real cause, so it is not an error of its own.
+    ffmpeg.stdin.on('error', (err) => {
+      logger.debug('[Stream] ffmpeg stdin error:', err.message);
+    });
+    ffmpeg.stderr.on('data', (data) => {
+      logger.error('ffmpeg stderr:', data.toString());
+    });
+
+    source.stream.pipe(ffmpeg.stdin);
+    ffmpeg.stdout.pipe(stream);
+
+    source.stream.on('error', onSourceError);
+    ffmpeg.on('error', onProcessError);
+    ffmpeg.on('close', onProcessClose);
+    stream.on('error', onStreamError);
+    stream.on('close', onStreamClose);
+  } catch (setupError) {
+    logger.error('[Stream] PCM setup failed; tearing down:', setupError);
+    cleanup(setupError);
+    throw setupError;
+  }
+
+  return { stream, type: StreamType.Raw, cleanup };
 }
 
 /**

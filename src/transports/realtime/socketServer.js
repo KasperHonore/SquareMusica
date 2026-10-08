@@ -12,7 +12,10 @@ import {
   handleQueueReorder,
   handlePlayerControl,
   handleVoiceJoin,
-  handleVoiceLeave
+  handleVoiceLeave,
+  handleDjSettings,
+  handleDjThemeStart,
+  handleDjThemeStop
 } from './handlers.js';
 
 let io;
@@ -103,6 +106,9 @@ export function setupSocketServer(httpServer) {
     socket.on(ClientEvents.PLAYER_CONTROL, handlePlayerControl(socket));
     socket.on(ClientEvents.VOICE_JOIN, handleVoiceJoin(socket));
     socket.on(ClientEvents.VOICE_LEAVE, handleVoiceLeave(socket));
+    socket.on(ClientEvents.DJ_SETTINGS, handleDjSettings(socket));
+    socket.on(ClientEvents.DJ_THEME_START, handleDjThemeStart(socket));
+    socket.on(ClientEvents.DJ_THEME_STOP, handleDjThemeStop(socket));
 
     // Playlist event handlers
     socket.on(ClientEvents.PLAYLIST_CREATE, ({ name, spotifyUrl, coverImage }) => {
@@ -166,6 +172,12 @@ export function setupSocketServer(httpServer) {
           context ? `channel=${context.channelName}` : 'null'
         );
         io.emit(ServerEvents.VOICE_CONTEXT, context);
+      }
+    ],
+    [
+      'dj:state',
+      (state) => {
+        io.emit(ServerEvents.DJ_STATE, state);
       }
     ]
   ];

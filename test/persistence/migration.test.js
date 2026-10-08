@@ -238,3 +238,32 @@ describe('DatabaseManager.migrate() — upgrade from a database without is_loop_
     second.close();
   });
 });
+
+describe('DatabaseManager.migrate() — history.added_by_dj (FR-027)', () => {
+  it('adds added_by_dj INTEGER NOT NULL DEFAULT 0 to an existing database, idempotently', () => {
+    seedLegacyDatabase();
+
+    const first = new DatabaseManager(dbPath);
+    const column = first.db.pragma('table_info(history)').find((c) => c.name === 'added_by_dj');
+    expect(column).toBeDefined();
+    expect(column.type).toBe('INTEGER');
+    expect(column.notnull).toBe(1);
+    expect(column.dflt_value).toBe('0');
+    const old = first.db.prepare('SELECT added_by_dj FROM history WHERE title = ?').get('Old Song');
+    expect(old.added_by_dj).toBe(0);
+    first.close();
+
+    let second;
+    expect(() => {
+      second = new DatabaseManager(dbPath);
+    }).not.toThrow();
+    expect(columnNames(second.db, 'history').filter((c) => c === 'added_by_dj')).toHaveLength(1);
+    second.close();
+  });
+
+  it('exists on a fresh install', () => {
+    const manager = new DatabaseManager(dbPath);
+    expect(columnNames(manager.db, 'history')).toContain('added_by_dj');
+    manager.close();
+  });
+});

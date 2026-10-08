@@ -12,6 +12,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // DJ stats page. Written against the `h` alias every stats query uses.
 const COUNTED_PLAY = 'h.requested_by_id IS NOT NULL AND h.is_loop_replay = 0';
 
+// The only dj_usage columns incrementDjUsage() may name. The field is
+// interpolated into SQL, so it is checked against this list first.
+const DJ_USAGE_FIELDS = new Set(['lines', 'themed_tracks']);
+
 export class DatabaseManager {
   /**
    * @param {string|null} [dbPath] - Override the database file. Defaults to
@@ -73,6 +77,10 @@ export class DatabaseManager {
     this.migrate();
     const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf8');
     this.db.exec(schema);
+    // Decided once: getTopTracks runs twice per themed top-up.
+    this.historyHasArtist = this.db
+      .pragma('table_info(history)')
+      .some((col) => col.name === 'artist');
     logger.info('[Database] Schema initialized successfully');
   }
 
@@ -115,6 +123,13 @@ export class DatabaseManager {
     if (!hasIsLoopReplay) {
       this.db.exec('ALTER TABLE history ADD COLUMN is_loop_replay INTEGER NOT NULL DEFAULT 0');
       logger.info('[Database] Migrated: added is_loop_replay to history table');
+    }
+
+    // DJ themed picks (FR-027). Existing rows read as 0: no DJ picks predate it.
+    const hasAddedByDj = tableInfo.some((col) => col.name === 'added_by_dj');
+    if (!hasAddedByDj) {
+      this.db.exec('ALTER TABLE history ADD COLUMN added_by_dj INTEGER NOT NULL DEFAULT 0');
+      logger.info('[Database] Migrated: added added_by_dj to history table');
     }
 
     // Also declared in schema.sql, for the fresh-install path this method returns
@@ -184,7 +199,7 @@ export class DatabaseManager {
   }
 
   // History methods
-  addToHistory(track, guildId = null, { loopReplay = false } = {}) {
+  addToHistory(track, guildId = null, { loopReplay = false, addedByDj = false } = {}) {
     try {
       if (!track?.title || !track?.url) {
         logger.warn('[Database] addToHistory: Missing required track fields', {
@@ -194,7 +209,7 @@ export class DatabaseManager {
         return;
       }
       const stmt = this.db.prepare(
-        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar, is_loop_replay) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO history (guild_id, title, url, duration, thumbnail, requested_by, requested_by_id, requested_by_avatar, is_loop_replay, added_by_dj) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       );
       stmt.run(
         guildId,
@@ -205,7 +220,8 @@ export class DatabaseManager {
         track.requestedBy || 'Unknown',
         track.requestedById || null,
         track.requestedByAvatar || null,
-        loopReplay ? 1 : 0
+        loopReplay ? 1 : 0,
+        addedByDj || track.addedByDj === true ? 1 : 0
       );
     } catch (error) {
       logger.error('[Database] addToHistory failed:', error.message, { track: track?.title });
@@ -561,7 +577,8 @@ export class DatabaseManager {
       eventType: 'skip',
       groupColumn: 'target_user_id',
       nameColumn: 'target_user_name',
-      extraPredicate: 'e.target_user_id <> e.actor_id',
+      // DJ picks have no owner (target_user_id NULL), so "the DJ" never wins.
+      extraPredicate: 'e.target_user_id IS NOT NULL AND e.target_user_id <> e.actor_id',
       // events records no avatar for the target, only for the actor, and the
       // actor here is the person doing the skipping. The victim's own avatar
       // comes from the plays they queued.
@@ -640,6 +657,140 @@ export class DatabaseManager {
       LIMIT 1
     `;
     return this.db.prepare(sql).get({ since, eventType });
+  }
+
+  // ---------------------------------------------------------------------------
+  // AI DJ settings and usage
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The single DJ settings row, created with defaults on first read.
+   * @returns {{ enabled: boolean, interval: number, lookahead: number }}
+   */
+  getDjSettings() {
+    this.db.prepare('INSERT OR IGNORE INTO dj_settings (id) VALUES (1)').run();
+    const row = this.db
+      .prepare('SELECT enabled, interval, lookahead FROM dj_settings WHERE id = 1')
+      .get();
+    return { enabled: row.enabled === 1, interval: row.interval, lookahead: row.lookahead };
+  }
+
+  /**
+   * Persist any subset of { enabled, interval, lookahead } in one UPDATE.
+   * Values are validated by djService before reaching here; the table's CHECK
+   * constraints are the backstop.
+   * @param {{ enabled?: boolean, interval?: number, lookahead?: number }} partial
+   */
+  updateDjSettings(partial) {
+    this.db.prepare('INSERT OR IGNORE INTO dj_settings (id) VALUES (1)').run();
+    const sets = [];
+    const params = {};
+    if (partial.enabled !== undefined) {
+      sets.push('enabled = @enabled');
+      params.enabled = partial.enabled ? 1 : 0;
+    }
+    if (partial.interval !== undefined) {
+      sets.push('interval = @interval');
+      params.interval = partial.interval;
+    }
+    if (partial.lookahead !== undefined) {
+      sets.push('lookahead = @lookahead');
+      params.lookahead = partial.lookahead;
+    }
+    sets.push('updated_at = CURRENT_TIMESTAMP');
+    this.db.prepare(`UPDATE dj_settings SET ${sets.join(', ')} WHERE id = 1`).run(params);
+  }
+
+  /**
+   * Usage counters for one local day; zeros when no row exists.
+   * @param {string} day - 'YYYY-MM-DD'
+   * @returns {{ lines: number, themed_tracks: number }}
+   */
+  getDjUsage(day) {
+    const row = this.db.prepare('SELECT lines, themed_tracks FROM dj_usage WHERE day = ?').get(day);
+    return row
+      ? { lines: row.lines, themed_tracks: row.themed_tracks }
+      : { lines: 0, themed_tracks: 0 };
+  }
+
+  /**
+   * Add one to a usage counter. The field name is interpolated, so it is
+   * whitelisted rather than trusted.
+   * @param {string} day - 'YYYY-MM-DD'
+   * @param {'lines'|'themed_tracks'} field
+   */
+  incrementDjUsage(day, field) {
+    if (!DJ_USAGE_FIELDS.has(field)) {
+      throw new Error(`incrementDjUsage: unknown field "${field}"`);
+    }
+    this.db
+      .prepare(
+        `INSERT INTO dj_usage (day, ${field}) VALUES (?, 1)
+         ON CONFLICT(day) DO UPDATE SET ${field} = ${field} + 1`
+      )
+      .run(day);
+  }
+
+  /**
+   * The local date (in TZ, via SQLite 'localtime') of an instant, 'YYYY-MM-DD'.
+   * Takes the instant from the caller rather than SQLite's own 'now', so the day
+   * agrees with the JS clock the DJ's midnight timer runs on.
+   * @param {number} [nowMs]
+   */
+  getLocalDay(nowMs = Date.now()) {
+    return this.db
+      .prepare("SELECT date(?, 'unixepoch', 'localtime')")
+      .pluck()
+      .get(Math.floor(nowMs / 1000));
+  }
+
+  /** Drop usage rows older than 30 days. Called once at boot. */
+  pruneDjUsage() {
+    this.db.prepare("DELETE FROM dj_usage WHERE day < date('now','localtime','-30 days')").run();
+  }
+
+  // ---------------------------------------------------------------------------
+  // AI DJ themed mode (US4)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Most-played tracks, as history candidates for themed picks (FR-021b).
+   * Counts only COUNTED_PLAY rows, so loop replays and DJ picks never promote
+   * a track. With `userIds`, only those members' plays count.
+   * `artist` is null for rows recorded without one (or before the column).
+   * @param {{ userIds?: string[]|null, limit: number }} params
+   * @returns {Array<{ url: string, title: string, artist: string|null, count: number,
+   *   duration: number|null, thumbnail: string|null }>}
+   */
+  getTopTracks({ userIds = null, limit } = {}) {
+    if (Array.isArray(userIds) && userIds.length === 0) return [];
+    const latest = (column) => `(SELECT h2.${column} FROM history h2
+             WHERE h2.url = h.url
+             ORDER BY h2.played_at DESC, h2.id DESC LIMIT 1)`;
+    const placeholders = userIds ? userIds.map(() => '?').join(', ') : '';
+    return this.db
+      .prepare(
+        `SELECT h.url AS url, COUNT(*) AS count, MIN(h.played_at) AS firstPlayedAt,
+           ${latest('title')} AS title,
+           ${this.historyHasArtist ? latest('artist') : 'NULL'} AS artist,
+           ${latest('duration')} AS duration,
+           ${latest('thumbnail')} AS thumbnail
+         FROM history h
+         WHERE ${COUNTED_PLAY}
+           ${userIds ? `AND h.requested_by_id IN (${placeholders})` : ''}
+         GROUP BY h.url
+         ORDER BY count DESC, firstPlayedAt ASC, h.url ASC
+         LIMIT ?`
+      )
+      .all(...(userIds ?? []), limit)
+      .map(({ url, title, artist, count, duration, thumbnail }) => ({
+        url,
+        title,
+        artist: artist ?? null,
+        count,
+        duration: duration ?? null,
+        thumbnail: thumbnail ?? null
+      }));
   }
 
   // Playlist methods

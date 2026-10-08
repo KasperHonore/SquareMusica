@@ -12,7 +12,8 @@ export const ServerEvents = {
   RESOLUTION_PROGRESS: 'resolution:progress',
   VOICE_CONTEXT: 'voice:context',
   HISTORY_CLEARED: 'history:cleared',
-  PLAYLISTS_UPDATE: 'playlists:update'
+  PLAYLISTS_UPDATE: 'playlists:update',
+  DJ_STATE: 'dj:state'
 };
 
 // Events sent from clients to server
@@ -24,5 +25,8 @@ export const ClientEvents = {
   VOICE_JOIN: 'voice:join',
   VOICE_LEAVE: 'voice:leave',
   PLAYLIST_CREATE: 'playlist:create',
-  PLAYLIST_DELETE: 'playlist:delete'
+  PLAYLIST_DELETE: 'playlist:delete',
+  DJ_SETTINGS: 'dj:settings',
+  DJ_THEME_START: 'dj:theme:start',
+  DJ_THEME_STOP: 'dj:theme:stop'
 };

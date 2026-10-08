@@ -32,7 +32,8 @@ vi.mock('../../../src/transports/realtime/handlers.js', () => ({
   handleQueueReorder: vi.fn(() => vi.fn()),
   handlePlayerControl: vi.fn(() => vi.fn()),
   handleVoiceJoin: vi.fn(() => vi.fn()),
-  handleVoiceLeave: vi.fn(() => vi.fn())
+  handleVoiceLeave: vi.fn(() => vi.fn()),
+  handleDjSettings: vi.fn(() => vi.fn())
 }));
 
 const fakeIo = { use: vi.fn(), on: vi.fn(), emit: vi.fn(), close: vi.fn() };
@@ -54,7 +55,8 @@ const MANAGER_EVENTS = [
   'track:change',
   'player:state',
   'resolution:progress',
-  'voice:context'
+  'voice:context',
+  'dj:state'
 ];
 
 describe('socketServer setup idempotency', () => {
@@ -91,5 +93,12 @@ describe('socketServer setup idempotency', () => {
     expect(botEvents.listenerCount('historyCleared')).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
     expect(fakeIo.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-broadcasts dj:state from the mediator to every socket', () => {
+    setupSocketServer({});
+    const state = { available: true, enabled: true };
+    musicManager.emit('dj:state', state);
+    expect(fakeIo.emit).toHaveBeenCalledWith('dj:state', state);
   });
 });

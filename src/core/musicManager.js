@@ -1,7 +1,6 @@
 import { EventEmitter } from 'events';
 import { db } from '../persistence/db.js';
 import { resolutionManager } from '../services/resolutionManager.js';
-import { tryPlayWithFallback } from '../services/trackResolver.js';
 import { advanceAndPlay } from '../services/playback.js';
 import { addTracksToQueue } from '../shared/queueHelpers.js';
 import { logger } from '../utils/logger.js';
@@ -19,6 +18,11 @@ class MusicManager extends EventEmitter {
     this.getBotInfo = null;
     this.getChannelInfo = null;
     this.isConnected = null;
+    // Wired by services/dj/djService.js when the DJ is configured.
+    this.getDjState = null;
+    // Wired by djService: called before the queue:update of every clear or
+    // stop, so themed mode ends before it could refill the emptied queue.
+    this.onQueueCleared = null;
     this._resolutionListenersSetup = false;
   }
 
@@ -75,6 +79,23 @@ class MusicManager extends EventEmitter {
     this.isConnected = fn;
   }
 
+  setGetDjState(fn) {
+    this.getDjState = fn;
+  }
+
+  setOnQueueCleared(fn) {
+    this.onQueueCleared = fn;
+  }
+
+  // Synchronous, and never lets a hook failure break the clear itself.
+  notifyQueueCleared() {
+    try {
+      this.onQueueCleared?.();
+    } catch (error) {
+      logger.warn('[MusicManager] onQueueCleared hook failed:', error.message);
+    }
+  }
+
   // Helper to emit queue updates with currentIndex
   emitQueueUpdate() {
     this.emit('queue:update', {
@@ -109,25 +130,47 @@ class MusicManager extends EventEmitter {
     return success;
   }
 
+  // Every queue clear cancels a DJ line in progress (FR-009).
   clearQueue() {
     if (!this.queue) return false;
+    this.player?.cancelOverlay?.();
     this.queue.clear();
+    this.notifyQueueCleared();
     this.emitQueueUpdate();
     return true;
   }
 
   clearUpcomingQueue() {
     if (!this.queue) return false;
+    this.player?.cancelOverlay?.();
     this.queue.clearUpcoming();
+    this.notifyQueueCleared();
     this.emitQueueUpdate();
     return true;
   }
 
-  shuffleQueue() {
+  // Keep only the current track (if any). Discord's /clear variant.
+  clearAllButCurrent() {
     if (!this.queue) return false;
-    this.queue.shuffle();
+    this.player?.cancelOverlay?.();
+    const current = this.queue.getCurrent();
+    this.queue.tracks = current ? [current] : [];
+    this.queue.currentIndex = 0;
+    this.notifyQueueCleared();
     this.emitQueueUpdate();
     return true;
+  }
+
+  // Refused while themed mode runs: a shuffle would mix the DJ's picks in among
+  // member requests (FR-024a). prioritizeMemberTracks is that mode's flag.
+  shuffleQueue() {
+    if (!this.queue) return { shuffled: false };
+    if (this.queue.prioritizeMemberTracks) {
+      return { shuffled: false, reason: 'THEMED_MODE_ACTIVE' };
+    }
+    this.queue.shuffle();
+    this.emitQueueUpdate();
+    return { shuffled: true };
   }
 
   // Playback operations
@@ -167,17 +210,24 @@ class MusicManager extends EventEmitter {
   }
 
   // Start playback if nothing is playing/paused (used after a queue add). Returns
-  // whether a track actually started.
+  // whether a track actually started. Goes through advanceAndPlay so member adds
+  // and DJ themed picks share one start path (FR-026), including lookahead on
+  // success and the stop/track:change(null) reset when nothing can play.
   async ensurePlaying() {
     if (!this.player || !this.queue) return false;
-    if (this.player.isPlaying() || this.player.isPaused()) return false;
+    // Buffering counts as busy: the track has been handed over, and playing it
+    // again would restart it from the beginning and cut any overlay.
+    if (this.player.isPlaying() || this.player.isPaused() || this.player.isBuffering?.()) {
+      return false;
+    }
 
     const connection = this.getConnection?.(this.guildId);
-    const { played } = await tryPlayWithFallback(this.player, this.queue, connection);
-    if (!played && this.queue.length > 0) {
-      this.emit('track:change', null);
-      this.emitState();
-    }
+    const { played } = await advanceAndPlay({
+      player: this.player,
+      queue: this.queue,
+      connection,
+      skipCurrent: false
+    });
     return played;
   }
 
@@ -206,6 +256,7 @@ class MusicManager extends EventEmitter {
     if (this.queue) {
       this.queue.clear(); // clear() already resets currentIndex to 0
     }
+    this.notifyQueueCleared();
     this.emit('queue:update', { tracks: [], currentIndex: 0 });
     this.emit('track:change', null);
     this.emitState();
@@ -258,7 +309,9 @@ class MusicManager extends EventEmitter {
       // Read once and cleared, so a later non-loop start of the same entry (e.g.
       // after loop is switched off) is counted.
       const loopReplay = track.loopReplay === true;
-      db.addToHistory(track, this.guildId, { loopReplay });
+      // DJ picks carry requestedBy 'SquareMusica DJ' and no requestedById, so
+      // they are never counted as a member's play (FR-027).
+      db.addToHistory(track, this.guildId, { loopReplay, addedByDj: track.addedByDj === true });
       track.loopReplay = false;
       track.hasPlayed = true;
     }
@@ -288,7 +341,8 @@ class MusicManager extends EventEmitter {
       playerState: this.getPlayerState(),
       resolutionStats: this.queue?.getResolutionStats() || null,
       voiceContext: this.getVoiceContext(),
-      botInfo: this.getBotInfo?.() || null
+      botInfo: this.getBotInfo?.() || null,
+      dj: this.getDjState?.() ?? { available: false }
     };
   }
 }

@@ -150,10 +150,9 @@ export async function handleClear(interaction) {
   const current = q.getCurrent();
   const clearedCount = Math.max(0, q.getAll().length - (current ? 1 : 0));
 
-  // Clear all except current
-  q.tracks = current ? [current] : [];
-  q.currentIndex = 0;
-  musicManager.emitQueueUpdate();
+  // Clear all except current, through the mediator so a DJ line in progress
+  // is cancelled the same way on every transport (FR-009).
+  musicManager.clearAllButCurrent();
 
   // The only clear_queue emit on the Discord surface — handleStop deliberately
   // records nothing even though it also empties the queue. This variant keeps the

@@ -54,7 +54,8 @@ const MANAGER_EVENTS = [
   'track:change',
   'player:state',
   'resolution:progress',
-  'voice:context'
+  'voice:context',
+  'dj:state'
 ];
 
 describe('socketServer setup idempotency', () => {

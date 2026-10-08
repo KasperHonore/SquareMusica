@@ -26,6 +26,8 @@ export function useSocket() {
   const [historyVersion, setHistoryVersion] = useState(0);
   const [botInfo, setBotInfo] = useState(null);
   const [playlists, setPlaylists] = useState([]);
+  // DjState (contracts §1); null until the server's initial:state arrives.
+  const [djState, setDjState] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -99,6 +101,13 @@ export function useSocket() {
       if (Array.isArray(state.playlists)) {
         setPlaylists(state.playlists);
       }
+      if (state.dj) {
+        setDjState(state.dj);
+      }
+    });
+
+    newSocket.on('dj:state', (state) => {
+      setDjState(state);
     });
 
     newSocket.on('playlists:update', (updatedPlaylists) => {
@@ -182,6 +191,15 @@ export function useSocket() {
     [socket]
   );
 
+  // The new state comes back as a dj:state broadcast to every client, this one
+  // included, so nothing is set optimistically here.
+  const setDjSettings = useCallback(
+    (partial) => {
+      socket?.emit('dj:settings', partial);
+    },
+    [socket]
+  );
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -202,6 +220,7 @@ export function useSocket() {
     historyVersion,
     botInfo,
     playlists,
+    djState,
     error,
     notice,
     addToQueue,
@@ -212,6 +231,7 @@ export function useSocket() {
     voiceLeave,
     createPlaylist,
     deletePlaylist,
+    setDjSettings,
     clearError,
     clearNotice
   };

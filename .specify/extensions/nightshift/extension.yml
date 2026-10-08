@@ -3,8 +3,8 @@ schema_version: "1.0"
 extension:
   id: nightshift
   name: "Spec Kit Nightshift"
-  version: "1.1.3"
-  description: "Work packages and unattended batch delivery for Spec Kit: derive one piece per tasks.md phase, get it ready and approve it in one step, run it unattended, hand over one PR with a preview"
+  version: "2.0.0"
+  description: "Work packages and unattended batch delivery for Spec Kit: one piece per tasks.md phase, approved in one step by day, run by night with one fresh orchestrator process per piece, handed over as one PR with a preview"
   author: Kasper Honore
   repository: https://github.com/KasperHonore/spec-kit-nightshift
   license: MIT
@@ -27,11 +27,11 @@ provides:
   commands:
     - name: speckit.nightshift.ready
       file: commands/speckit.nightshift.ready.md
-      description: "Validate, recommend a loop per piece, show the run contract and issue plan, then approve and publish on the owner's go"
+      description: "Check a feature is ready, show the run contract and issue plan, then approve and publish on the owner's go (re-running go re-approves)"
 
     - name: speckit.nightshift.run
       file: commands/speckit.nightshift.run.md
-      description: "Run an approved batch unattended: build, check, review and integrate each piece, then hand over one PR with a preview"
+      description: "Dispatch an approved batch unattended: one fresh orchestrator process per piece, answers and converge rounds, then one PR with a preview"
 
   templates:
     - name: issue-parent
@@ -40,19 +40,16 @@ provides:
     - name: issue-phase
       file: templates/issue-phase.md
       description: "Sub-issue body for one piece"
-    - name: issue-bug
-      file: templates/issue-bug.md
-      description: "Issue body for a reported bug"
     - name: run-contract
       file: templates/run-contract.md
-      description: "Run contract rendered and frozen when the batch is approved"
+      description: "Run contract rendered when the batch is approved (the goal of the night)"
     - name: delivery-record
       file: templates/delivery-record.yml
       description: "Annotated example of the delivery record"
 
     - name: pr-feature
       file: templates/pr-feature.md
-      description: "Feature PR body"
+      description: "Feature PR body: decisions, summary, evidence, merge danger, criteria, changes, gaps"
     - name: pr-phase
       file: templates/pr-phase.md
       description: "Phase PR body"
@@ -65,34 +62,22 @@ provides:
     - name: dashboard
       file: templates/dashboard.html
       description: "Run dashboard"
+    - name: prompt-piece
+      file: templates/prompt-piece.md
+      description: "Piece orchestrator prompt (one fresh process per piece)"
     - name: prompt-builder
       file: templates/prompt-builder.md
       description: "Builder prompt"
     - name: prompt-critic
       file: templates/prompt-critic.md
       description: "Fresh, read-only critic prompt (one per review round)"
-    - name: prompt-fix-builder
-      file: templates/prompt-fix-builder.md
-      description: "Builder prompt for a fix piece (reproduction first)"
-    - name: pr-fix
-      file: templates/pr-fix.md
-      description: "Bug-run PR body into main"
 
   scripts:
-    - name: derive
-      file: scripts/python/derive.py
-      runtimes: [python]
-    - name: validate
-      file: scripts/python/validate.py
-      runtimes: [python]
-    - name: shape
-      file: scripts/python/shape.py
-      runtimes: [python]
-    - name: publish
-      file: scripts/python/publish.py
-      runtimes: [python]
     - name: ready
       file: scripts/python/ready.py
+      runtimes: [python]
+    - name: piece
+      file: scripts/python/piece.py
       runtimes: [python]
     - name: preflight
       file: scripts/python/preflight.py
@@ -102,6 +87,9 @@ provides:
       runtimes: [python]
     - name: log
       file: scripts/python/log.py
+      runtimes: [python]
+    - name: grounding
+      file: scripts/python/grounding.py
       runtimes: [python]
     - name: phase
       file: scripts/python/phase.py
@@ -130,22 +118,47 @@ provides:
     - name: found
       file: scripts/python/found.py
       runtimes: [python]
-    - name: feedback
-      file: scripts/python/feedback.py
-      runtimes: [python]
 
   config:
     - name: nightshift-config.yml
       template: nightshift-config.yml
-      description: "Nightshift defaults: rounds, budgets, check and preview commands"
+      description: "Nightshift defaults: rounds, budgets, check and preview commands, converge rounds"
       required: false
 
 config:
+  # Documentation only: the scripts read nightshift_config.DEFAULTS, which this mirrors
+  # (tests/test_version.py keeps them equal).
   defaults:
     max_rounds: 3
     wall_clock: 8h
     phase_budget: 2h
     review_budget: 1h
+    checks: []
+    preview:
+      command: []
+      health_url: ""
+      health_timeout: 30
+    cli:
+      piece: claude
+      builder: claude
+      critic: claude
+      converge: claude
+    converge:
+      max_rounds: 2
+    gate_paths:
+      - "Makefile"
+      - ".github/workflows/**"
+      - "nightshift-config.yml"
+      - ".specify/extensions/nightshift/**"
+      - ".specify/delivery/**"
+    min_free_mb:
+      warn: 1536
+      refuse: 500
+      probe: 32
+    ci:
+      require: true
+      wait_timeout: 30m
+      poll_interval: 30s
 
 tags:
   - "delivery"

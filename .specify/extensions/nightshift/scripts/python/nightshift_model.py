@@ -1,8 +1,8 @@
 """Pieces, validation and readiness for Spec Kit Nightshift (design §3–§6.1).
 
 Pieces are derived from ``tasks.md`` every time and never stored. The delivery
-record holds only what ``tasks.md`` lacks: the approved loop per piece, loop
-prerequisites, cached issue numbers and the approval baseline.
+record holds only what ``tasks.md`` lacks: the approved loop and optional quality bar
+per piece, protected paths, cached issue numbers and the approval baseline.
 """
 
 from __future__ import annotations
@@ -130,7 +130,7 @@ def _dep_targets(text: str, by_phase: dict[int, str], by_story: dict[str, str],
     return targets
 
 
-def derive(root: Path, feature_dir: Path, record: dict[str, Any] | None = None) -> Derivation:
+def derive(root: Path, feature_dir: Path) -> Derivation:
     tasks_md = feature_dir / "tasks.md"
     if not tasks_md.is_file():
         raise core.NightshiftError(f"tasks.md not found in {feature_dir}; run the Spec Kit tasks command")
@@ -184,19 +184,6 @@ def derive(root: Path, feature_dir: Path, record: dict[str, Any] | None = None) 
                 if t != sk and t not in deps[sk]:
                     deps[sk].append(t)
 
-    # Overrides in the delivery record replace the derived list for a piece.
-    overrides = ((record or {}).get("dependency_overrides") or {})
-    if isinstance(overrides, dict):
-        for k, v in overrides.items():
-            if k not in deps:
-                problems.append({"code": "unknown-piece", "message": f"dependency_overrides names unknown piece {k!r}"})
-                continue
-            vals = v if isinstance(v, list) else []
-            for t in vals:
-                if t not in deps:
-                    problems.append({"code": "unknown-piece", "message": f"dependency_overrides[{k}] names unknown piece {t!r}"})
-            deps[k] = [t for t in vals if t in deps]
-
     for p in pieces:
         p.depends_on = list(dict.fromkeys(deps[p.key]))
 
@@ -238,44 +225,9 @@ def _toposort(pieces: list[Piece]) -> tuple[list[Piece], list[str]]:
     return out, []
 
 
-def derivation_json(d: Derivation) -> dict[str, Any]:
-    return {
-        "feature": d.feature,
-        "pieces": [
-            {
-                "key": p.key,
-                "title": p.title,
-                "kind": p.kind,
-                "phases": p.phases,
-                "story": p.story,
-                "depends_on": p.depends_on,
-                "tasks": [
-                    {
-                        "ref": core.task_ref(d.feature, t.id),
-                        "id": t.id,
-                        "fingerprint": t.fp,
-                        "parallel": t.parallel,
-                        "story": t.story,
-                        "phase": t.phase,
-                        "done": t.done,
-                        **({"source_ref": t.source_refs[0] if len(t.source_refs) == 1 else t.source_refs,
-                            "gap_type": t.gap_type} if t.gap_type else {}),
-                    }
-                    for t in p.tasks
-                ],
-            }
-            for p in d.pieces
-        ],
-        "problems": d.problems,
-    }
-
-
 # ---------------------------------------------------------------------------
 # Baseline (the approved snapshot stored in the delivery record)
 # ---------------------------------------------------------------------------
-
-
-REQ_ID_RE = re.compile(rf"\b({core.REQ_ID})\b")
 
 
 def baseline(d: Derivation, spec: core.SpecDoc | None) -> dict[str, Any]:
@@ -284,6 +236,7 @@ def baseline(d: Derivation, spec: core.SpecDoc | None) -> dict[str, Any]:
         "tasks": {
             t.id: {
                 "fingerprint": t.fp,
+                "description": t.description,
                 "piece": piece_of.get(t.id, ""),
                 "parallel": t.parallel,
                 "story": t.story,
@@ -343,10 +296,6 @@ def check_structure(d: Derivation) -> list[Finding]:
     return out
 
 
-# Drift an absorbed answer may legitimately cause; ``blocker.owner_needed`` decides.
-DRIFT_CODES = ("description-changed", "scheduling-changed", "task-added", "acceptance-added")
-
-
 def check_drift(d: Derivation, spec: core.SpecDoc | None, base: dict[str, Any]) -> tuple[list[Finding], set[str]]:
     """Compare the current files with the approved baseline (design §4).
 
@@ -380,7 +329,7 @@ def check_drift(d: Derivation, spec: core.SpecDoc | None, base: dict[str, Any]) 
         out.append(Finding("error", "remap-required",
                            f"{d.feature}: task IDs no longer match the approved baseline "
                            f"({', '.join(moved[:6])}{', …' if len(moved) > 6 else ''}). "
-                           "Publish and run refuse until the delivery record is remapped and re-approved."))
+                           "The run refuses until ready go re-approves the renumbered tasks."))
         drifted.update(v.get("piece", "") for v in old_tasks.values())
         return out, drifted
 
@@ -435,27 +384,6 @@ def check_drift(d: Derivation, spec: core.SpecDoc | None, base: dict[str, Any]) 
     return out, drifted
 
 
-# Loop prerequisites (design §6.1) ---------------------------------------------
-
-def check_loop_prereqs(root: Path, name: str, loop: str, entry: dict[str, Any],
-                       acceptance_ok: bool, bug: core.BugDoc | None = None) -> list[str]:
-    missing: list[str] = []
-    if loop not in core.LOOPS:
-        return [f"unknown loop {loop!r} (expected one of {', '.join(core.LOOPS)})"]
-    if loop == "build":
-        if not acceptance_ok:
-            missing.append("acceptance refs (an Independent Test or acceptance scenarios in spec.md)")
-    elif loop == "fix":
-        if bug is None:
-            missing.append("a bug assessment (.specify/bugs/<slug>/assessment.md)")
-        else:
-            if not bug.reproduction or "NEEDS CLARIFICATION" in bug.reproduction:
-                missing.append("a reproduction in the bug assessment")
-            if not core.PROMISE_RE.search(bug.sections.get("Symptom", "") + "\n" + bug.sections.get("Report", "")):
-                missing.append("the promise it breaks (a spec reference such as FR-004 in the Symptom)")
-    return missing
-
-
 # Readiness (design §5) -------------------------------------------------------
 
 
@@ -471,15 +399,12 @@ def acceptance_ok(piece: Piece, spec: core.SpecDoc | None) -> bool:
 
 
 def compute_readiness(d: Derivation, spec: core.SpecDoc | None, record: dict[str, Any],
-                      drifted: set[str], prereq_missing: dict[str, list[str]],
-                      remap: bool, assume_approved: bool = False,
+                      drifted: set[str], remap: bool, assume_approved: bool = False,
                       grounding: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
-    """``grounding``: a ``grounding.check`` result. A piece whose plan the code now
-    contradicts is not ready (``plan stale``); without one, ``code_assumptions`` is
-    ``not_checked`` (core review stage 7)."""
+    """``grounding``: a ``grounding.detect`` result; a piece with a drift note shows
+    ``code_assumptions: drifted`` (it stays ready: the note reaches its builder, P2)."""
     ground = (grounding or {}).get("pieces") or {}
     entries = (record.get("pieces") or {}) if record else {}
-    blockers = (record.get("blockers") or []) if record else []
     own: dict[str, list[str]] = {}
     for p in d.pieces:
         reasons: list[str] = []
@@ -490,36 +415,25 @@ def compute_readiness(d: Derivation, spec: core.SpecDoc | None, record: dict[str
                 if c.story in ("", p.story):
                     reasons.append("clarification")
                     break
-        for b in blockers:
-            if isinstance(b, dict) and b.get("piece") == p.key and b.get("status", "open") == "open":
-                reasons.append("decision")
-                break
         if not acceptance_ok(p, spec):
             reasons.append("no acceptance check")
-        if (ground.get(p.key) or {}).get("status") == "contradicted":
-            reasons.append("plan stale")
         entry = entries.get(p.key) or {}
-        if not entry.get("loop"):
-            reasons.append("not shaped")
-        elif prereq_missing.get(p.key):
-            reasons.append("loop prerequisites")
+        if not entry.get("loop") and p.kind != "convergence":  # converge's pieces run build (D-3')
+            reasons.append("not in the approved batch")
         if not (record or {}).get("approval") and not assume_approved:
             reasons.append("not approved")
         own[p.key] = reasons
 
     out: dict[str, dict[str, Any]] = {}
     for p in d.pieces:  # dependency order, so prerequisites are computed first
-        entry = entries.get(p.key) or {}
         blocked_by = [dep for dep in p.depends_on if out[dep]["status"] in ("not ready", "blocked")]
-        waiting = [dep for dep in p.depends_on if not (entries.get(dep) or {}).get("satisfied")]
+        waiting = list(p.depends_on)
         if own[p.key]:
             status = "not ready"
         elif blocked_by:
             status = "blocked"
         elif waiting:
             status = "waiting"
-        elif entry.get("satisfied"):
-            status = "satisfied"
         else:
             status = "ready"
         out[p.key] = {
@@ -527,8 +441,8 @@ def compute_readiness(d: Derivation, spec: core.SpecDoc | None, record: dict[str
             "reasons": own[p.key],
             "blocked_by": blocked_by,
             "waiting_on": waiting,
-            "code_assumptions": (ground.get(p.key) or {}).get("status")
-            or ((grounding or {}).get("status") if grounding else "not_checked"),
+            "code_assumptions": "drifted" if p.key in ground
+            else ("unchanged" if (grounding or {}).get("status") == "drifted" else (grounding or {}).get("status", "not_checked")),
         }
     return out
 
@@ -544,7 +458,7 @@ def readiness_label(r: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Whole-feature validation, shared by validate, shape, publish and ready
+# Whole-feature validation
 # ---------------------------------------------------------------------------
 
 
@@ -573,10 +487,11 @@ class Report:
             "record": str(self.record_path),
             "pieces": [
                 {
-                    "key": p.key,
-                    "title": p.title,
+                    "key": p.key, "title": p.title, "kind": p.kind, "story": p.story,
                     "depends_on": p.depends_on,
-                    "tasks": p.refs(d.feature),
+                    "tasks": [{"ref": core.task_ref(d.feature, t.id), "done": t.done,
+                               **({"source_refs": t.source_refs, "gap_type": t.gap_type} if t.gap_type else {})}
+                              for t in p.tasks],
                     "loop": ((self.record.get("pieces") or {}).get(p.key) or {}).get("loop", ""),
                     "readiness": self.readiness[p.key],
                 }
@@ -586,22 +501,14 @@ class Report:
         }
 
 
+def task_line(t: core.Task) -> str:
+    """A task as a sub-issue body lists it (``ready go``; ticked by ``phase_merge``)."""
+    return (f"- [{'x' if t.done else ' '}] {t.id}{' [P]' if t.parallel else ''}"
+            f"{' [' + t.story + ']' if t.story else ''} {t.description}")
+
+
 def contract_path(root: Path, name: str) -> Path:
     return core.assets_dir(root, name) / "run-contract.md"
-
-
-def check_approval(root: Path, name: str, record: dict[str, Any]) -> list[Finding]:
-    approval = record.get("approval")
-    if not approval:
-        return []
-    path = contract_path(root, name)
-    if not path.is_file():
-        return [Finding("error", "contract-missing", f"approved run contract is missing: {path}")]
-    actual = core.sha256_text(path.read_text(encoding="utf-8"))
-    if actual != approval.get("contract_hash"):
-        return [Finding("error", "contract-changed",
-                        f"run contract {path} changed after approval; revoke and re-approve (shape --revoke, then ready go)")]
-    return []
 
 
 def validate_feature(root: Path, feature_dir: Path, record: dict[str, Any] | None = None,
@@ -609,11 +516,10 @@ def validate_feature(root: Path, feature_dir: Path, record: dict[str, Any] | Non
     """Validate a feature. ``record`` replaces the stored delivery record and
     ``assume_approved`` drops the "not approved" reason: ``ready check`` shows the
     readiness the batch will have once approved, before anything is written."""
-    name = feature_dir.name
-    rpath = core.record_path(root, name)
+    rpath = core.record_path(root, feature_dir.name)
     if record is None:
         record = core.load_record(rpath)
-    d = derive(root, feature_dir, record)
+    d = derive(root, feature_dir)
     spec_path = feature_dir / "spec.md"
     spec = core.parse_spec(spec_path) if spec_path.is_file() else None
     findings = check_structure(d)
@@ -634,7 +540,6 @@ def validate_feature(root: Path, feature_dir: Path, record: dict[str, Any] | Non
         if k not in keys:
             findings.append(Finding("error", "unknown-piece",
                                     f"delivery record has piece {k!r}, which tasks.md no longer derives", piece=k))
-    prereq_missing: dict[str, list[str]] = {}
     for p in d.pieces:
         entry = entries.get(p.key) or {}
         if entry.get("quality_bar"):
@@ -642,89 +547,9 @@ def validate_feature(root: Path, feature_dir: Path, record: dict[str, Any] | Non
                 quality_bar(root, entry)
             except core.NightshiftError as exc:
                 findings.append(Finding("error", "quality-bar", str(exc), piece=p.key))
-        loop = entry.get("loop")
-        if not loop:
-            continue
-        missing = check_loop_prereqs(root, name, loop, entry, acceptance_ok(p, spec))
-        if missing:
-            prereq_missing[p.key] = missing
-            for m in missing:
-                findings.append(Finding("error", "loop-prerequisite",
-                                        f"piece {p.key} ({loop}) is missing {m}", piece=p.key))
-    findings += check_approval(root, name, record)
     remap = any(f.code == "remap-required" for f in findings)
-    readiness = compute_readiness(d, spec, record, drifted, prereq_missing, remap, assume_approved, grounding)
+    readiness = compute_readiness(d, spec, record, drifted, remap, assume_approved, grounding)
     return Report(d, spec, rpath, record, findings, readiness)
-
-
-# ---------------------------------------------------------------------------
-# Bugs
-# ---------------------------------------------------------------------------
-
-
-# A bug run's extra gate paths: the assessment and every spec are never the builder's
-# (D-BUGTEST: Nightshift never writes ``.specify/bugs/<slug>/test.md`` either).
-BUG_GATES = [".specify/bugs/**", "specs/**"]
-
-
-def bug_dir(root: Path, slug: str) -> Path:
-    path = root / ".specify" / "bugs" / slug
-    if not (path / "assessment.md").is_file():
-        raise core.NightshiftError(f"bug assessment not found: {path / 'assessment.md'}")
-    return path
-
-
-def bug_route(bug: core.BugDoc) -> tuple[str, str]:
-    """Return (loop or route, one-line reason) for a reported bug (design §6.1)."""
-    verdict = bug.verdict
-    promise = core.PROMISE_RE.search(bug.sections.get("Symptom", "") + "\n" + bug.sections.get("Report", ""))
-    if verdict.startswith("invalid") or not promise:
-        why = "verdict is invalid" if verdict.startswith("invalid") else "no spec promise is cited"
-        return "speckit.specify", f"Never promised ({why}): route to Spec Kit as new work, not a fix loop"
-    if "needs reproduction" in verdict or not bug.reproduction or "NEEDS CLARIFICATION" in bug.reproduction:
-        return "speckit.bug.assess", "Promised but not yet reproduced: finish the assessment first"
-    return "fix", f"Promised behaviour ({promise.group(0)}) is broken and has a reproduction"
-
-
-def validate_bug(root: Path, slug: str, loop: str | None) -> tuple[core.BugDoc, list[Finding]]:
-    bug = core.parse_bug(bug_dir(root, slug))
-    findings: list[Finding] = []
-    if not bug.verdict:
-        findings.append(Finding("error", "bug-verdict-missing", f"{bug.path}: no **Verdict** header"))
-    open_q = core.CLARIFY_RE.findall(bug.path.read_text(encoding="utf-8"))
-    if open_q:
-        findings.append(Finding("warning", "bug-clarification", f"{bug.path}: {len(open_q)} open clarification(s)"))
-    if loop:
-        for m in check_loop_prereqs(root, f"bug-{slug}", loop, {}, False, bug):
-            findings.append(Finding("error", "loop-prerequisite", f"bug {slug} ({loop}) is missing {m}"))
-    return bug, findings
-
-
-def run_target(root: Path, feature: str | None, bug: str | None) -> tuple[Path, str]:
-    """(folder, run name) of a feature run, or of a bug run (``bug-<slug>``, whose folder is
-    the bug's assessment folder). One addressing rule for every script that takes ``--bug``."""
-    if bug:
-        return bug_dir(root, bug), f"bug-{bug}"
-    fdir = core.resolve_feature_dir(root, feature)
-    return fdir, fdir.name
-
-
-def refuse_unless_fix(root: Path, slug: str) -> dict[str, Any]:
-    """B1: only a promised, reproduced bug with a shaped fix record becomes a run. A
-    never-promised bug routes to Spec Kit, refused before any branch, PR or token
-    (mechanical). Returns the delivery record."""
-    bug = core.parse_bug(bug_dir(root, slug))
-    route, reason = bug_route(bug)
-    if route != "fix":
-        raise core.NightshiftError(f"bug {slug} does not enter the fix loop: route {route}. {reason}")
-    record = core.load_record(core.record_path(root, f"bug-{slug}"))
-    if record.get("loop") != "fix" or record.get("bug") != slug:
-        raise core.NightshiftError(f"no fix record for {slug}; run `ready go --bug {slug}` first")
-    _, findings = validate_bug(root, slug, "fix")
-    errors = [f for f in findings if f.severity == "error"]
-    if errors:
-        raise core.NightshiftError("; ".join(f"[{f.code}] {f.message}" for f in errors))
-    return record
 
 
 # ---------------------------------------------------------------------------
@@ -733,45 +558,6 @@ def refuse_unless_fix(root: Path, slug: str) -> dict[str, Any]:
 
 
 GOAL_LABELS = ("Purpose", "Checkpoint")
-
-
-def freeze_bug_bar(root: Path, bug_dir: Path) -> dict[str, Any]:
-    """The bar of a fix run (D24): the assessment's Symptom and Reproduction, and the text
-    of every spec promise it cites (FR/SC ids, USn/ACm), each quoted verbatim. Mechanical:
-    a cited promise that cannot be quoted from a cited ``specs/<dir>/spec.md`` refuses."""
-    bug = core.parse_bug(bug_dir)
-    cited = bug.sections.get("Symptom", "") + "\n" + bug.sections.get("Report", "")
-    specs = []
-    for m in re.finditer(r"specs/[\w.-]+", cited):
-        path = root / m.group(0) / "spec.md"
-        if path.is_file() and path not in specs:
-            specs.append(path)
-    refs: list[str] = []
-    for m in re.finditer(rf"\b{core.REQ_ID}\b|US\d+/AC\d+", cited):
-        if m.group(0) not in refs:
-            refs.append(m.group(0))
-    scenarios = [{"ref": f"bug/{label}", "text": bug.sections[label]}
-                 for label in ("Symptom", "Reproduction") if bug.sections.get(label, "").strip()]
-    missing = []
-    for ref in refs:
-        text = None
-        for path in specs:
-            doc = core.parse_spec(path)
-            by_ref = {s.ref: s.text for s in doc.scenarios}
-            if ref in by_ref:
-                text = by_ref[ref]
-            elif core.requirement_text(path, ref) != ref:
-                text = core.requirement_text(path, ref)
-            if text is not None:
-                scenarios.append({"ref": ref, "text": text, "source": path.relative_to(root).as_posix()})
-                break
-        if text is None:
-            missing.append(ref)
-    if missing:
-        raise core.NightshiftError(f"bug {bug.slug}: cited promise(s) {', '.join(missing)} not found in "
-                                   f"{', '.join(p.relative_to(root).as_posix() for p in specs) or 'any cited specs/<dir>'}")
-    return {"feature": core.feature_id(root, bug_dir), "piece": "fix", "story": "", "loop": "fix",
-            "independent_test": "", "bug": bug.slug, "scenarios": scenarios}
 
 
 QUALITY_REF = "quality-bar"
@@ -797,10 +583,10 @@ def quality_bar(root: Path, entry: dict[str, Any]) -> str | None:
     return raw
 
 
-def freeze_bar(root: Path, fdir: Path, key: str, loop: str, bar_refs: list[str] | None = None) -> dict[str, Any]:
+def freeze_bar(root: Path, fdir: Path, key: str, loop: str) -> dict[str, Any]:
     """The bar a piece's critic judges: its acceptance criteria verbatim, plus its
     approved quality bar as one more criterion (``quality-bar``) where it has one."""
-    bar = _criteria_bar(root, fdir, key, loop, bar_refs)
+    bar = _criteria_bar(root, fdir, key, loop)
     entry = ((core.load_record(core.record_path(root, fdir.name)).get("pieces") or {}).get(key) or {})
     text = quality_bar(root, entry)
     if text:
@@ -808,27 +594,44 @@ def freeze_bar(root: Path, fdir: Path, key: str, loop: str, bar_refs: list[str] 
     return bar
 
 
-def _criteria_bar(root: Path, fdir: Path, key: str, loop: str, bar_refs: list[str] | None = None) -> dict[str, Any]:
-    if loop == "fix":  # every fix piece of a bug run (a correction too) answers to the bug's bar
-        return {**freeze_bug_bar(root, fdir), "piece": key}
-    d = derive(root, fdir, core.load_record(core.record_path(root, fdir.name)))
+def traced(task: core.Task, spec: core.SpecDoc | None) -> bool:
+    """A converge task the run may build (D-3'): tagged ``missing``, ``partial`` or
+    ``contradicts`` with every ref an acceptance scenario or requirement of ``spec.md``.
+    Everything else, every ``unrequested`` task included, is a product decision."""
+    if task.gap_type not in ("missing", "partial", "contradicts") or not task.source_refs or spec is None:
+        return False
+    known = {s.ref for s in spec.scenarios} | set(spec.requirements)
+    return all(r in known for r in task.source_refs)
+
+
+def converge_split(piece: Piece, spec: core.SpecDoc | None) -> tuple[list[core.Task], list[core.Task]]:
+    """(traced, untraced) open tasks of a Convergence piece."""
+    open_tasks = [t for t in piece.tasks if not t.done]
+    return [t for t in open_tasks if traced(t, spec)], [t for t in open_tasks if not traced(t, spec)]
+
+
+def excluded_tasks(root: Path, fdir: Path, key: str) -> set[str]:
+    """Task ids of ``key`` its builder may not tick: a Convergence piece's untraced tasks."""
+    piece = next((p for p in derive(root, fdir).pieces if p.key == key), None)
+    if piece is None or piece.kind != "convergence":
+        return set()
+    spec = core.parse_spec(fdir / "spec.md") if (fdir / "spec.md").is_file() else None
+    return {t.id for t in piece.tasks if not traced(t, spec)}
+
+
+def _criteria_bar(root: Path, fdir: Path, key: str, loop: str) -> dict[str, Any]:
+    d = derive(root, fdir)
     piece = next((p for p in d.pieces if p.key == key), None)
     spec_path = fdir / "spec.md"
     spec = core.parse_spec(spec_path) if spec_path.is_file() else None
-    if bar_refs:
-        # An added piece (a correction from feedback): its bar is exactly the cited
-        # approved criteria, quoted verbatim (D-FB).
-        by_ref = {s.ref: s.text for s in (spec.scenarios if spec else [])}
-        reqs = set(spec.requirements if spec else [])
-        missing = [r for r in bar_refs if r not in by_ref and r not in reqs]
-        if missing:
-            raise core.NightshiftError(f"{key}: bar refs not in spec.md: {', '.join(missing)}")
-        return {"feature": d.feature, "piece": key, "story": piece.story if piece else "", "loop": loop,
-                "independent_test": "",
-                "scenarios": [{"ref": r, "text": by_ref.get(r) or core.requirement_text(spec_path, r)}
-                              for r in bar_refs]}
     if piece is None:
         raise core.NightshiftError(f"piece {key!r} not found in {d.feature}/tasks.md")
+    if piece.kind == "convergence":
+        # The cited criteria and requirements of its traced tasks, verbatim (D-3').
+        refs = list(dict.fromkeys(r for t in converge_split(piece, spec)[0] for r in t.source_refs))
+        by_ref = {s.ref: s.text for s in (spec.scenarios if spec else [])}
+        return {"feature": d.feature, "piece": key, "story": "", "loop": loop, "independent_test": "",
+                "scenarios": [{"ref": r, "text": by_ref.get(r) or core.requirement_text(spec_path, r)} for r in refs]}
     scenarios: list[dict[str, str]] = []
     independent = piece.labels.get("Independent Test", "")
     if spec is not None and piece.story:
@@ -846,10 +649,9 @@ def _criteria_bar(root: Path, fdir: Path, key: str, loop: str, bar_refs: list[st
 
 def bar_markdown(bar: dict[str, Any]) -> str:
     lines = []
-    if bar.get("loop") == "fix":
-        lines.append("Bug fix: `bug/Symptom` passes only if the symptom no longer occurs at this SHA, "
-                     "`bug/Reproduction` only if those steps now give the expected behaviour, and each "
-                     "cited promise only if the code at this SHA keeps it.")
+    if str(bar.get("piece", "")).startswith("convergence-"):
+        lines.append("Convergence gaps found by /speckit-converge: each change must trace to one of these "
+                     "lines of spec.md; a change the lines below do not ask for fails its criterion.")
     if bar.get("independent_test"):
         lines.append(f"Independent Test: {bar['independent_test']}")
     lines += [f"- {s['ref']}: {s['text']}" for s in bar.get("scenarios", []) if s["ref"] != QUALITY_REF]

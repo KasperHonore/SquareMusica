@@ -177,43 +177,8 @@ def _differences(issue: dict[str, Any], title: str, body: str) -> list[str]:
 
 
 def plan_items(plan: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
-    """(key, item) pairs in publish order: parent or bug issue first."""
-    if plan["kind"] == "bug":
-        return [("bug", plan["issue"])]
+    """(key, item) pairs in publish order: parent first."""
     return [("parent", plan["parent"])] + [(i["piece"], i) for i in plan["sub_issues"]]
-
-
-def reconcile(gh: Gh, plan: dict[str, Any], cached: dict[str, Any],
-              published: dict[str, str] | None = None) -> Outcome:
-    """Compare the plan with GitHub without writing anything (H17)."""
-    remote = index_issues(gh)
-    out = Outcome()
-    for key, item in plan_items(plan):
-        mk = marker_key(item["marker"])
-        issue = remote.by_marker.get(mk)
-        cnum = cached.get(key)
-        if issue is None:
-            out.add("missing", key, None, "no issue carries this marker")
-            if cnum:
-                out.warnings.append(f"{key}: cached issue #{cnum} does not carry the marker; the marker wins")
-            continue
-        out.numbers[key] = issue["number"]
-        if cnum and cnum != issue["number"]:
-            out.warnings.append(f"{key}: cached #{cnum} differs from marked #{issue['number']}; the marker wins")
-        if issue.get("state") == "closed":
-            out.add("closed-on-github", key, issue["number"], "closed by hand on GitHub")
-        diffs = _differences(issue, item["title"], item["body"])
-        if diffs and _origin(issue, published or {}, key) == "repo":
-            out.add("outdated", key, issue["number"],
-                    "the repository changed since the last publish; --apply updates " + " and ".join(diffs))
-        elif diffs:
-            out.add("edited-on-github" if "body" in diffs else "title-differs", key, issue["number"],
-                    "generated " + " and ".join(diffs) + " edited on GitHub since the last publish")
-        if not diffs and issue.get("state") != "closed":
-            out.add("in-sync", key, issue["number"])
-    for mk, nums in remote.duplicates.items():
-        out.warnings.append(f"duplicate issues carry marker [{mk}]: {', '.join('#' + str(n) for n in nums)}")
-    return out
 
 
 def apply(gh: Gh, plan: dict[str, Any], published: dict[str, str] | None = None) -> Outcome:
@@ -251,9 +216,8 @@ def apply(gh: Gh, plan: dict[str, Any], published: dict[str, str] | None = None)
         out.published[key] = content_hash(item["title"], item["body"])
     for mk, nums in remote.duplicates.items():
         out.warnings.append(f"duplicate issues carry marker [{mk}]: {', '.join('#' + str(n) for n in nums)}")
-    if plan["kind"] == "feature":
-        _link_sub_issues(gh, plan, issues, out)
-        _link_blocked_by(gh, plan, issues, out)
+    _link_sub_issues(gh, plan, issues, out)
+    _link_blocked_by(gh, plan, issues, out)
     return out
 
 

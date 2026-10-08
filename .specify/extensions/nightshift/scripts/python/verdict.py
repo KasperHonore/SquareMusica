@@ -28,7 +28,7 @@ What this script enforces, all **mechanical**:
   blocker/major finding asks for changes; otherwise approve. Only findings the builder
   has not seen go back to it; ``max_rounds`` or the same blockers twice park the piece.
 - **No loop switching**: no code path writes a piece's ``loop``; ``next`` refuses when the
-  state's loop or contract hash differs from the approved record.
+  state's loop differs from the approved record.
 
 Whether the critic's judgement is right is behavioural (P3).
 """
@@ -166,21 +166,22 @@ def fingerprint(f: dict[str, Any]) -> str:
 
 
 class Ctx:
-    def __init__(self, feature: str | None, piece: str, bug: str | None = None) -> None:
+    def __init__(self, feature: str | None, piece: str) -> None:
         self.root = core.find_project_root()
-        self.fdir, self.name = model.run_target(self.root, feature, bug)
+        self.fdir = core.resolve_feature_dir(self.root, feature)
+        self.name = self.fdir.name
         self.state = st.load(self.root, self.name)
         self.key, self.p = piece, st.piece(self.state, piece)
         self.record = core.load_record(core.record_path(self.root, self.name))
         self.cfg = config.load(self.root)
-        self._guard = (self.p["loop"], self.state.get("contract_hash"))
+        self._guard = self.p["loop"]
 
     def ev(self, sha: str) -> Path:
         return st.run_dir(self.root, self.name) / "evidence" / self.key / sha
 
     def save(self) -> None:
-        if (self.p["loop"], self.state.get("contract_hash")) != self._guard:
-            raise core.NightshiftError(f"{self.key}: loop or contract hash changed in-process; refusing to save")
+        if self.p["loop"] != self._guard:
+            raise core.NightshiftError(f"{self.key}: loop changed in-process; refusing to save")
         st.save(self.root, self.name, self.state)
 
     def log(self, step: str, outcome: str, sha: str | None, detail: str = "") -> None:
@@ -217,7 +218,7 @@ def inputs(c: Ctx, sha_rev: str, base_rev: str | None, checkout: Path) -> dict[s
     base = resolve_sha(checkout, base_rev or p["base_sha"])
     ev = c.ev(sha)
     ev.mkdir(parents=True, exist_ok=True)
-    bar = model.freeze_bar(c.root, c.fdir, c.key, p["loop"], p.get("bar_refs"))
+    bar = model.freeze_bar(c.root, c.fdir, c.key, p["loop"])
     bar_hash = sha256_json(bar)
     (ev / "bar.json").write_text(json.dumps(bar, indent=2) + "\n", encoding="utf-8")
     (ev / "diff.patch").write_text(git(checkout, "diff", base, sha), encoding="utf-8")
@@ -351,15 +352,15 @@ def stagnated(history: list[Any]) -> bool:
     return len(recs) >= 2 and bool(recs[-1]["blockers"]) and sorted(recs[-2]["blockers"]) == sorted(recs[-1]["blockers"])
 
 
-def _repair(c: Ctx, source: str, blockers: list[str], findings: list[dict[str, Any]], sha: str | None,
-            park_as: str | None = None) -> dict[str, Any]:
+def _repair(c: Ctx, source: str, blockers: list[str], findings: list[dict[str, Any]],
+            sha: str | None) -> dict[str, Any]:
     """Record a failed round and hand it back to the builder, or park it (round cap, stagnation)."""
     c.p["blocker_history"].append({"round": c.p["round"], "sha": sha, "source": source, "blockers": blockers})
     if stagnated(c.p["blocker_history"]):
-        return _park(c, park_as or "stagnation", sha)
-    if c.p["round"] >= int(c.cfg.get("max_rounds") or 3):
-        return _park(c, park_as or "max_rounds", sha)
-    return _build(c, f"{source}_failed" if source != "repro" else "repro_invalid", findings, sha)
+        return _park(c, "stagnation", sha)
+    if st.rounds_used(c.p) >= int(c.cfg.get("max_rounds") or 3):
+        return _park(c, "max_rounds", sha)
+    return _build(c, f"{source}_failed", findings, sha)
 
 
 def next_step(c: Ctx) -> dict[str, Any]:
@@ -367,9 +368,6 @@ def next_step(c: Ctx) -> dict[str, Any]:
     if approved and approved != c.p["loop"]:
         raise core.NightshiftError(f"{c.key}: run state loop {c.p['loop']!r} differs from the approved loop "
                                    f"{approved!r}; a loop change needs a human decision, never the run")
-    frozen = (c.record.get("approval") or {}).get("contract_hash")
-    if frozen and c.state.get("contract_hash") and frozen != c.state["contract_hash"]:
-        raise core.NightshiftError(f"{c.key}: run contract hash differs from the approved one")
     p, sha, status = c.p, c.p.get("candidate_sha"), c.p["status"]
     simple = {"merging": ("merge", "approved"), "parked": ("park", p.get("reason")),
               "building": ("build", "in_progress")}
@@ -385,19 +383,6 @@ def next_step(c: Ctx) -> dict[str, Any]:
         red = chk.findings(c.ev(sha)) if sha and p["checks"] == "failed" else []
         return _repair(c, "postconditions", blockers, [{"severity": "blocker", "category": "postconditions", "path": "-",
                                                         "lines": "-", "rationale": b} for b in blockers] + red, sha)
-    repro = p.get("repro") or {}
-    if status == "checking" and p["checks"] == "failed" and p["loop"] == "fix" \
-            and repro.get("fix_sha") == sha and not repro.get("ok"):
-        # A fix piece's done condition failed; the next round restarts from the base.
-        p["reset_to_base"] = True
-        out = _repair(c, "repro", ["repro:" + repro["reason"]], [{
-            "severity": "blocker", "category": "fix", "path": "-", "lines": "*",
-            "rationale": f"Reproduction refused: {repro['reason']}. Start again from the base: a failing test "
-                         "alone first, then the fix."}], sha, park_as="repro_invalid")
-        if out["action"] == "park":
-            p.pop("reset_to_base", None)
-            c.save()
-        return out
     if status == "checking" and p["checks"] == "failed":
         recs = [h for h in p["blocker_history"] if isinstance(h, dict)]
         if not sha or sha == p.get("base_sha") or (recs and recs[-1].get("sha") == sha):
@@ -410,7 +395,7 @@ def next_step(c: Ctx) -> dict[str, Any]:
             return {"action": "review", "reason": "verdict_missing_or_invalid", "unseen_findings": []}
         if stagnated(p["blocker_history"]):
             return _park(c, "stagnation", sha)
-        if p["round"] >= int(c.cfg.get("max_rounds") or 3):
+        if st.rounds_used(p) >= int(c.cfg.get("max_rounds") or 3):
             return _park(c, "max_rounds", sha)
         return _build(c, verdict["reason"], verdict["findings"], sha)
     return {"action": "review" if p["checks"] == "passed" else "build", "reason": f"status_{status}",
@@ -423,7 +408,7 @@ def next_step(c: Ctx) -> dict[str, Any]:
 
 
 def main(argv: list[str]) -> int:
-    takes_value = {"--feature", "--bug", "--piece", "--sha", "--file", "--base", "--checkout"}
+    takes_value = {"--feature", "--piece", "--sha", "--file", "--base", "--checkout"}
     idx = next((i for i, a in enumerate(argv) if a in ("inputs", "review", "next")
                 and (i == 0 or argv[i - 1] not in takes_value)), None)
     if idx is None:
@@ -433,8 +418,7 @@ def main(argv: list[str]) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("inputs", "review", "next"):
         sp = sub.add_parser(name)
-        for flag in ("--feature", "--bug"):
-            sp.add_argument(flag)
+        sp.add_argument("--feature")
         sp.add_argument("--piece", required=True)
         sp.add_argument("--json", action="store_true")
         if name != "next":
@@ -445,7 +429,7 @@ def main(argv: list[str]) -> int:
         if name == "review":
             sp.add_argument("--file", required=True, help="the critic's answer (phase.py review prints it)")
     args = ap.parse_args(argv)
-    c = Ctx(args.feature, args.piece, args.bug)
+    c = Ctx(args.feature, args.piece)
     if args.cmd == "inputs":
         wt = st.run_dir(c.root, c.name) / "worktrees" / c.key
         checkout = Path(args.checkout).resolve() if args.checkout else (wt if wt.is_dir() else c.root)

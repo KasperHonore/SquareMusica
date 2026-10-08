@@ -1,0 +1,59 @@
+name: Run hit a wall
+description: A live Nightshift run stopped, parked or went wrong. Analyse it here so a new session can fix it.
+title: "Run wall: <what stopped, in one line>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Write this from the run's evidence, not from memory. Cite `file:line`, a commit SHA
+        or a URL for each claim, and label it **source-inspected**, **runtime-tested** or
+        **live** (`AGENTS.md`). Keep it short; link to existing issues instead of repeating them.
+  - type: input
+    id: run
+    attributes:
+      label: Run
+      description: Run id, feature, Nightshift version, consumer repo, stop reason.
+      placeholder: "20261006T201311Z-002-ai-dj-host · specs/002-ai-dj-host · 2.0.0 · <owner>/<repo> · partial_awaiting_acceptance"
+    validations:
+      required: true
+  - type: textarea
+    id: doing
+    attributes:
+      label: What the loop was doing
+      description: Pieces (piece processes, rounds, results), converge rounds and outcomes up to the wall. A table works well.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it broke
+      description: The causal chain, one numbered step per link, each with its evidence. Say which links were real product problems and which were Nightshift's own.
+    validations:
+      required: true
+  - type: textarea
+    id: principles
+    attributes:
+      label: Principles it broke
+      description: Quote each principle from `docs/philosophy.md` (P1–P9) and say how the run contradicted it. Also name any principle that constrains the fix.
+    validations:
+      required: true
+  - type: textarea
+    id: fixes
+    attributes:
+      label: Fixes, in order of impact
+      description: For each fix, the existing issue it belongs to (`#n`) or "new". State whether the safeguard is mechanical or behavioural. Name options you rule out and why.
+    validations:
+      required: true
+  - type: textarea
+    id: confirm
+    attributes:
+      label: How a run confirms the fix
+      description: The live run (in the sandbox) whose report would confirm each fix.
+    validations:
+      required: true
+  - type: textarea
+    id: owner
+    attributes:
+      label: Waiting on Kasper
+      description: Decisions only Kasper can make (parked pieces, approvals, anything outside the run's authority). "None" if none.

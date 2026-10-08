@@ -1,23 +1,90 @@
 # Third-party notices
 
-As of 2026-10-02, **no third-party code or substantial text is included** in the
-shipped files of Spec Kit Nightshift (`scripts/python/*.py`, `commands/*.md`,
-`templates/*`, `extension.yml`, `nightshift-config.yml`). Nightshift is licensed
-under the MIT License (see `LICENSE`).
+Spec Kit Nightshift is licensed under the MIT License (see `LICENSE`). Two shipped files
+adapt substantial text from the projects below; each is MIT-licensed and its notice and
+licence text follow. Neither skill is installed or called; only the adapted wording ships.
+Everything else in the shipped files (`scripts/python/*.py`, `commands/*.md`,
+`templates/*`, `extension.yml`, `nightshift-config.yml`) is original.
+
+## Matt Pocock: `pr` skill
+
+- Source: `mattpocock/skills`, commit `6fd9479`, `skills/engineering/pr/SKILL.md`
+  (clone in `.research/pocock-skills`).
+- Adapted in: `templates/pr-feature.md` (the Summary, Evidence and Merge danger sections,
+  Door one-way/two-way and Blast radius) and `commands/speckit.nightshift.run.md` (how the
+  dispatcher writes the Summary and Merge danger notes).
+- Copyright (c) 2026 Matt Pocock
+
+```text
+MIT License
+
+Copyright (c) 2026 Matt Pocock
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## HumanLayer: `visual-pr` and `show-me` skills
+
+- Source: `humanlayer/skills`, commit `ca7c808`, `plugins/visual-pr` and `plugins/show-me`
+  (clone in `.research/humanlayer-skills`). The Pocock skill above credits `show-me` too.
+- Adapted in: `commands/speckit.nightshift.run.md` (the Summary as one sentence of why plus
+  the smallest picture: a file tree, call tree or diff sketch) and `templates/pr-feature.md`.
+- Copyright (c) 2026 HumanLayer
+
+```text
+MIT License
+
+Copyright (c) 2026 HumanLayer
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Ideas, not copied material
 
 The design draws on ideas and general approaches from other projects. These are
 credited in `docs/design-proposal.md` section 13 (Borrowed material and attribution).
 Among them: re-grounding's `grounded_at` (2026-10-05) takes the idea of AI Build Kit's
 "Trued against <commit>" mark (`setup-ai-build-kit/references/masterplan-changes.md:26`,
 ABK `fd0780a`); no code or text is copied.
-Ideas are not copied material. If code or substantial text is adapted later, add an
-entry here with the source, path, pinned commit, licence and verbatim copyright line,
-and include the licence text.
 
 ## Audit record
 
-Compared against clones in `.research/` at these commits (line-level and token-shingle
-comparison of every shipped file, plus a manual read of the closest hits):
+Compared on 2026-10-02 (before 2.0.0) against clones in `.research/` at these commits
+(line-level and token-shingle comparison of every shipped file, plus a manual read of the
+closest hits). The Pocock and HumanLayer adaptations above were added in 2.0.0
+(2026-10-07) and are recorded where they are adapted:
 
 | Source | Commit | Licence | Result |
 |---|---|---|---|

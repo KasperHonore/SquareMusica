@@ -8,19 +8,14 @@ Checks, all of them every time, so the refusal names everything missing at once:
   extension, are ignored: Spec Kit's ``.specify/scripts/python/`` writes them);
 - ``.nightshift/`` is gitignored (``git check-ignore``);
 - ``gh`` on PATH and ``gh auth status`` succeeds;
-- the builder CLI (config ``cli.builder``, default ``claude``) on PATH;
+- every agent CLI the run starts (config ``cli.piece``, ``cli.builder``, ``cli.critic``,
+  ``cli.converge``, default ``claude``) on PATH, each distinct executable once;
 - at least one check is configured and each check's executable resolves;
 - a preview command is configured and its executable resolves; a path in it (``argv[0]``
   with a slash, or the script of an interpreter such as ``sh <path>``) must exist where the
   preview will run: absolute paths on disk, repo-relative paths in the committed tree of
-  the base branch for ``--bug`` (the fix branch is cut from it, D24) or of ``HEAD`` for a
-  batch (``git cat-file -e <ref>:<path>``);
-- the batch is approved and ``validate`` passes (with ``--resume`` and an answer waiting for
-  absorb, the drift ``absorb`` judges is reported as ``pending_absorb``); or, with
-  ``--bug <slug>`` (a fix run),
-  ``.specify/bugs/<slug>/assessment.md`` exists, ``validate --bug <slug> --loop fix``
-  passes and the bug's delivery record ``.specify/delivery/bug-<slug>.yml`` has
-  ``loop: fix`` (``ready go --bug <slug>`` was run and committed);
+  ``HEAD`` (``git cat-file -e HEAD:<path>``);
+- the batch is approved and validates against its approval baseline;
 - free disk space in the temp dir ``checks.py`` uses (``tempfile.gettempdir()``) and on
   the repository's filesystem: a warning below ``min_free_mb.warn`` (default 1536 MB),
   a refusal below ``min_free_mb.refuse`` (default 500 MB). A check checkout plus an
@@ -29,8 +24,8 @@ Checks, all of them every time, so the refusal names everything missing at once:
   ``min_free_mb.probe`` MB (default 32; 0 turns it off): a failed write is a refusal
   ``disk-quota`` (1.1.3, L1 phase D: EDQUOT with 891 MB "free").
 
-Branch protection on ``main`` is a **warning** only. v1 does not call the API for
-it unless ``origin`` is a GitHub remote and ``gh`` is available; otherwise it is
+Branch protection on ``main`` is a **warning** only. Preflight does not call the API
+for it unless ``origin`` is a GitHub remote and ``gh`` is available; otherwise it is
 reported as ``not_checked``.
 
 Every check here is **mechanical** but point-in-time: a tool can disappear or a
@@ -81,34 +76,6 @@ def bytecode_noise(line: str) -> bool:
     return cache and (line.startswith("??") or path.startswith(EXTENSION_DIR))
 
 
-# Findings an owner's committed answer causes, which ``blocker.py absorb`` judges (absorb or
-# park). On resume with an answer waiting for absorb they do not refuse (live L1 1.1.1,
-# phase C). Renumbering, structure and every other error still refuse.
-ABSORB_CODES = (*model.DRIFT_CODES, "acceptance-changed", "acceptance-removed")
-
-
-def pending_absorb(root: Path, name: str) -> list[str]:
-    """Why an answer waits for ``blocker.py absorb`` in this run, or [] (no run, no answer):
-    a piece blocked ``tasks_stale``/``reapproval_needed``, or a ``resolved`` blocker logged
-    after the last absorb outcome."""
-    import nightshift_state as nsstate  # noqa: PLC0415
-    try:
-        st = nsstate.load(root, name)
-    except core.NightshiftError:
-        return []
-    why = [f"{k} is blocked {p['reason']}" for k, p in sorted((st.get("pieces") or {}).items())
-           if p.get("status") == "blocked" and p.get("reason") in ("tasks_stale", "reapproval_needed")]
-    last_resolved = last_absorb = -1
-    for i, e in enumerate(nsstate.read_jsonl(nsstate.run_dir(root, name) / "log.jsonl")):
-        if e.get("step") == "blocker" and e.get("outcome") == "resolved":
-            last_resolved = i
-        elif e.get("step") == "blocker" and e.get("outcome") in ("answer_absorbed", "answer_needs_owner"):
-            last_absorb = i
-    if last_resolved > last_absorb:
-        why.append("an answer was resolved and not yet absorbed")
-    return why
-
-
 SCRIPT_SUFFIXES = {".sh", ".bash", ".py", ".js", ".mjs", ".cjs", ".ts", ".rb", ".pl"}
 INTERPRETERS = {"sh", "bash", "dash", "zsh", "python", "python3", "node", "bun", "deno", "ruby", "perl"}
 
@@ -129,17 +96,6 @@ def preview_paths(cmd: list[str]) -> list[str]:
     return paths
 
 
-def base_ref(root: Path, cfg: dict[str, Any]) -> tuple[str, str]:
-    """(branch, ref) of the base branch a fix run cuts from; ref prefers origin's copy."""
-    import phase_merge as pm
-    branch = str(cfg.get("base_branch") or pm.default_branch(root) or "main")
-    for ref in (f"refs/remotes/origin/{branch}", f"refs/heads/{branch}"):
-        res = run(["git", "rev-parse", "--verify", "--quiet", ref], root)
-        if res is not None and res.returncode == 0:
-            return branch, ref
-    return branch, ""
-
-
 def check_preview_paths(root: Path, cmd: list[str], ref: str, label: str, miss) -> None:
     """Each path the preview command needs must exist where the preview runs (D24)."""
     for path in preview_paths(cmd):
@@ -157,32 +113,6 @@ def check_preview_paths(root: Path, cmd: list[str], ref: str, label: str, miss) 
                  f"preview.command needs {path!r}, which is not committed on {label}; the preview runs "
                  f"in a checkout of the PR head, so commit it there first or use an absolute path "
                  f"outside the repository")
-
-
-def check_bug(root: Path, slug: str, miss) -> dict[str, Any]:
-    """Fix-run readiness for one reported bug (design §6.1); returns info fields."""
-    info: dict[str, Any] = {"bug": slug}
-    if not (root / ".specify" / "bugs" / slug / "assessment.md").is_file():
-        miss("no-bug", f"bug assessment not found: .specify/bugs/{slug}/assessment.md")
-        return info
-    try:
-        _, findings = model.validate_bug(root, slug, "fix")
-    except core.NightshiftError as exc:
-        miss("validate-failed", str(exc))
-    else:
-        for f in findings:
-            if f.severity == "error":
-                miss("validate-failed", f"[{f.code}] {f.message}")
-    try:
-        record = core.load_record(core.record_path(root, f"bug-{slug}"))
-    except core.NightshiftError as exc:
-        miss("bug-not-shaped", str(exc))
-    else:
-        info["loop"] = record.get("loop")
-        if record.get("loop") != "fix":
-            miss("bug-not-shaped", f"delivery record .specify/delivery/bug-{slug}.yml has no 'loop: fix'; "
-                 f"run ready go --bug {slug} and commit it")
-    return info
 
 
 def write_probe(path: Path, mb: int) -> str:
@@ -212,8 +142,7 @@ def write_probe(path: Path, mb: int) -> str:
                 pass
 
 
-def preflight(root: Path, fdir: Path | None, feature_arg: str | None, cfg: dict[str, Any],
-              bug: str | None = None, resume: bool = False) -> dict[str, Any]:
+def preflight(root: Path, fdir: Path | None, feature_arg: str | None, cfg: dict[str, Any]) -> dict[str, Any]:
     problems: list[dict[str, str]] = []
     warnings: list[dict[str, str]] = []
     info: dict[str, Any] = {"config": cfg["source"]}
@@ -254,11 +183,15 @@ def preflight(root: Path, fdir: Path | None, feature_arg: str | None, cfg: dict[
             detail = (res.stderr or res.stdout).strip().splitlines()[:1] if res else ["timed out"]
             miss("gh-auth", "gh auth status failed" + (f": {detail[0]}" if detail else ""))
 
-    # agent CLI
-    builder = config.cli_executable(cfg["cli"].get("builder")) or "claude"
-    info["builder_cli"] = builder
-    if not config.resolve_executable(builder, root):
-        miss("builder-cli-missing", f"builder CLI {builder!r} (cli.builder) is not on PATH")
+    # agent CLIs: one entry per distinct executable, naming every role that uses it
+    roles: dict[str, list[str]] = {}
+    for role in config.DEFAULTS["cli"]:
+        exe = config.cli_executable(cfg["cli"].get(role)) or "claude"
+        roles.setdefault(exe, []).append(f"cli.{role}")
+    info["agent_cli"] = roles
+    for exe, used_by in roles.items():
+        if not config.resolve_executable(exe, root):
+            miss("agent-cli-missing", f"agent CLI {exe!r} ({', '.join(used_by)}) is not on PATH")
 
     # checks and preview
     if not cfg["checks"]:
@@ -270,11 +203,7 @@ def preflight(root: Path, fdir: Path | None, feature_arg: str | None, cfg: dict[
     if not cmd:
         miss("no-preview-command", f"preview.command is not configured in {cfg['source']}")
     else:
-        if bug:
-            branch, ref = base_ref(root, cfg)
-            label = f"the base branch {branch!r}"
-        else:
-            ref, label = "HEAD", "HEAD"
+        ref, label = "HEAD", "HEAD"
         if "/" not in str(cmd[0]) and not config.resolve_executable(str(cmd[0]), root):
             miss("preview-tool-missing", f"preview command {cmd[0]!r} is not on PATH")
         elif Path(str(cmd[0])).is_absolute() and not config.resolve_executable(str(cmd[0]), root):
@@ -308,10 +237,8 @@ def preflight(root: Path, fdir: Path | None, feature_arg: str | None, cfg: dict[
             warnings.append({"code": "disk-space-low",
                              "detail": f"{where}, below {limits['warn']:.0f} MB (min_free_mb.warn)"})
 
-    # batch, or one reported bug
-    if bug:
-        info.update(check_bug(root, bug, miss))
-    elif fdir is None:
+    # the batch
+    if fdir is None:
         miss("no-feature", f"feature not found: {feature_arg or '(none selected)'}")
     else:
         try:
@@ -320,21 +247,11 @@ def preflight(root: Path, fdir: Path | None, feature_arg: str | None, cfg: dict[
             miss("validate-failed", str(exc))
         else:
             info["feature"] = rep.derivation.feature
-            if not (rep.record.get("approval") or {}).get("contract_hash"):
-                miss("not-approved", "the batch is not approved; run shape --approve")
-            waiting = pending_absorb(root, fdir.name) if resume else []
-            pending: list[dict[str, str]] = []
+            if not rep.record.get("approval"):
+                miss("not-approved", "the batch is not approved; run ready go")
             for f in rep.findings:
-                if f.severity != "error":
-                    continue
-                if waiting and f.code in ABSORB_CODES:
-                    pending.append({"code": f.code, "detail": f"[{f.code}] {f.message}"})
-                else:
+                if f.severity == "error":
                     miss("validate-failed", f"[{f.code}] {f.message}")
-            if pending:
-                info["pending_absorb"] = {"why": waiting, "findings": pending,
-                                          "next": "run blocker.py absorb --answer <comment-url> first; "
-                                                  "it absorbs the answer or parks the pieces for Kasper"}
 
     # branch protection (warning only)
     protection = "not_checked"
@@ -354,12 +271,12 @@ def preflight(root: Path, fdir: Path | None, feature_arg: str | None, cfg: dict[
     return {"ok": not problems, "missing": problems, "warnings": warnings, **info}
 
 
-def release_own_lease(root: Path, fdir: Path | None, bug: str | None) -> str | None:
+def release_own_lease(root: Path, fdir: Path | None) -> str | None:
     """On refusal, release the lease this session (``NIGHTSHIFT_LEASE``) holds, if any."""
     import os  # noqa: PLC0415
     import nightshift_state as nsstate  # noqa: PLC0415
     owner = os.environ.get("NIGHTSHIFT_LEASE", "")
-    name = f"bug-{bug}" if bug else (fdir.name if fdir else "")
+    name = fdir.name if fdir else ""
     if not owner or not name:
         return None
     lease = nsstate.read_lease(root, name)
@@ -371,25 +288,19 @@ def release_own_lease(root: Path, fdir: Path | None, bug: str | None) -> str | N
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    target = ap.add_mutually_exclusive_group()
-    target.add_argument("--feature", help="feature directory")
-    target.add_argument("--bug", metavar="SLUG", help="a fix run for one reported bug instead of a batch")
+    ap.add_argument("--feature", help="feature directory")
     ap.add_argument("--config", help="nightshift-config.yml to use")
-    ap.add_argument("--resume", action="store_true",
-                    help="resuming a run: drift a committed answer explains is pending absorb, not refused")
     ap.add_argument("--json", action="store_true", help="print JSON")
     args = ap.parse_args(argv)
     root = core.find_project_root()
     cfg = config.load(root, args.config)
-    fdir: Path | None = None
-    if not args.bug:
-        try:
-            fdir = core.resolve_feature_dir(root, args.feature)
-        except core.NightshiftError:
-            fdir = None
-    out = preflight(root, fdir, args.feature, cfg, args.bug, resume=args.resume)
+    try:
+        fdir: Path | None = core.resolve_feature_dir(root, args.feature)
+    except core.NightshiftError:
+        fdir = None
+    out = preflight(root, fdir, args.feature, cfg)
     if not out["ok"]:
-        out["lease_released"] = release_own_lease(root, fdir, args.bug)
+        out["lease_released"] = release_own_lease(root, fdir)
     if args.json:
         core.emit_json(out)
     else:
@@ -397,10 +308,6 @@ def main(argv: list[str]) -> int:
             print(f"MISSING [{m['code']}] {m['detail']}")
         for w in out["warnings"]:
             print(f"WARNING [{w['code']}] {w['detail']}")
-        for f in (out.get("pending_absorb") or {}).get("findings", []):
-            print(f"PENDING ABSORB {f['detail']}")
-        if out.get("pending_absorb"):
-            print("NEXT " + out["pending_absorb"]["next"])
         if out.get("lease_released"):
             print(f"Released the run lease {out['lease_released']}")
         print("Preflight " + ("passed" if out["ok"] else f"REFUSED ({len(out['missing'])} problem(s))"))

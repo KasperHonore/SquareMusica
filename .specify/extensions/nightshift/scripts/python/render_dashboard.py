@@ -21,11 +21,6 @@ engineering view (pieces table and full logbook) folds away at the bottom. A sce
 is ticked only when the owner confirmed it in a live acceptance (D-ACC); a merged story
 shows its scenarios as "built, not yet confirmed", never as passed.
 
-``--bug SLUG`` renders a bug run (``.nightshift/bug-<slug>/``, D24): there is no
-``tasks.md``; each fix piece shows its reproduction result (before/after exit at the
-repro and fix commits), the verdict, its phase PR and the preview in its row, and the
-story card links the one PR into the base branch.
-
 Safeguards:
 
 - *mechanical*: never on the critical path. Every failure is caught, logged as a
@@ -63,9 +58,17 @@ def esc(value: Any) -> str:
     return html.escape("" if value is None else str(value))
 
 
+def process_since(state: dict[str, Any], key: str) -> str:
+    """When the piece's orchestrator process started, while state says it runs ("" otherwise):
+    a recorded process whose ``<piece>:<attempt>:piece`` step has no done record yet."""
+    proc = state["pieces"][key].get("process") or {}
+    step = (state.get("steps") or {}).get(f"{key}:{proc.get('attempt')}:piece") or {}
+    return str(proc.get("started_at") or "") if proc and not step.get("done") else ""
+
+
 def current_piece(state: dict[str, Any]) -> str:
     for key, p in state["pieces"].items():
-        if p["status"] in nsstate.ACTIVE:
+        if p["status"] in nsstate.ACTIVE or process_since(state, key):
             return key
     return ""
 
@@ -82,28 +85,6 @@ def rounds_to_approve(state: dict[str, Any], key: str, p: dict[str, Any]) -> str
     if p["status"] == "passed" or p.get("merged_sha"):
         return str(p.get("round") or 0)
     return "-"
-
-
-def fix_summary(state: dict[str, Any], p: dict[str, Any]) -> str:
-    """A fix run's evidence in one cell: reproduction, verdict, PR, preview (D24)."""
-    r = p.get("repro") or {}
-    if r.get("ran"):
-        repro = (f"repro {'verified' if r.get('ok') else 'refused'}: exit {r.get('before_exit')} at "
-                 f"{(r.get('repro_sha') or '-')[:7]} (before), exit {r.get('after_exit')} at "
-                 f"{(r.get('fix_sha') or '-')[:7]} (after)")
-    else:
-        repro = f"repro not run{': ' + r['reason'] if r.get('reason') else ''}"
-    ho = state.get("handover") or {}
-    pv = ho.get("preview") or {}
-    acc = ho.get("acceptance") or {}
-    parts = [repro, f"checks {p.get('checks')}", f"verdict {p.get('verdict')}",
-             f"phase PR #{p['pr']}" if p.get("pr") else "no phase PR",
-             f"PR #{ho['pr']}" if ho.get("pr") else "no PR",
-             (f"preview {pv.get('url')} at {(pv.get('sha') or '-')[:7]}"
-              f"{'' if pv.get('pid') else ' (stopped)'}") if pv else "no preview"]
-    if acc:
-        parts.append(f"acceptance at {(acc.get('sha') or '-')[:7]}{' (void)' if acc.get('void') else ''}")
-    return "; ".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -136,12 +117,10 @@ REASON_WORDS = {
     "gate_tampered": "the builder changed checks or config it may not touch",
     "combined_checks_failed": "it broke the checks once merged with the rest, so it was reverted",
     "timeout": "it ran out of time",
-    "repro_invalid": "the bug reproduction did not hold",
     "checks_failed": "the automated checks kept failing",
     "ci_failed": "CI failed on the pull request",
     "ci_timeout": "CI did not finish in time",
-    "tasks_stale": "the spec changed and tasks.md has not been regenerated yet",
-    "reapproval_needed": "your answer changed the approved batch beyond what the run may absorb",
+    "needs_kasper": "your answer changed the approved batch beyond what the run may absorb",
 }
 
 
@@ -190,11 +169,12 @@ def piece_words(state: dict[str, Any], key: str, labels: dict[str, str]) -> tupl
         if p.get("reason") == "dependency_blocked":
             waits = ", ".join(short_name(w, labels) for w in p.get("waits_on") or []) or "earlier work"
             return f"Waiting on {waits}", "t-warn"
-        if p.get("reason") == "tasks_stale":
-            return "Waiting for tasks.md", "t-warn"
-        if p.get("reason") == "reapproval_needed":
+        if p.get("reason") == "needs_kasper":
             return "Waiting on your re-approval", "t-bad"
         return "Waiting on your decision", "t-bad"
+    since_ = process_since(state, key)
+    if since_ and st not in nsstate.ACTIVE:
+        return f"Piece process running since {hhmm(since_)}", "t-live"
     if st == "building":
         return f"Building · round {p.get('round') or 1}", "t-live"
     return STATUS_WORDS.get(st, st), TONE.get(st, "")
@@ -239,13 +219,11 @@ def since(text: str, iso: str, live: bool) -> str:
 
 
 def needs_cards(state: dict[str, Any], record: dict[str, Any], labels: dict[str, str], repo: str,
-                bug: str | None, asked: dict[str, str]) -> str:
+                asked: dict[str, str]) -> str:
     """What waits on the owner, as tiles: kind, story, how long it has waited and what it
     holds up. A tile opens to show the question verbatim and where to answer it."""
     issues = ((record.get("issues") or {}).get("pieces") or {})
     live = state.get("status") == "running"
-    if bug:
-        issues = {"fix": (record.get("issues") or {}).get("bug")}
     tiles = []
 
     def tile(kind: str, tone: str, mark: str, who: str, facts: list[str], body: str) -> str:
@@ -258,27 +236,24 @@ def needs_cards(state: dict[str, Any], record: dict[str, Any], labels: dict[str,
         name = labels.get(key, key)
         held = [short_name(k, labels) for k, q in state["pieces"].items()
                 if key in (q.get("waits_on") or []) and q["status"] == "blocked"]
-        if p["status"] == "blocked" and p.get("reason") not in ("dependency_blocked", "tasks_stale",
-                                                                 "reapproval_needed"):
+        if p["status"] == "blocked" and p.get("reason") not in ("dependency_blocked", "needs_kasper"):
             link = issue_link(repo, issues.get(key))
             tiles.append(tile("Decision", "bad", "◆", name, [
                 f"<strong>{since(*asked[key], live)} waiting</strong>" if asked.get(key) else "",
                 "holds: " + esc(", ".join(held) or "nothing else")],
                 f'<blockquote>{md(p.get("question") or p.get("reason"))}</blockquote>'
                 f'<p>{"Answer on " + link + "." if link else "Answer on the sub-issue."}</p>'))
-        elif p["status"] == "blocked" and p.get("reason") == "tasks_stale":
-            tiles.append(tile("Spec changed", "warn", "▲", name, ["holds: " + esc(", ".join(held) or "nothing else")],
-                              f"<p>{esc(name)} waits until the run regenerates tasks.md for your answer "
-                              f"and absorbs it.</p>"))
-        elif p["status"] == "blocked" and p.get("reason") == "reapproval_needed":
+        elif p["status"] == "blocked" and p.get("reason") == "needs_kasper":
             tiles.append(tile("Re-approve", "bad", "◆", name, ["holds: " + esc(", ".join(held) or "nothing else")],
                               f'<blockquote>{md(p.get("question") or "")}</blockquote>'))
         if p["status"] == "parked":
             why = REASON_WORDS.get(p.get("reason") or "", p.get("reason") or "no reason recorded")
             finding = last_finding(p)
             tiles.append(tile("Parked", "warn", "▲", name, [esc(why), "holds: " + esc(", ".join(held) or "nothing else")],
-                              f'<p>{esc(name)} was set aside: {esc(why)}. It resumes only after you decide '
-                              f'what to do with it.</p>' + (f"<p>Last finding: {md(finding)}</p>" if finding else "")))
+                              f'<p>{esc(name)} was set aside: {esc(why)}. Your next "go" (<code>ready</code>, then '
+                              f'"go") puts it back in the queue with fresh review rounds'
+                              + (', and so does an answer to its question on the sub-issue' if p.get("question") else "")
+                              + '.</p>' + (f"<p>Last finding: {md(finding)}</p>" if finding else "")))
     ho = state.get("handover") or {}
     pv, acc = ho.get("preview") or {}, ho.get("acceptance") or {}
     pr = pr_link(repo, ho.get("pr"))
@@ -303,7 +278,7 @@ def needs_cards(state: dict[str, Any], record: dict[str, Any], labels: dict[str,
 
 
 def open_questions(state: dict[str, Any]) -> int:
-    """Items that wait on the owner: questions, parked parts, a stale tasks.md, and a
+    """Items that wait on the owner: questions, parked parts, a re-approval, and a
     preview not yet accepted. Matches the tiles under "Needs you"."""
     pieces = state["pieces"].values()
     n = sum(1 for p in pieces if p["status"] == "blocked" and p.get("reason") != "dependency_blocked")
@@ -315,8 +290,7 @@ def open_questions(state: dict[str, Any]) -> int:
     return n
 
 
-def tally(state: dict[str, Any], entries: list[dict[str, Any]], done: int, total: int,
-          bug: str | None) -> str:
+def tally(state: dict[str, Any], entries: list[dict[str, Any]], done: int, total: int) -> str:
     """The header figures: time on shift, parts merged, tasks ticked, questions waiting."""
     def fig(value: str, of: str, label: str, tone: str = "", since_iso: str = "") -> str:
         attr = f' data-since="{esc(since_iso)}"' if since_iso else ""
@@ -330,9 +304,7 @@ def tally(state: dict[str, Any], entries: list[dict[str, Any]], done: int, total
     asks = open_questions(state)
     out = [fig(duration((end - start).total_seconds()) if start and end else "-", "", "on shift", "",
                start.isoformat() if live else ""),
-           fig(str(merged), f"/{len(pieces)}", "merged")]
-    if not bug:
-        out.append(fig(str(done), f"/{total}", "tasks"))
+           fig(str(merged), f"/{len(pieces)}", "merged"), fig(str(done), f"/{total}", "tasks")]
     out.append(fig(str(asks), "", "waiting on you", "hot" if asks else ""))
     return "".join(out)
 
@@ -347,7 +319,7 @@ def rounds_of(state: dict[str, Any], key: str) -> list[dict[str, Any]]:
         def done(kind: str) -> dict[str, Any]:
             return ((steps.get(f"{key}:{n}:{kind}") or {}).get("done") or {}).get("result") or {}
         build, checks, verdict = done("build"), done("checks"), done("verdict")
-        call = build.get("call") or build.get("cost") or {}  # "cost": runs recorded before 2026-10-05
+        call = build.get("call") or {}
         out.append({"n": n, "sha": build.get("head"), "turns": call.get("num_turns"),
                     "duration_s": build.get("duration_s"),
                     "checks": ("passed" if checks.get("ok") else "failed") if checks else None,
@@ -438,7 +410,7 @@ def story_cards(root: Path, state: dict[str, Any], d: Any, spec: core.SpecDoc | 
         done_n = sum(1 for t in dp.tasks if t.done)
         frac = done_n / len(dp.tasks) if dp.tasks else 0
         glance = [f"{done_n}/{len(dp.tasks)} tasks", f"{ok}/{n_ac} criteria confirmed"]
-        used = int(p.get("round") or 0)
+        used = nsstate.rounds_used(p)
         near = "near" if used >= max_rounds and p["status"] != "passed" else ""
         foot = []
         if p.get("pr"):
@@ -470,26 +442,6 @@ def story_cards(root: Path, state: dict[str, Any], d: Any, spec: core.SpecDoc | 
     if ground:
         cards.append(f'<div class="ground" aria-label="Groundwork and follow-up">{"".join(ground)}</div>')
     return "\n".join(cards) or '<p class="calm">No stories found in spec.md.</p>'
-
-
-def bug_card(state: dict[str, Any], root: Path, slug: str, repo: str) -> str:
-    p = state["pieces"].get("fix") or {}
-    try:
-        doc = core.parse_bug(model.bug_dir(root, slug))
-        title, symptom = doc.title, doc.sections.get("Symptom", "")
-    except core.NightshiftError:
-        title, symptom = slug, ""
-    words, tone = piece_words(state, "fix", {}) if p else ("Not started", "")
-    r = p.get("repro") or {}
-    proof = ("Reproduced before the fix and passing after it" if r.get("ran") and r.get("ok") else
-             "Reproduction refused" if r.get("ran") else "Not reproduced yet")
-    foot = [f"<span>{esc(proof)}</span>"]
-    pr = (state.get("handover") or {}).get("pr")
-    if pr:
-        foot.append(f"<span>{pr_link(repo, pr)}</span>")
-    return (f'<article class="story"><div class="story-head"><h3>{esc(title)}</h3>{pill(words, tone)}</div>'
-            f'<p class="try"><strong>Symptom:</strong> {md(symptom)}</p>'
-            f'<div class="story-foot">{" · ".join(foot)}</div></article>')
 
 
 def run_window(state: dict[str, Any], entries: list[dict[str, Any]]) -> tuple[datetime | None, datetime | None]:
@@ -580,8 +532,8 @@ def route_map(state: dict[str, Any], d: Any, spec: core.SpecDoc | None, labels: 
 
     # Draw only direct waits: drop an edge already implied through another dependency.
     deps = {k: [x for x in ds if not any(x in reach(y, set()) for y in ds if y != x)] for k, ds in deps.items()}
-    # Parts added during the run (corrections from feedback) follow
-    # the whole planned batch: draw them after its last parts, in the order they were added.
+    # Parts added during the run (a convergence piece) follow the whole planned batch:
+    # draw them after its last parts, in the order they were added.
     planned_ends = [k for k in deps if not any(k in ds for ds in deps.values())]
     for k in state["pieces"]:
         if k not in depth:
@@ -639,7 +591,7 @@ def route_map(state: dict[str, Any], d: Any, spec: core.SpecDoc | None, labels: 
         decision = tone == "t-bad"
         words = clip(("◆ " if decision else "") + words, 28)
         live = " live" if p["status"] in nsstate.ACTIVE else ""
-        used = int(p.get("round") or 0)
+        used = nsstate.rounds_used(p)
         n = max(max_rounds, used, 1)
         dots = "".join(f'<circle class="rd {"on" if i < used else ""}" cx="{x + 18 + i * 11}" cy="{y + 61}" r="3.6"/>'
                        for i in range(n))
@@ -670,18 +622,23 @@ def say(e: dict[str, Any], labels: dict[str, str]) -> str:
         ("build", "finished"): f"{who}: built round {rnd}",
         ("checks", "passed"): f"{who}: automated checks passed",
         ("checks", "failed"): f"{who}: automated checks failed, going back to the builder",
-        ("verdict", "approve"): f"{who}: reviewers approved",
-        ("verdict", "changes"): f"{who}: reviewers asked for changes",
-        ("verdict", "decision_needed"): f"{who}: reviewers found a product question",
+        ("verdict", "approve"): f"{who}: the critic approved",
+        ("verdict", "changes"): f"{who}: the critic asked for changes",
+        ("verdict", "decision_needed"): f"{who}: the critic found a product question",
         ("merge", "merged"): f"{who}: merged into the feature branch",
         ("combined", "passed"): f"Everything merged so far passes together (after {who})",
         ("combined", "failed"): f"{who} broke the combined checks and was reverted",
         ("blocker", "posted"): f"{who}: asked you a question",
         ("blocker", "resolved"): f"{who}: your answer was committed",
         ("blocker", "unblocked"): f"{who}: can continue",
-        ("blocker", "answer_absorbed"): "Your answer was absorbed into the run",
-        ("blocker", "answer_needs_owner"): "Your answer changed the approved batch: re-approve it",
+        ("blocker", "needs_kasper"): "Your answer changed the approved batch: re-approve it",
         ("next", "parked"): f"{who}: parked",
+        ("ready", "unparked"): f"{who}: back in the queue after your re-approval",
+        ("shift", "reopened"): "Your re-approval opened a new shift",
+        ("piece", "started"): f"{who}: its piece process started",
+        ("piece", "stopped"): f"{who}: its piece process stopped",
+        ("converge", "converged"): "Converge found no gaps",
+        ("converge", "safety_stop"): "Converge changed more than tasks.md; the run stopped",
         ("pr", "opened"): f"{who}: pull request opened",
         ("ci", "passed"): f"{who}: CI passed",
         ("ci", "failed"): f"{who}: CI failed",
@@ -690,18 +647,19 @@ def say(e: dict[str, Any], labels: dict[str, str]) -> str:
         ("preview", "started"): "Preview started",
         ("acceptance", "recorded"): "Your acceptance was recorded",
         ("acceptance", "void"): "A new commit voided your acceptance",
-        ("repro", "verified"): "Bug reproduced; the fix makes it pass",
         ("found", "filed"): f"{who}: found a pre-existing problem and filed it",
     }
     if (step, out) in table:
         return table[(step, out)]
+    if step == "converge" and str(out).startswith("appended"):
+        return f"Converge {out} gap task(s)"
     if step == "handover":
         return f"Run stopped: {STOP_WORDS.get(out, (out,))[0]}"
     return ""
 
 
 TELLING = ("changes", "decision_needed", "failed", "posted", "parked", "filed", "void", "recorded",
-           "answer_needs_owner")
+           "needs_kasper")
 
 
 def activity(entries: list[dict[str, Any]], labels: dict[str, str], limit: int = 12) -> str:
@@ -720,23 +678,19 @@ def activity(entries: list[dict[str, Any]], labels: dict[str, str], limit: int =
     return "\n".join(out) or '<li><span></span><span class="muted">Nothing yet.</span></li>'
 
 
-def build_values(root: Path, fdir: Path, name: str, bug: str | None = None) -> dict[str, Any]:
+def build_values(root: Path, fdir: Path, name: str) -> dict[str, Any]:
     state = nsstate.load(root, name)
     entries = nsstate.read_jsonl(nsstate.run_dir(root, name) / "log.jsonl")
     record = core.load_record(core.record_path(root, name))
-    spec, d = None, None
-    if bug:
-        all_tasks, by_piece = [], {}
-    else:
-        d = model.derive(root, fdir, record)
-        all_tasks = d.doc.tasks
-        by_piece = {p.key: p for p in d.pieces}
-        if (fdir / "spec.md").is_file():
-            spec = core.parse_spec(fdir / "spec.md")
+    d = model.derive(root, fdir)
+    all_tasks = d.doc.tasks
+    by_piece = {p.key: p for p in d.pieces}
+    spec = core.parse_spec(fdir / "spec.md") if (fdir / "spec.md").is_file() else None
     done = sum(1 for t in all_tasks if t.done)
 
     cur = current_piece(state)
-    now = f"{cur}: {state['pieces'][cur]['status']} (round {state['pieces'][cur].get('round') or 0})" if cur \
+    proc = f", piece process since {hhmm(process_since(state, cur))}" if cur and process_since(state, cur) else ""
+    now = f"{cur}: {state['pieces'][cur]['status']} (round {state['pieces'][cur].get('round') or 0}{proc})" if cur \
         else (f"stopped: {state.get('stop_reason')}" if state.get("status") == "stopped" else "idle")
     last = entries[-1] if entries else None
     last_txt = f"{last['ts']} {last['piece']} {last['step']} {last['outcome']}" if last else "none"
@@ -755,7 +709,7 @@ def build_values(root: Path, fdir: Path, name: str, bug: str | None = None) -> d
             f"<tr><td><code>{esc(key)}</code></td><td>{esc(tasks)}</td>"
             f"<td class=\"s-{esc(p['status'])}\">{esc(p['status'] + reason)}</td>"
             f"<td>{esc(rounds_to_approve(state, key, p))}</td><td>{esc(p.get('round') or 0)}</td>"
-            f"<td>{esc(fix_summary(state, p) if bug else last_finding(p))}</td></tr>")
+            f"<td>{esc(last_finding(p))}</td></tr>")
     logs = []
     for e in reversed(entries[-LOG_LIMIT:]):
         logs.append(f"<tr><td><code>{esc(e.get('ts'))}</code></td><td>{esc(e.get('piece'))}</td>"
@@ -772,13 +726,10 @@ def build_values(root: Path, fdir: Path, name: str, bug: str | None = None) -> d
         labels[dp.key] = f"{dp.story} {story['title']}" if story else dp.title
         short[dp.key] = dp.story if story else re.split(r"\s*[&+(/:,-]\s*| and ", dp.title)[0]
     for key in state["pieces"]:
-        m = re.match(r"(convergence|correction)-(\d+)$", key)
-        if key not in labels and m:
-            labels[key] = short[key] = ("Convergence" if m.group(1) == "convergence" else f"Correction {m.group(2)}")
+        if key not in labels and key.startswith("convergence-"):
+            labels[key] = short[key] = "Convergence"
     SHORT.clear()
     SHORT.update(short)
-    if bug:
-        labels["fix"] = "The fix"
     acc = (state.get("handover") or {}).get("acceptance") or {}
     confirmed = set(acc.get("confirmed") or []) if acc and not acc.get("void") else set()
     if state.get("status") == "stopped":
@@ -790,48 +741,45 @@ def build_values(root: Path, fdir: Path, name: str, bug: str | None = None) -> d
     except core.NightshiftError:
         cfg = dict(nsconfig.DEFAULTS)
     max_rounds = int(cfg.get("max_rounds") or 3)
-    title = (core.parse_bug(fdir).title if bug else (spec.title if spec else name))
+    title = spec.title if spec else name
     return {
         "title": esc(title), "feature": esc(state.get("feature") or name),
         "status_pill": pill(word, tone),
-        "needs": needs_cards(state, record, labels, repo, bug, asked_ages(state, entries)),
+        "needs": needs_cards(state, record, labels, repo, asked_ages(state, entries)),
         "strip": shift_strip(state, entries),
-        "tally": tally(state, entries, done, len(all_tasks), bug),
+        "tally": tally(state, entries, done, len(all_tasks)),
         "route": (f'<section aria-labelledby="route-h"><h2 id="route-h">How the work fits together</h2>'
                   f'<div class="route-wrap">{route_map(state, d, spec, labels, max_rounds)}</div>'
                   f'<p class="calm small">Each part waits for the parts with a line into it. Dots are review rounds '
                   f'used before a part is parked.<span class="swipe"> Swipe the map sideways to see it all.</span></p>'
-                  f'</section>') if d and len(state["pieces"]) > 1 else "",
-        "stories_heading": "The fix" if bug else "What you are getting",
-        "stories": bug_card(state, root, bug, repo) if bug else story_cards(root, state, d, spec, labels, confirmed, repo, max_rounds),
+                  f'</section>') if len(state["pieces"]) > 1 else "",
+        "stories_heading": "What you are getting",
+        "stories": story_cards(root, state, d, spec, labels, confirmed, repo, max_rounds),
         "activity": activity(entries, labels),
-        "name": esc(name), "run_id": esc(state.get("run_id")), "run_status": esc(status),
+        "run_id": esc(state.get("run_id")), "run_status": esc(status),
         "rendered_at": esc(nsstate.now()),
         "updated": f'<span class="updated" data-asof="{esc(nsstate.now())}">updated just now</span>'
                    if state.get("status") == "running" else "", "current": esc(cur or "none"), "now": esc(now),
         "grounding": esc(grounding_text(state)),
         "last": esc(last_txt), "blocked": esc(blocked_txt), "blocked_class": "blocked" if blocked else "",
-        "tasks_done": "- (bug run)" if bug else f"{done}/{len(all_tasks)}", "pieces_done": f"{passed}/{len(state['pieces'])}",
+        "tasks_done": f"{done}/{len(all_tasks)}", "pieces_done": f"{passed}/{len(state['pieces'])}",
         "piece_rows": "\n".join(rows) or "<tr><td colspan=\"6\">No pieces.</td></tr>",
         "log_rows": "\n".join(logs) or "<tr><td colspan=\"5\">No entries yet.</td></tr>",
     }
 
 
 def grounding_text(state: dict[str, Any]) -> str:
-    """One line on the run-start re-grounding (core review stage 7)."""
+    """One line on the run-start re-grounding (P2)."""
     g = state.get("grounding")
     if not g:
         return "not checked yet"
     if g.get("status") != "drifted":
         return str(g.get("status")).replace("_", " ")
-    counts: dict[str, int] = {}
-    for p in (g.get("pieces") or {}).values():
-        counts[p["status"]] = counts.get(p["status"], 0) + 1
-    return "drifted: " + ", ".join(f"{n} {s.replace('_', ' ')}" for s, n in sorted(counts.items()))
+    return "drifted: a note for " + ", ".join(sorted(g.get("pieces") or {}))
 
 
-def render(root: Path, fdir: Path, name: str, out: Path | None = None, bug: str | None = None) -> Path:
-    values = build_values(root, fdir, name, bug)
+def render(root: Path, fdir: Path, name: str, out: Path | None = None) -> Path:
+    values = build_values(root, fdir, name)
     text = core.render_template(root, "dashboard.html", values)
     path = out or nsstate.run_dir(root, name) / "dashboard.html"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -857,20 +805,15 @@ def _log_failure(root: Path | None, name: str | None, detail: str) -> None:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--feature")
-    ap.add_argument("--bug", metavar="SLUG", help="a fix run (bug-<slug>); no tasks.md")
     ap.add_argument("--out", help="write here instead of .nightshift/<name>/dashboard.html")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
     root = name = None
     try:
         root = core.find_project_root()
-        if args.bug:
-            name = f"bug-{args.bug}"
-            fdir = model.bug_dir(root, args.bug)
-        else:
-            fdir = core.resolve_feature_dir(root, args.feature)
-            name = fdir.name
-        path = render(root, fdir, name, Path(args.out) if args.out else None, args.bug)
+        fdir = core.resolve_feature_dir(root, args.feature)
+        name = fdir.name
+        path = render(root, fdir, name, Path(args.out) if args.out else None)
         result = {"ok": True, "path": str(path)}
     except Exception as exc:  # noqa: BLE001 (never on the critical path)
         detail = f"{type(exc).__name__}: {exc}"

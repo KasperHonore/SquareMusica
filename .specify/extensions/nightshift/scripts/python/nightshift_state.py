@@ -1,4 +1,4 @@
-"""Run state and logbook (docs/proof2-contracts.md).
+"""Run state and logbook (design §4, §7).
 
 The orchestrating session rereads state before every step and writes it after,
 always through this module, so a crash or compaction loses at most one step.
@@ -39,16 +39,12 @@ SUB_FIELDS = ("builder", "checks", "verdict")
 STOP_REASONS = ("awaiting_acceptance", "partial_awaiting_acceptance", "no_ready_work",
                 "budget_exhausted", "interrupted", "environment_failure", "safety_stop")
 PARK_REASONS = ("max_rounds", "stagnation", "no_progress", "builder_blocked", "gate_tampered",
-                "combined_checks_failed", "timeout", "repro_invalid",
+                "combined_checks_failed", "timeout",
                 "checks_failed", "ci_failed", "ci_timeout")
-BLOCK_REASONS = ("decision_needed", "clarification", "dependency_blocked", "tasks_stale", "reapproval_needed",
-                 "plan_stale")
-# Unit outcomes (design §6.1, D-HONEST), recorded per piece in ``outcome``, separate from
-# ``status``. A pass is set only by the script that observed it; honest stops by any loop.
-# ``verified`` is a fix piece's pass: its reproduction failed at the base and passes at the
-# merged candidate (core review stage 2, 2026-10-05).
-PASS_OUTCOMES = {"completed": "phase_merge", "verified": "phase_merge"}
-STOP_OUTCOMES = ("stalled", "budget_exhausted", "blocked_decision", "blocked_environment")
+BLOCK_REASONS = ("decision_needed", "clarification", "dependency_blocked", "needs_kasper")
+# The unit outcome (D-HONEST), recorded per piece in ``outcome``, separate from ``status``.
+# A pass is set only by the script that observed it.
+PASS_OUTCOMES = {"completed": "phase_merge"}
 ACTIVE = ("building", "checking", "reviewing", "merging")
 TRANSITIONS = {
     "pending": {"building", "blocked", "parked"},
@@ -56,7 +52,11 @@ TRANSITIONS = {
     "checking": {"building", "reviewing", "parked", "blocked"},
     "reviewing": {"building", "merging", "parked", "blocked"},
     "merging": {"passed", "parked"},
-    "parked": {"building"},   # only after a human decision (resume with --unpark)
+    # Leaving ``parked`` follows Kasper's day actions, never a manual transition (P5):
+    # his re-approval (``ready go``) returns it to ``pending`` (``blocker.release_reapproved``,
+    # before every pick), and a product question it raised is posted (``blocked``) and
+    # answered through ``blocker.py resolve``. ``unpark`` keeps the record (D-HONEST).
+    "parked": {"pending", "blocked"},
     "blocked": {"pending"},   # only after the answer is committed (D-GH)
     "passed": set(),
 }
@@ -211,9 +211,10 @@ def update(root: Path, name: str, fn) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Orchestrator lease
 #
-# One orchestrating session owns a run. ``state.py lease acquire`` writes
+# One dispatcher session owns a run. ``state.py lease acquire`` writes
 # ``lease.json`` with an owner id and a heartbeat; the session exports the id as
-# NIGHTSHIFT_LEASE and every state save checks it. A second session is refused
+# NIGHTSHIFT_LEASE and every state save checks it. ``piece.py start`` passes it on to
+# the piece process it launches, so both layers write under the one lease (D-LAYER). A second session is refused
 # while the lease is fresh; a stale lease (no heartbeat for LEASE_TTL seconds) is
 # taken over only with ``--take-over`` on resume. Mechanical for every script that
 # saves state; no script can stop someone editing state.json by hand.
@@ -374,8 +375,7 @@ def step_kind(step: str) -> str:
     return step.rsplit(":", 1)[-1]
 
 
-def init(root: Path, name: str, feature: str, contract_hash: str, feature_branch: str,
-         loops: dict[str, str]) -> dict[str, Any]:
+def init(root: Path, name: str, feature: str, feature_branch: str, loops: dict[str, str]) -> dict[str, Any]:
     path = state_path(root, name)
     if path.exists():
         raise core.NightshiftError(f"a run already exists at {path}; use --resume")
@@ -383,89 +383,13 @@ def init(root: Path, name: str, feature: str, contract_hash: str, feature_branch
     state = {
         "schema": SCHEMA,
         "run_id": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + name,
-        "feature": feature, "contract_hash": contract_hash, "feature_branch": feature_branch,
+        "feature": feature, "feature_branch": feature_branch,
         "status": "running", "stop_reason": None, "started_at": ts, "updated_at": ts,
         "pieces": {k: new_piece(v) for k, v in loops.items()},
         "steps": {},
     }
     save(root, name, state)
     return state
-
-
-def init_bug(root: Path, slug: str, contract_hash: str, branch: str) -> dict[str, Any]:
-    """A bug run (design §3.2): keyed ``bug-<slug>``, one piece ``fix`` (loop ``fix``) whose
-    "feature branch" is ``fix/<slug>``. It runs through the same scripts as a feature piece."""
-    state = init(root, f"bug-{slug}", f".specify/bugs/{slug}", contract_hash, branch, {"fix": "fix"})
-    state["kind"] = "bug"
-    state["bug"] = slug
-    save(root, f"bug-{slug}", state)
-    return state
-
-
-ADDED_KINDS = ("correction",)
-
-
-def add_piece(state: dict[str, Any], key: str, loop: str, kind: str, bar_refs: list[str] | None = None,
-              source: str = "") -> dict[str, Any]:
-    """Add a piece the approved batch did not list: a ``correction-<n>`` from feedback
-    (D-FB). Never replaces or re-loops an existing piece. A correction runs the build loop;
-    in a bug run it runs the fix loop (a new reproduction first)."""
-    if kind not in ADDED_KINDS:
-        raise core.NightshiftError(f"only {', '.join(ADDED_KINDS)} pieces can be added to a run")
-    if key in state["pieces"]:
-        raise core.NightshiftError(f"piece {key!r} is already in the run state")
-    allowed = "fix" if state.get("kind") == "bug" else "build"
-    if loop != allowed:
-        raise core.NightshiftError(f"{key}: an added piece here runs the {allowed} loop, not {loop!r}")
-    p = new_piece(loop)
-    p["added"] = {"kind": kind, "at": now(), "source": source}
-    p["bar_refs"] = list(bar_refs or [])
-    state["pieces"][key] = p
-    return p
-
-
-REVIEW_FIELDS = ("verdict",)
-
-
-def rebind_contract(state: dict[str, Any], new_hash: str, approval: dict[str, Any],
-                    approved: dict[str, str], answer: str = "") -> dict[str, Any]:
-    """Rebind a running run to a re-frozen run contract: an absorbed owner answer
-    (``answer``, its comment URL; core review stage 5b) or a re-approval by day (D23).
-    Called only by ``blocker.py absorb``.
-
-    The caller has checked that ``new_hash`` is the approved hash of the current
-    run-contract.md and that validation passes. Records the change in
-    ``contract_history``; resets passed reviews and verdicts of every piece not yet
-    ``passed`` (the bar may have changed); keeps passed pieces' evidence (judged under the
-    old contract); adds approved pieces missing from state with their approved loop
-    (``approved``: key -> loop; they are part of the approved baseline now, so not
-    ``added``); never removes a piece. Returns what changed, for the logbook."""
-    old = state.get("contract_hash")
-    if old == new_hash and not answer:
-        raise core.NightshiftError("the run is already bound to the approved contract; nothing to rebind")
-    state["contract_hash"] = new_hash
-    state.setdefault("contract_history", []).append({
-        "at": now(), "old": old, "new": new_hash,
-        "approved_by": approval.get("approved_by"), "approved_at": approval.get("approved_at"),
-        "answer": answer or None})
-    reset: dict[str, list[str]] = {}
-    kept: list[str] = []
-    for key, p in state["pieces"].items():
-        if p["status"] == "passed":
-            kept.append(key)
-            continue
-        fields = [f for f in REVIEW_FIELDS if p.get(f) == "passed"]
-        for f in fields:
-            p[f] = "not_run"
-        if fields:
-            reset[key] = fields
-    added: list[str] = []
-    for key, loop in approved.items():
-        if key in state["pieces"]:
-            continue
-        state["pieces"][key] = new_piece(loop)
-        added.append(key)
-    return {"old": old, "new": new_hash, "reset": reset, "kept_passed": kept, "added": added}
 
 
 def piece(state: dict[str, Any], key: str) -> dict[str, Any]:
@@ -486,13 +410,43 @@ def transition(state: dict[str, Any], key: str, to: str, *, by: str = "", reason
         raise core.NightshiftError(f"{key}: unknown park reason {reason!r}")
     if to == "blocked" and reason not in BLOCK_REASONS:
         raise core.NightshiftError(f"{key}: unknown block reason {reason!r}")
+    if frm == "parked":
+        unpark(p, to, by)
     p["status"] = to
-    if to == "building" and frm in ("passed", "parked"):
-        p["outcome"] = None  # new commits void the evidence behind the earlier outcome
+    if to == "parked":
+        p["parked_at"] = now()
     if to in ("parked", "blocked"):
         p["reason"] = reason
     elif to in ("building", "pending"):
         p["reason"] = None
+
+
+def unpark(p: dict[str, Any], to: str, by: str) -> None:
+    """A parked piece leaves ``parked``: archive the park in ``parks`` (reason, question,
+    rounds, its stagnation records and SHAs; D-HONEST) and give it a fresh round budget.
+    ``round`` keeps counting, so step ids ``<piece>:<round>:<kind>`` never repeat; the cap
+    counts from ``round_base`` (``rounds_used``). The candidate and its sub-statuses stay:
+    they are bound to their SHA, and the next builder round resets them (``verdict._build``).
+    A merge that was reverted (``combined_checks_failed``) moves to ``parks``."""
+    p.setdefault("parks", []).append({
+        "reason": p.get("reason"), "question": p.get("question"), "parked_at": p.get("parked_at"),
+        "released_at": now(), "released_by": by, "to": to, "round": p.get("round") or 0,
+        "rounds_used": rounds_used(p), "candidate_sha": p.get("candidate_sha"),
+        "merged_sha": p.get("merged_sha"), "combined_sha": p.get("combined_sha"),
+        "blocker_history": p.get("blocker_history") or [], "seen_findings": p.get("seen_findings") or []})
+    p["blocker_history"], p["seen_findings"] = [], []  # the fresh builder sees every finding again
+    if p.get("merged_sha"):
+        # Its merge was reverted on the feature branch: re-merging the same branch would
+        # not bring the work back, so the next ``phase.py start`` branches afresh.
+        p["fresh_branch"] = True
+    p["merged_sha"] = p["combined_sha"] = None
+    p["round_base"] = int(p.get("round") or 0)
+    p.pop("parked_at", None)
+
+
+def rounds_used(p: dict[str, Any]) -> int:
+    """Rounds used against ``max_rounds`` since the piece last left ``parked``."""
+    return int(p.get("round") or 0) - int(p.get("round_base") or 0)
 
 
 def release_waiting(state: dict[str, Any], piece: str, *, by: str, settled: tuple[str, ...]) -> list[str]:
@@ -523,17 +477,12 @@ def release_waiting(state: dict[str, Any], piece: str, *, by: str, settled: tupl
     return freed
 
 
-def set_outcome(unit: dict[str, Any], outcome: str | None, *, by: str) -> None:
-    """Record a unit outcome on a piece. ``None`` clears it
-    when new commits invalidate the evidence."""
-    if outcome is None:
-        unit["outcome"] = None
-        return
-    if outcome in PASS_OUTCOMES:
-        if PASS_OUTCOMES[outcome] != by:
-            raise core.NightshiftError(f"outcome {outcome} is recorded only by {PASS_OUTCOMES[outcome]} (D-HONEST)")
-    elif outcome not in STOP_OUTCOMES:
+def set_outcome(unit: dict[str, Any], outcome: str, *, by: str) -> None:
+    """Record a unit outcome on a piece (set with ``passed``, which is terminal)."""
+    if outcome not in PASS_OUTCOMES:
         raise core.NightshiftError(f"unknown unit outcome {outcome!r}")
+    if PASS_OUTCOMES[outcome] != by:
+        raise core.NightshiftError(f"outcome {outcome} is recorded only by {PASS_OUTCOMES[outcome]} (D-HONEST)")
     unit["outcome"] = outcome
 
 
@@ -571,6 +520,7 @@ def stop(state: dict[str, Any], reason: str) -> None:
         raise core.NightshiftError(f"unknown stop reason {reason!r}")
     state["status"] = "stopped"
     state["stop_reason"] = reason
+    state["stopped_at"] = now()
 
 
 LOG_KEY = ("run_id", "piece", "round", "step", "outcome", "sha", "detail")

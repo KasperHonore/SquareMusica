@@ -5,27 +5,17 @@ A thin CLI over ``nightshift_state``. The orchestrator rereads state before ever
 step and writes it after (design §7):
 
 - ``init``: create the run from the approved delivery record (loop per piece,
-  run-contract hash, feature branch ``feat/<name>`` or ``--branch``);
+  feature branch ``feat/<name>`` or ``--branch``);
 - ``show``, ``pending``: read;
 - ``transition --piece --to [--reason]``: move a piece; illegal moves are refused,
   and ``passed`` is never accepted here (only ``phase_merge`` sets it);
 - ``set --piece --field --value``: sub-statuses and bookkeeping fields. A
   sub-status may be set to anything except ``passed``: a pass is recorded only by
   the script that observed it (checks, postconditions, verdict), per D-HONEST;
-- ``stop --reason``: end the run with one of the design §6.3 reasons;
+- ``stop --reason``: end the run with one of the design §6.5 stop reasons;
 - ``step-intent`` / ``step-done``: the resume records;
 - ``should-skip``: exit 0 when a ``done`` record with the same inputs hash exists
   (skip), 1 otherwise (run).
-
-``--bug SLUG`` (exclusive with ``--feature``) addresses a bug run
-(``.nightshift/bug-<slug>/``, D24b). ``--bug SLUG init`` refuses unless the bug routes to
-``fix`` and its delivery record says so (B1: a never-promised bug goes to Spec Kit,
-before any branch, push or token), then creates the run with one piece ``fix`` and
-pushes ``fix/<slug>`` at the base branch's head as the run's "feature branch" (core
-review stage 2).
-
-Rebinding the run to a re-frozen contract is internal: ``blocker.py absorb`` does it
-after the owner's answer (core review stage 5b).
 
 The refusals are **mechanical** for callers that use this CLI; nothing stops an
 agent from editing ``state.json`` directly, which is why ``state.json`` is never
@@ -62,36 +52,16 @@ def cmd_init(root: Path, fdir: Path, args: argparse.Namespace) -> dict[str, Any]
     errors = [f for f in rep.findings if f.severity == "error"]
     if errors:
         raise core.NightshiftError("validation failed: " + "; ".join(f"[{f.code}] {f.message}" for f in errors))
-    approval = rep.record.get("approval") or {}
-    if not approval.get("contract_hash"):
-        raise core.NightshiftError("the batch is not approved; run shape --approve first")
+    if not rep.record.get("approval"):
+        raise core.NightshiftError("the batch is not approved; run ready go first")
     entries = rep.record.get("pieces") or {}
     loops = {p.key: (entries.get(p.key) or {}).get("loop") for p in rep.derivation.pieces}
     missing = [k for k, v in loops.items() if not v]
     if missing:
         raise core.NightshiftError(f"pieces without a loop: {', '.join(missing)}")
     branch = args.branch or f"feat/{fdir.name}"
-    return nstate.init(root, fdir.name, rep.derivation.feature, approval["contract_hash"], branch, loops)
+    return nstate.init(root, fdir.name, rep.derivation.feature, branch, loops)
 
-
-
-def cmd_init_bug(root: Path, slug: str) -> dict[str, Any]:
-    """A bug run is a run with one ``fix`` piece; ``fix/<slug>`` is its feature branch."""
-    import phase_merge as pm
-    import nightshift_config as nsconfig
-    model.refuse_unless_fix(root, slug)
-    name, branch = f"bug-{slug}", f"fix/{slug}"
-    base_branch = str(nsconfig.load(root).get("base_branch") or pm.default_branch(root) or "main")
-    base = pm.fetch_branch(root, base_branch)
-    rec_text = core.record_path(root, name).read_text(encoding="utf-8")
-    state = nstate.init_bug(root, slug, core.sha256_text(rec_text), branch)
-    state["base_branch"] = base_branch
-    nstate.save(root, name, state)
-    ctx = pm.load_ctx(None, bug=slug)
-    if not pm.git(root, "ls-remote", "origin", f"refs/heads/{branch}"):
-        pm.push_branch(ctx, base, branch)
-    ctx.log("_run", "init", "created", base, f"{branch} from {base_branch}")
-    return nstate.load(root, name)
 
 
 def coerce(field: str, value: str) -> Any:
@@ -107,9 +77,7 @@ def coerce(field: str, value: str) -> Any:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    scope = ap.add_mutually_exclusive_group()
-    scope.add_argument("--feature", help="feature directory")
-    scope.add_argument("--bug", metavar="SLUG", help="a fix run (bug-<slug>) instead of a feature")
+    ap.add_argument("--feature", help="feature directory")
     ap.add_argument("--json", action="store_true", help="print JSON")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("init")
@@ -145,12 +113,8 @@ def main(argv: list[str]) -> int:
         sp.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="print JSON")
     args = ap.parse_args(argv)
     root = core.find_project_root()
-    if args.bug:
-        fdir = model.bug_dir(root, args.bug)
-        name = f"bug-{args.bug}"
-    else:
-        fdir = core.resolve_feature_dir(root, args.feature)
-        name = fdir.name
+    fdir = core.resolve_feature_dir(root, args.feature)
+    name = fdir.name
     rc = 0
 
     if args.cmd == "lease":
@@ -167,12 +131,13 @@ def main(argv: list[str]) -> int:
             nstate.release_lease(root, name, owner)
             out = {"released": owner}
     elif args.cmd == "init":
-        out = cmd_init_bug(root, args.bug) if args.bug else cmd_init(root, fdir, args)
+        out = cmd_init(root, fdir, args)
     else:
         st = nstate.load(root, name)
         out = st
         if args.cmd == "pending":
-            out = {"pending": nstate.pending_intents(st)}
+            # A running piece process is tracked by piece.py, not re-run from here.
+            out = {"pending": [k for k in nstate.pending_intents(st) if nstate.step_kind(k) != "piece"]}
         elif args.cmd == "transition":
             if args.to in nstate.RESERVED:
                 raise core.NightshiftError(f"{args.to} is set only by {nstate.RESERVED[args.to]}")

@@ -4,11 +4,15 @@
 Subcommands:
 
 - ``next-ready``: pieces that may start now (pending in run state, own readiness
-  clean, every prerequisite satisfied in the delivery record or ``passed`` in state).
+  clean, every prerequisite ``passed`` in state). The dispatcher reads it through
+  ``piece.py next``. First it applies Kasper's re-approval, if any
+  (``blocker.release_reapproved``: ``needs_kasper`` and parked pieces back to pending).
+  Once the run's ``wall_clock`` (from ``started_at``) has passed, nothing is ready and the run stops ``budget_exhausted``
+  (mechanical; run.md rule: limits are final).
 - ``open-pr --piece P``: push ``nightshift/<name>/<piece>`` and open or update its PR
   into the feature branch. Idempotent: an open PR with that head is reused.
-- ``merge --piece P --sha S``: merge that PR, only if checks, code review, spec review
-  and verdict all passed at ``candidate_sha == S`` and the PR head is still ``S``.
+- ``merge --piece P --sha S``: merge that PR, only if checks and the critic's verdict
+  both passed at ``candidate_sha == S`` and the PR head is still ``S``.
   Then, unless ``ci.require`` is false, it waits for the repository's own GitHub checks
   on ``S`` (check runs and the combined status; ``ci.poll_interval``, default 30s, up to
   ``ci.wait_timeout``, default 30m) and merges only if at least one check reported and
@@ -23,19 +27,15 @@ Subcommands:
   merge commit recorded by ``merge`` (else refuse), and run the combined checks at exactly
   that origin head (``checks.py --combined --sha``; recorded as ``combined_sha``). The
   local feature branch is never used: in D23b it lagged origin. Green
-  sets the piece ``passed`` and returns to ``pending`` every dependent blocked
+  sets the piece ``passed``, removes its worktree ``.nightshift/<name>/worktrees/<piece>``
+  (L1 phase E Finding 2: finished worktrees filled the disk quota; the phase branch and the
+  evidence stay) and returns to ``pending`` every dependent blocked
   ``dependency_blocked`` that now waits only on passed pieces; red reverts the merge with a new commit, pushes it
   (never force) and parks the piece ``combined_checks_failed``. Green also, on its sub-issue,
   posts a marker-deduplicated "merged into" comment and ticks the task checklist from
   ``tasks.md`` at that head (Spec Kit's implement ticks ``[X]``); the sub-issue stays
   open (``handover.py close-issues`` closes it after the feature PR merges). A GitHub
   error there is logged, never undoes the pass.
-
-``--bug SLUG`` addresses a bug run (``bug-<slug>``): its one ``fix`` piece merges into
-``fix/<slug>``, the run's feature branch, exactly like a feature phase (core review stage
-2). ``merge`` additionally refuses a fix piece whose reproduction was not verified at the
-evidence SHA, and green ``combined`` records the outcome ``verified`` instead of
-``completed``.
 
 Safeguards:
 
@@ -123,10 +123,11 @@ def load_config(root: Path) -> dict[str, Any]:
     return {}
 
 
-def load_ctx(feature_arg: str | None, need_state: bool = True, bug: str | None = None) -> Ctx:
-    """The run context of a feature, or of a bug run (``bug-<slug>``, branch ``fix/<slug>``)."""
+def load_ctx(feature_arg: str | None, need_state: bool = True) -> Ctx:
+    """The run context of a feature."""
     root = core.find_project_root()
-    fdir, name = model.run_target(root, feature_arg, bug)
+    fdir = core.resolve_feature_dir(root, feature_arg)
+    name = fdir.name
     state = nsstate.load(root, name) if need_state else {}
     return Ctx(root, fdir, name, core.feature_id(root, fdir), state, load_config(root))
 
@@ -235,12 +236,10 @@ def cli_parser(doc: str) -> tuple[argparse.ArgumentParser, Any, argparse.Argumen
     """(parser, subparsers, common): ``--feature/--repo/--json`` work before or after the subcommand."""
     ap = argparse.ArgumentParser(description=doc, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--feature")
-    ap.add_argument("--bug", metavar="SLUG", help="a bug run (bug-<slug>) instead of a feature")
     ap.add_argument("--repo", metavar="OWNER/NAME")
     ap.add_argument("--json", action="store_true")
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--feature", default=argparse.SUPPRESS)
-    common.add_argument("--bug", metavar="SLUG", default=argparse.SUPPRESS)
     common.add_argument("--repo", metavar="OWNER/NAME", default=argparse.SUPPRESS)
     common.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     return ap, ap.add_subparsers(dest="cmd", required=True), common
@@ -258,6 +257,16 @@ def emit(args: argparse.Namespace, data: dict[str, Any], text: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def over_wall_clock(ctx: Ctx) -> bool:
+    """The run has used its ``wall_clock`` (config, default 8h) since ``started_at``."""
+    limit = core.parse_duration(ctx.config.get("wall_clock") or nsconfig.DEFAULTS["wall_clock"], 8 * 3600)
+    started = ctx.state.get("started_at")
+    if not started:
+        return False
+    from datetime import datetime  # noqa: PLC0415
+    return (datetime.fromisoformat(nsstate.now()) - datetime.fromisoformat(started)).total_seconds() >= limit
+
+
 def next_ready(ctx: Ctx, not_ready: dict[str, list[str]] | None = None) -> list[str]:
     """Pending pieces whose own readiness is clean and whose prerequisites passed.
 
@@ -265,12 +274,18 @@ def next_ready(ctx: Ctx, not_ready: dict[str, list[str]] | None = None) -> list[
     decision, drift) are reported in ``not_ready`` so the orchestrator can block them
     and ask, instead of silently waiting on them forever.
     """
-    if is_bug(ctx):  # one fix piece (and corrections), no tasks.md and no dependencies
-        return [k for k, p in (ctx.state.get("pieces") or {}).items() if p["status"] == "pending"]
+    import blocker  # noqa: PLC0415  (blocker imports this module)
+    blocker.release_reapproved(ctx)  # before the clock: a re-approval opens a new shift
+    if over_wall_clock(ctx):
+        if ctx.state.get("status") != "stopped":
+            nsstate.stop(ctx.state, "budget_exhausted")
+            ctx.save()
+            ctx.log("_run", "wall_clock", "budget_exhausted", None,
+                    f"{ctx.config.get('wall_clock') or nsconfig.DEFAULTS['wall_clock']} since {ctx.state.get('started_at')}")
+        return []
     rep = model.validate_feature(ctx.root, ctx.fdir)
     if rep.remap_required:
         return []
-    entries = rep.record.get("pieces") or {}
     pieces = ctx.state.get("pieces") or {}
     out = []
     for p in rep.derivation.pieces:
@@ -282,8 +297,7 @@ def next_ready(ctx: Ctx, not_ready: dict[str, list[str]] | None = None) -> list[
             if not_ready is not None:
                 not_ready[p.key] = reasons
             continue
-        if all((entries.get(d) or {}).get("satisfied") or (pieces.get(d) or {}).get("status") == "passed"
-               for d in p.depends_on):
+        if all((pieces.get(d) or {}).get("status") == "passed" for d in p.depends_on):
             out.append(p.key)
     return out
 
@@ -293,14 +307,8 @@ def next_ready(ctx: Ctx, not_ready: dict[str, list[str]] | None = None) -> list[
 # ---------------------------------------------------------------------------
 
 
-def is_bug(ctx: Ctx) -> bool:
-    return ctx.state.get("kind") == "bug"
-
-
 def _derived_piece(ctx: Ctx, key: str) -> model.Piece | None:
-    if is_bug(ctx):
-        return None
-    d = model.derive(ctx.root, ctx.fdir, core.load_record(core.record_path(ctx.root, ctx.name)))
+    d = model.derive(ctx.root, ctx.fdir)
     return next((p for p in d.pieces if p.key == key), None)
 
 
@@ -343,8 +351,6 @@ def phase_pr_body(ctx: Ctx, key: str, sha: str) -> tuple[str, str]:
     p = nsstate.piece(ctx.state, key)
     dp = _derived_piece(ctx, key)
     title = f"[{ctx.name}] {dp.title if dp else key}"
-    if is_bug(ctx):
-        title = f"[{ctx.name}] {key}: reproduction and fix"
     issue = ((core.load_record(core.record_path(ctx.root, ctx.name)).get("issues") or {}).get("pieces") or {}).get(key)
     ci = p.get("ci") if (p.get("ci") or {}).get("sha") == sha else None
     body = core.render_template(ctx.root, "pr-phase.md", {
@@ -431,9 +437,6 @@ def merge_refusal(p: dict[str, Any], sha: str) -> str:
         return "evidence at this SHA is not all passed: " + ", ".join(bad)
     if not p.get("pr"):
         return "no phase PR recorded; run open-pr first"
-    r = p.get("repro") or {}
-    if p["loop"] == "fix" and not (r.get("ok") and r.get("ran") and r.get("fix_sha") == sha):
-        return f"the reproduction is not verified at {sha[:12]}"
     return ""
 
 
@@ -571,8 +574,8 @@ def _combined_command(ctx: Ctx, override: str | None, head: str) -> tuple[list[s
         return shlex.split(override), "worktree"
     checks_py = Path(__file__).resolve().parent / "checks.py"
     if checks_py.is_file():
-        scope = ["--bug", ctx.state["bug"]] if is_bug(ctx) else ["--feature", ctx.feature]
-        return [sys.executable, str(checks_py), *scope, "--combined", "--sha", head, "--json"], "root"
+        return [sys.executable, str(checks_py), "--feature", ctx.feature, "--combined", "--sha", head,
+                "--json"], "root"
     checks = ctx.config.get("checks") or []
     if not checks:
         raise core.NightshiftError("no combined checks: no checks.py, no --checks-cmd and no configured checks")
@@ -599,15 +602,9 @@ def _pushed_revert(ctx: Ctx, merged: str, head: str) -> str:
 TASK_LINE_RE = re.compile(r"^- \[[ xX]\] (?P<id>T\d+)\b.*$", re.M)
 
 
-def task_line(t: core.Task) -> str:
-    """A task as ``publish.py`` writes it into a sub-issue body."""
-    return (f"- [{'x' if t.done else ' '}] {t.id}{' [P]' if t.parallel else ''}"
-            f"{' [' + t.story + ']' if t.story else ''} {t.description}")
-
-
 def tick_tasks(body: str, tasks: dict[str, core.Task]) -> str:
     """Regenerate every task line of an issue body from ``tasks`` (Spec Kit's ``[X]``)."""
-    return TASK_LINE_RE.sub(lambda m: task_line(tasks[m.group("id")]) if m.group("id") in tasks else m.group(0),
+    return TASK_LINE_RE.sub(lambda m: model.task_line(tasks[m.group("id")]) if m.group("id") in tasks else m.group(0),
                             body)
 
 
@@ -698,11 +695,15 @@ def combined(ctx: Ctx, key: str, checks_cmd: str | None, timeout: int, repo: str
         p["combined_sha"] = head
         if green:
             nsstate.transition(ctx.state, key, "passed", by="phase_merge")
-            if not p.get("outcome"):  # a build piece completes here; a fix piece is verified
-                nsstate.set_outcome(p, "verified" if p["loop"] == "fix" else "completed", by="phase_merge")
+            if not p.get("outcome"):
+                nsstate.set_outcome(p, "completed", by="phase_merge")
             # Dependents blocked on this piece that now wait only on passed pieces go
             # back to pending (D23: the orchestrator had to free them by hand).
             result["released"] = nsstate.release_waiting(ctx.state, key, by="phase_merge", settled=("passed",))
+            piece_wt = ctx.run_dir / "worktrees" / key
+            if piece_wt.exists():
+                git(ctx.root, "worktree", "remove", "--force", str(piece_wt), check=False)
+                result["worktree_removed"] = not piece_wt.exists()
         else:
             git(wt, "revert", "-m", "1", "--no-edit", merged)
             revert = git(wt, "rev-parse", "HEAD")
@@ -718,7 +719,7 @@ def combined(ctx: Ctx, key: str, checks_cmd: str | None, timeout: int, repo: str
     ctx.log(key, "combined", result["outcome"], head, detail)
     for dep in result.get("released") or []:
         ctx.log(dep, "blocker", "unblocked", head, f"{key} passed")
-    if green and not is_bug(ctx):  # a bug run has one issue and no sub-issues
+    if green:
         # GitHub bookkeeping is a projection: a failure here never undoes the pass.
         try:
             result["issue"] = record_pass_on_issue(ctx, key, head, repo or resolve_repo(ctx.root))
@@ -749,7 +750,7 @@ def main(argv: list[str]) -> int:
     c.add_argument("--checks-cmd", help="override: a shell-quoted command run at origin's feature head")
     c.add_argument("--timeout", type=int, default=1800)
     args = ap.parse_args(argv)
-    ctx = load_ctx(args.feature, bug=getattr(args, "bug", None))
+    ctx = load_ctx(args.feature)
     if args.cmd == "next-ready":
         held: dict[str, list[str]] = {}
         ready = next_ready(ctx, held)

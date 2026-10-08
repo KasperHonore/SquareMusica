@@ -20,9 +20,8 @@ from typing import Any
 
 # The extension version; keep equal to ``extension.version`` in extension.yml
 # (tests/test_version.py). Bump both on every change a consumer should pick up.
-VERSION = "1.1.3"
+VERSION = "2.0.0"
 SCHEMA_VERSION = 1
-LOOPS = ("build", "fix")
 MARKER_PREFIX = "speckit-nightshift:"
 
 
@@ -376,10 +375,6 @@ MARKER_RE = re.compile(r"^\s*\[(?P<m>P|US\d+)\]")
 # (partial)". parse_converge_tag() takes the LAST gap type and the last `per ` before it.
 CONVERGE_GAP_RE = re.compile(r"\((?P<gap>missing|partial|contradicts|unrequested)\)")
 CONVERGE_PER_RE = re.compile(r"\b[Pp]er\s+")
-# Kept for callers that only need to know whether a line carries a tag.
-CONVERGE_TAG_RE = re.compile(
-    r"\b[Pp]er\s+(?P<ref>[^()]+?)\s+\((?P<gap>missing|partial|contradicts|unrequested)\)"
-)
 ACC_REF = r"US\d+/AC\d+"
 _ID_RE = re.compile(rf"^(?:{ACC_REF}|(?:FR|SC)-\d{{3,}}[a-z]?)$")
 _ID_START_RE = re.compile(rf"^(?:US\d+/AC\d+|US\d+\b|(?:FR|SC)-\d)")
@@ -714,75 +709,6 @@ def parse_spec(path: Path) -> SpecDoc:
             elif line.strip() and not line.startswith(" "):
                 in_scen = False
     return SpecDoc(path, title, stories, scenarios, clar, reqs)
-
-
-# ---------------------------------------------------------------------------
-# Bug assessments (Spec Kit ``bug`` extension)
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class BugDoc:
-    slug: str
-    path: Path
-    title: str
-    fields: dict[str, str]
-    sections: dict[str, str]
-
-    @property
-    def verdict(self) -> str:
-        return self.fields.get("Verdict", "").strip().lower()
-
-    @property
-    def reproduction(self) -> str:
-        return self.sections.get("Reproduction", "").strip()
-
-
-def parse_bug(bug_dir: Path) -> BugDoc:
-    path = bug_dir / "assessment.md"
-    try:
-        text = _strip_html_comments(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise NightshiftError(f"cannot read {path}: {exc}") from exc
-    title = bug_dir.name
-    fields: dict[str, str] = {}
-    sections: dict[str, list[str]] = {}
-    current = ""
-    for line in text.splitlines():
-        m = re.match(r"^#\s+Bug Assessment:\s*(.+?)\s*$", line)
-        if m:
-            title = m.group(1)
-            continue
-        m = re.match(r"^##\s+(.+?)\s*$", line)
-        if m:
-            current = m.group(1)
-            current = re.sub(r"\s*\(.*\)$", "", current)
-            sections[current] = []
-            continue
-        m = re.match(r"^\s*-\s+\*\*(?P<k>[^*]+)\*\*:\s*(?P<v>.*)$", line)
-        if m and not current:
-            fields[m.group("k").strip()] = m.group("v").strip()
-            continue
-        if current:
-            sections[current].append(line)
-    return BugDoc(
-        bug_dir.name, path, title, fields, {k: "\n".join(v).strip() for k, v in sections.items()}
-    )
-
-
-def parse_bug_test_result(bug_dir: Path) -> str:
-    """Return the ``Result`` header of ``test.md`` (verified|partial|failed), or ""."""
-    path = bug_dir / "test.md"
-    if not path.is_file():
-        return ""
-    for line in path.read_text(encoding="utf-8").splitlines():
-        m = re.match(r"^\s*-\s+\*\*Result\*\*:\s*(\S+)", line)
-        if m:
-            return m.group(1).strip().lower()
-    return ""
-
-
-PROMISE_RE = re.compile(rf"\b{REQ_ID}\b|specs/[\w.-]+|US\d+/AC\d+")
 
 
 # ---------------------------------------------------------------------------

@@ -7,7 +7,8 @@ Given the piece, the phase base SHA and the builder's worktree, check:
 - ``dirty``: the worktree is clean (``.nightshift/`` ignored);
 - ``edits-spec``: ``spec.md`` and ``plan.md`` are byte-identical to the base, and
   ``tasks.md`` differs only in checkboxes (any ID, description or other edit fails);
-- ``ticks-other-phase``: every checkbox change belongs to a task of this piece;
+- ``ticks-other-phase``: every checkbox change belongs to a task of this piece, and never
+  to an untraced task of a Convergence piece (``excluded``; D-3');
 - ``protected-path``: when the delivery record lists ``protected_paths``, every
   changed path lies inside them (the feature's ``tasks.md`` is governed above);
 - ``gate_tampered``: each file matching a gate glob (config ``gate_paths``) has the
@@ -21,9 +22,6 @@ honoured (outcome ``blocked``, the piece is parked ``builder_blocked``). A gate
 tamper always wins over a blocked file (D5c). A builder that writes blocked.json
 need not have committed, so ``no-commit`` is waived for an honest stop; every
 other check still applies.
-
-``--bug SLUG`` (a bug run): the spec/plan/tasks checks are skipped (there are none); the
-assessment and every ``specs/`` file are gate paths instead.
 
 All of these are **mechanical** safeguards: they read git objects, not the
 builder's account. They run after the builder, so they detect rather than prevent;
@@ -101,7 +99,7 @@ def _normalise_checkboxes(text: str) -> str:
 
 
 def check_tasks(base_text: str | None, head_text: str | None, piece: str,
-                tasks_path: str) -> list[dict[str, str]]:
+                tasks_path: str, excluded: set[str] = frozenset()) -> list[dict[str, str]]:
     if base_text is None:
         return [{"code": "edits-spec", "detail": f"{tasks_path} is missing at the base commit"}]
     if head_text is None:
@@ -114,10 +112,9 @@ def check_tasks(base_text: str | None, head_text: str | None, piece: str,
     base_doc = core.parse_tasks_text(base_text, Path(tasks_path))
     head_doc = core.parse_tasks_text(head_text, Path(tasks_path))
     pieces = {p.key: {t.id for t in p.tasks} for p in model.group_pieces(base_doc)}
-    if piece not in pieces and not piece.startswith("correction-"):
+    if piece not in pieces:
         raise core.NightshiftError(f"piece {piece!r} is not derived from {tasks_path} at the base commit")
-    # A correction (D-FB) owns no task.
-    mine = pieces.get(piece, set())
+    mine = pieces[piece] - set(excluded)
     head_done = {t.line: t for t in head_doc.tasks}
     out = []
     for t in base_doc.tasks:
@@ -126,7 +123,8 @@ def check_tasks(base_text: str | None, head_text: str | None, piece: str,
             continue
         if t.id not in mine:
             verb = "ticked" if h.done else "unticked"
-            out.append({"code": "ticks-other-phase", "detail": f"{verb} {t.id}, which is not in piece {piece}"})
+            why = "an untraced converge task (a product decision)" if t.id in excluded else f"not in piece {piece}"
+            out.append({"code": "ticks-other-phase", "detail": f"{verb} {t.id}, which is {why}"})
     return out
 
 
@@ -167,9 +165,7 @@ def read_found(wt: Path, cfg: dict[str, Any]) -> tuple[list[dict[str, Any]], lis
 
 
 def evaluate(root: Path, fdir: Path, piece: str, base: str, wt: Path, cfg: dict[str, Any],
-             record: dict[str, Any], feature_docs: bool = True) -> dict[str, Any]:
-    """``feature_docs=False`` (a bug run) skips the spec/plan/tasks checks; the caller
-    protects the assessment and specs through extra gate paths instead."""
+             record: dict[str, Any]) -> dict[str, Any]:
     feature = core.feature_id(root, fdir)
     base = git(wt, "rev-parse", "--verify", f"{base}^{{commit}}").strip()
     head = git(wt, "rev-parse", "HEAD").strip()
@@ -198,12 +194,12 @@ def evaluate(root: Path, fdir: Path, piece: str, base: str, wt: Path, cfg: dict[
         violations.append({"code": "dirty", "detail": "uncommitted changes: " + ", ".join(sorted(dirty)[:20])})
 
     tasks_rel = f"{feature}/tasks.md"
-    if feature_docs:
-        for name in ("spec.md", "plan.md"):
-            rel = f"{feature}/{name}"
-            if blob(wt, base, rel) != blob(wt, head, rel):
-                violations.append({"code": "edits-spec", "detail": f"{rel} changed"})
-        violations += check_tasks(show(wt, base, tasks_rel), show(wt, head, tasks_rel), piece, tasks_rel)
+    for name in ("spec.md", "plan.md"):
+        rel = f"{feature}/{name}"
+        if blob(wt, base, rel) != blob(wt, head, rel):
+            violations.append({"code": "edits-spec", "detail": f"{rel} changed"})
+    violations += check_tasks(show(wt, base, tasks_rel), show(wt, head, tasks_rel), piece, tasks_rel,
+                              model.excluded_tasks(root, fdir, piece))
 
     changed = [p for p in git(wt, "diff", "--name-only", "--no-renames", base, head).splitlines() if p]
     protected = [str(x) for x in (record.get("protected_paths") or [])]
@@ -312,7 +308,6 @@ def record_state(root: Path, name: str, result: dict[str, Any]) -> list[str]:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--feature", help="feature directory")
-    ap.add_argument("--bug", metavar="SLUG", help="a bug run (bug-<slug>) instead of a feature")
     ap.add_argument("--piece", required=True, help="piece key, e.g. us1")
     ap.add_argument("--base", required=True, help="phase base SHA")
     ap.add_argument("--worktree", help="the builder's worktree (default: the current checkout)")
@@ -321,15 +316,14 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--json", action="store_true", help="print JSON")
     args = ap.parse_args(argv)
     root = core.find_project_root()
-    fdir, name = model.run_target(root, args.feature, args.bug)
+    fdir = core.resolve_feature_dir(root, args.feature)
+    name = fdir.name
     cfg = config.load(root, args.config)
-    if args.bug:
-        cfg["gate_paths"] = list(cfg["gate_paths"]) + model.BUG_GATES
     record = core.load_record(core.record_path(root, name))
     wt = Path(args.worktree).resolve() if args.worktree else root
     if not wt.is_dir():
         raise core.NightshiftError(f"worktree not found: {wt}")
-    result = evaluate(root, fdir, args.piece, args.base, wt, cfg, record, feature_docs=not args.bug)
+    result = evaluate(root, fdir, args.piece, args.base, wt, cfg, record)
     result["notes"] = [] if args.no_record else record_state(root, name, result)
     if args.json:
         core.emit_json(result)

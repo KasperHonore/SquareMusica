@@ -34,7 +34,9 @@ DEFAULTS: dict[str, Any] = {
     "review_budget": "1h",
     "checks": [],
     "preview": {"command": [], "health_url": "", "health_timeout": 30},
-    "cli": {"builder": "claude", "critic": "claude"},
+    "cli": {"piece": "claude", "builder": "claude", "critic": "claude", "converge": "claude"},
+    # D-3': /speckit-converge rounds once every piece passed.
+    "converge": {"max_rounds": 2},
     "gate_paths": DEFAULT_GATE_PATHS,
     # Free space (MB) preflight wants in the checks' temp dir and the repo's filesystem:
     # below ``warn`` a warning, below ``refuse`` a refusal (D23: a full /tmp).
@@ -140,6 +142,7 @@ def load(root: Path, explicit: str | None = None) -> dict[str, Any]:
         "gate_paths": gates,
         "base_branch": data.get("base_branch"),
         "ci": {**DEFAULTS["ci"], **(data.get("ci") or {})},
+        "converge": {**DEFAULTS["converge"], **(data.get("converge") or {})},
     }
 
 

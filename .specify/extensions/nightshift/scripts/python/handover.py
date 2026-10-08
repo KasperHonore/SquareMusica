@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Final handover: feature PR, preview, acceptance and clean-up (design §6.2, §8).
+"""Final handover: feature PR, preview, acceptance and clean-up (design §6.4, §8).
 
 Subcommands:
 
-- ``pr [--stop-reason R]``: render ``templates/pr-feature.md`` and open or update the
-  feature PR into the base branch. Parked and blocked items with their questions come
-  first; the acceptance criteria are quoted verbatim from ``spec.md``; the checks and
-  review summary names the PR head SHA. Sets the run's stop reason (default
+- ``pr [--stop-reason R] [--notes F]``: render ``templates/pr-feature.md`` and open or
+  update the feature PR into the base branch. The body (adapted from Matt Pocock's ``pr``
+  and HumanLayer's ``visual-pr``/``show-me`` skills, MIT; ``THIRD_PARTY.md``):
+  *Needs your decision* first (parked and blocked pieces with their questions verbatim,
+  untraced converge gaps), *Summary*, *Evidence at <head>* (per piece: checks, critic
+  verdict, CI, combined; the preview), *Merge danger* (door and blast radius) with the
+  *detected one-way signals* (migrations, deleted files, lockfiles and dependency
+  manifests, CI and gate paths: path globs over ``<base>...<head>``, mechanical),
+  *Acceptance criteria* verbatim from ``spec.md``, *Changed during the run* (answers
+  absorbed old → new, breakage found while building) and *Known gaps*. ``--notes F`` is
+  the dispatcher's ``handover-notes.md`` (``## Summary`` and ``## Merge danger``,
+  agent-written from a fresh read of the diff); its two sections are inserted verbatim
+  and kept for later re-renders. Sets the run's stop reason (default
   ``awaiting_acceptance``, or ``partial_awaiting_acceptance`` when anything is parked,
   blocked or unfinished) and stops the run.
 - ``preview [--stop]``: start ``preview.command`` at the exact PR head SHA in an isolated
@@ -17,11 +26,6 @@ Subcommands:
   acceptance criteria listed as ``--confirmed`` are ticked (untick when it is void).
 - ``check-acceptance``: if a commit landed after the acceptance, mark it void, say so
   in the PR body and restart the preview at the new head (D17).
-- ``--bug SLUG pr|preview|accept|check-acceptance|cleanup``: the same for a bug run
-  (``bug-<slug>``, core review stage 2). Its feature branch is ``fix/<slug>``, into which
-  the ``fix`` piece merged like any phase; ``pr`` opens one PR from it into the base
-  branch with ``templates/pr-fix.md`` (reproduction rows from the run state, which only
-  ``checks.py`` writes) and is refused while no piece has passed: nothing verified, no PR.
 - ``close-issues``: only after GitHub reports the feature PR merged, close the parent
   issue and every sub-issue with a comment (marker-deduplicated); refused otherwise.
   Nightshift never closes a sub-issue earlier: a passed piece's sub-issue gets a
@@ -42,9 +46,9 @@ Safeguards:
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -60,6 +64,7 @@ from typing import Any
 sys.dont_write_bytecode = True  # no __pycache__ inside the installed extension (D23)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import nightshift_config as nsconfig  # noqa: E402
 import nightshift_core as core  # noqa: E402
 import nightshift_github as github  # noqa: E402
 import nightshift_model as model  # noqa: E402
@@ -68,9 +73,6 @@ import phase_merge as pm  # noqa: E402
 
 VERSION = core.VERSION
 FIELDS = ("checks", "verdict")
-
-
-is_bug = pm.is_bug
 
 
 def handover_state(ctx: pm.Ctx) -> dict[str, Any]:
@@ -92,8 +94,27 @@ def _spec(ctx: pm.Ctx) -> core.SpecDoc | None:
 
 
 def _story_piece(ctx: pm.Ctx) -> dict[str, str]:
-    d = model.derive(ctx.root, ctx.fdir, core.load_record(core.record_path(ctx.root, ctx.name)))
+    d = model.derive(ctx.root, ctx.fdir)
     return {p.story: p.key for p in d.pieces if p.story}
+
+
+def converge_tasks(ctx: pm.Ctx) -> tuple[list[core.Task], list[core.Task]]:
+    """(untraced, open traced not built) tasks of the Convergence phases on disk (D-3')."""
+    spec = _spec(ctx)
+    untraced, open_traced = [], []
+    for p in model.derive(ctx.root, ctx.fdir).pieces:
+        if p.kind != "convergence":
+            continue
+        tr, un = model.converge_split(p, spec)
+        untraced += un
+        if (ctx.state["pieces"].get(p.key) or {}).get("status") != "passed":
+            open_traced += tr
+    return untraced, open_traced
+
+
+def task_text(ctx: pm.Ctx, t: core.Task) -> str:
+    tag = f" ({t.gap_type})" if t.gap_type else ""
+    return f"`{t.id}`{tag}: {t.description} (`{ctx.feature}/tasks.md` line {t.line})"
 
 
 def attention_section(ctx: pm.Ctx) -> str:
@@ -101,15 +122,56 @@ def attention_section(ctx: pm.Ctx) -> str:
     for key, p in ctx.state["pieces"].items():
         if p["status"] in ("blocked", "parked"):
             q = p.get("question")
-            lines.append(f"- **`{key}` {p['status']} ({p.get('reason')})**" + (f": {q}" if q else ""))
-    for n in ctx.state.get("answer_notes") or []:  # absorbed with an answer; Kasper sees them
-        if n.get("kind") == "task-text-changed":
-            lines.append(f"- Task text changed after build: `{n['ref']}` (`{n['piece']}` had passed; "
-                         f"its evidence is kept; answer {n.get('answer') or '-'}). Check it by day.")
-        elif n.get("kind") == "criterion-answered":
-            lines.append(f"- **{n['ref']}** absorbed the answer {n.get('answer') or '-'}: "
-                         f"\"{n['old']}\" → \"{n['new']}\"")
+            lines.append(f"- **`{key}` {p['status']} ({p.get('reason')})**" + (f"\n  > {q}" if q else ""))
+    untraced, _ = converge_tasks(ctx)
+    lines += [f"- Converge gap that no approved line asks for (a product decision): {task_text(ctx, t)}"
+              for t in untraced]
     return "\n".join(lines) or "Nothing is parked or blocked."
+
+
+NOTE_RE = re.compile(r"^##\s+(Summary|Merge danger)\s*$", re.M | re.I)
+NO_NOTES = "_No agent notes: the dispatcher did not pass `handover.py pr --notes`._"
+
+
+def note_sections(text: str) -> dict[str, str]:
+    """The ``## Summary`` and ``## Merge danger`` sections of ``handover-notes.md``, verbatim."""
+    parts = NOTE_RE.split(text)
+    return {parts[i].strip().lower(): parts[i + 1].strip() for i in range(1, len(parts) - 1, 2)}
+
+
+# One-way signals: changes that are hard to walk back (mechanical path globs).
+ONE_WAY = {
+    "migration": ["**/migrations/**", "**/migrate/**", "**/alembic/**", "**/*.sql", "**/schema.prisma"],
+    "dependencies": ["**/package-lock.json", "**/yarn.lock", "**/pnpm-lock.yaml", "**/poetry.lock",
+                     "**/Pipfile.lock", "**/uv.lock", "**/go.sum", "**/Cargo.lock", "**/Gemfile.lock",
+                     "**/package.json", "**/pyproject.toml", "**/requirements*.txt", "**/go.mod", "**/Cargo.toml"],
+    "CI or gate": [".github/**"],
+}
+
+
+def one_way_signals(ctx: pm.Ctx, base: str, head: str) -> list[str]:
+    """``kind: path`` per changed path that matches a one-way glob, and every deleted file."""
+    try:
+        rows = pm.git(ctx.root, "diff", "--name-status", "--no-renames", f"origin/{base}...{head}").splitlines()
+    except core.NightshiftError:
+        return ["(could not diff against the base branch)"]
+    globs = {**ONE_WAY, "CI or gate": ONE_WAY["CI or gate"] + list(nsconfig.load(ctx.root)["gate_paths"])}
+    out = []
+    for row in rows:
+        status, _, path = row.partition("\t")
+        kinds = [k for k, g in globs.items() if nsconfig.matches_any(path, g)] + (["deleted"] if status == "D" else [])
+        out += [f"- {k}: `{path}`" for k in kinds]
+    return out
+
+
+def changes_section(ctx: pm.Ctx) -> str:
+    lines = []
+    for n in ctx.state.get("changes") or []:  # absorbed with an answer (blocker.py resolve)
+        note = f" ({n['note']})" if n.get("note") else ""
+        lines.append(f"- `{n['ref']}` changed with the answer {n.get('answer') or '-'}{note}:\n"
+                     f"  - was: {n.get('old') or '(new)'}\n  - now: {n['new']}")
+    found = found_section(ctx)
+    return "\n".join(lines + ([found] if found else [])) or "Nothing changed during the run."
 
 
 def acceptance_section(ctx: pm.Ctx) -> str:
@@ -144,26 +206,21 @@ def _combined_results(ctx: pm.Ctx) -> dict[str, dict[str, Any]]:
 
 def evidence_section(ctx: pm.Ctx, head: str) -> str:
     combined = _combined_results(ctx)
-    rows = ["| Piece | Status | Candidate | Checks | Review | Merged | Combined |",
-            "|---|---|---|---|---|---|---|"]
+    rows = ["| Piece | Status | Candidate | Checks | Critic | CI | Merged | Combined |",
+            "|---|---|---|---|---|---|---|---|"]
     for key, p in ctx.state["pieces"].items():
         c = combined.get(key)
         cs = f"{c['outcome']} at `{c['sha'][:12]}`" if c else "not run"
+        ci = (p.get("ci") or {}).get("state") or "-"
         rows.append(f"| `{key}` | {p['status']} | `{(p.get('candidate_sha') or '-')[:12]}` | "
                     + " | ".join(p.get(f) or "not_run" for f in FIELDS)
-                    + f" | `{(p.get('merged_sha') or '-')[:12]}` | {cs} |")
+                    + f" | {ci} | `{(p.get('merged_sha') or '-')[:12]}` | {cs} |")
     at_head = [k for k, c in combined.items() if c.get("sha") == head]
     if at_head:
         tail = f"Combined checks ran at the head `{head}` (after `{', '.join(at_head)}`)."
     else:
         tail = f"No combined checks ran at the head `{head}`; treat its evidence as not checked."
     return "\n".join(rows) + "\n\n" + tail
-
-
-def built_section(ctx: pm.Ctx) -> str:
-    done = [k for k, p in ctx.state["pieces"].items() if p["status"] == "passed"]
-    return "\n".join(f"- `{k}` merged at `{ctx.state['pieces'][k].get('merged_sha')}`" for k in done) \
-        or "Nothing was merged."
 
 
 def found_section(ctx: pm.Ctx) -> str:
@@ -176,32 +233,17 @@ def found_section(ctx: pm.Ctx) -> str:
                          f"(own check `{f['check_id']}`, at `{(f.get('sha') or '-')[:12]}`)")
         for f in p.get("found") or []:
             filed.append(f"- `{key}`: #{f['issue']} {f['title']} (filed, not fixed)")
-    return "\n".join(fixed + filed) or "Nothing pre-existing was found."
-
-
-def convergence_gaps(ctx: pm.Ctx) -> list[str]:
-    """Open tasks of Convergence phases that ``/speckit-converge`` appended and the run did
-    not build. They are reported for the owner to decide by day, never fixed overnight
-    (convergence auto-fixing shelved 2026-10-05, docs/core-review.md)."""
-    d = model.derive(ctx.root, ctx.fdir, core.load_record(core.record_path(ctx.root, ctx.name)))
-    out = []
-    for p in d.pieces:
-        if p.kind != "convergence" or p.key in ctx.state["pieces"]:
-            continue
-        for t in p.tasks:
-            if not t.done:
-                tag = f" ({t.gap_type})" if t.gap_type else ""
-                out.append(f"- Convergence gap `{t.id}`{tag}: {t.description} (`{ctx.feature}/tasks.md` line {t.line})")
-    return out
+    return "\n".join(fixed + filed)
 
 
 def gaps_section(ctx: pm.Ctx) -> str:
     gaps = [f"- `{k}` is {p['status']}" + (f" ({p.get('reason')})" if p.get("reason") else "")
             for k, p in ctx.state["pieces"].items() if p["status"] != "passed"]
-    conv = convergence_gaps(ctx)
-    if conv:
-        gaps += ["", "Found by the final `/speckit-converge` check; not fixed. Decide by day "
-                 "(`/speckit-clarify`, `/speckit-tasks`, a new batch, or drop):"] + conv
+    _, open_traced = converge_tasks(ctx)
+    gaps += [f"- Converge gap still open after {ctx.state.get('converge_rounds') or 0} round(s): {task_text(ctx, t)}"
+             for t in open_traced]
+    if not ctx.state.get("converge_rounds"):
+        gaps.append("- `/speckit-converge` did not run (it runs only once every piece passed; a parked or blocked piece skips it).")
     return "\n".join(gaps) or "None known."
 
 
@@ -228,56 +270,22 @@ def default_stop_reason(ctx: pm.Ctx) -> str:
     return "awaiting_acceptance" if statuses <= {"passed"} else "partial_awaiting_acceptance"
 
 
-def _bug(ctx: pm.Ctx) -> core.BugDoc:
-    return core.parse_bug(ctx.fdir)
-
-
-def fix_outcome(ctx: pm.Ctx) -> str:
-    pieces = ctx.state["pieces"].values()
-    return "verified" if all(p["status"] == "passed" and p.get("outcome") == "verified" for p in pieces) \
-        else "not verified"
-
-
-def render_fix_body(ctx: pm.Ctx, head: str) -> str:
-    """A bug run's PR body (D24): the reproduction rule's facts per piece, verbatim from state."""
-    bug = _bug(ctx)
-    promise = core.PROMISE_RE.search(bug.sections.get("Symptom", "") + "\n" + bug.sections.get("Report", ""))
-    rows, tests, ci = [], [], None
-    for key, p in ctx.state["pieces"].items():
-        r = p.get("repro") or {}
-        argv = " ".join(r.get("argv") or []) or "-"
-        rows += [f"| `{key}` | `{argv}` | `{(r.get('repro_sha') or '-')[:12]}` (repro) | fail | {r.get('before_exit')} |",
-                 f"| `{key}` | `{argv}` | `{(r.get('fix_sha') or '-')[:12]}` (fix) | pass | {r.get('after_exit')} |"]
-        tests += [f"- `{t}` (unchanged since `{(r.get('repro_sha') or '')[:12]}`)" for t in r.get("test_files") or []]
-        ci = ci or p.get("ci")
-    return core.render_template(ctx.root, "pr-fix.md", {
-        "slug": bug.slug, "title": f"[fix] {bug.title}", "outcome": fix_outcome(ctx),
-        "stop_reason": ctx.state.get("stop_reason") or "running", "head_sha": head, "time": nsstate.now(),
-        "acceptance_notice": acceptance_notice(ctx, head), "attention": attention_section(ctx),
-        "promise": promise.group(0) if promise else "unknown", "repro_rows": "\n".join(rows),
-        "regression_tests": "\n".join(tests) or "_None._", "evidence": evidence_section(ctx, head),
-        "ci": pm.ci_text(ci), "preview": preview_section(ctx, head), "version": VERSION,
-    })
-
-
 def pr_title(ctx: pm.Ctx) -> str:
-    if is_bug(ctx):
-        return f"[fix] {_bug(ctx).title}"
     spec = _spec(ctx)
     return f"[{ctx.name}] {spec.title if spec else ctx.name}"
 
 
 def render_body(ctx: pm.Ctx, head: str) -> str:
-    if is_bug(ctx):
-        return render_fix_body(ctx, head)
-    spec = _spec(ctx)
+    notes = note_sections(handover_state(ctx).get("notes") or "")
+    signals = one_way_signals(ctx, base_branch(ctx), head)
     return core.render_template(ctx.root, "pr-feature.md", {
-        "feature": ctx.feature, "title": f"[{ctx.name}] {spec.title if spec else ctx.name}",
+        "feature": ctx.feature, "title": pr_title(ctx), "base": base_branch(ctx),
         "stop_reason": ctx.state.get("stop_reason") or "running", "head_sha": head, "time": nsstate.now(),
         "acceptance_notice": acceptance_notice(ctx, head), "attention": attention_section(ctx),
-        "acceptance": acceptance_section(ctx), "built": built_section(ctx), "found": found_section(ctx),
-        "evidence": evidence_section(ctx, head), "preview": preview_section(ctx, head),
-        "gaps": gaps_section(ctx), "version": VERSION,
+        "summary": notes.get("summary") or NO_NOTES, "danger": notes.get("merge danger") or NO_NOTES,
+        "signals": "\n".join(signals) or "None.", "acceptance": acceptance_section(ctx),
+        "changes": changes_section(ctx), "evidence": evidence_section(ctx, head),
+        "preview": preview_section(ctx, head), "gaps": gaps_section(ctx), "version": VERSION,
     })
 
 
@@ -299,25 +307,24 @@ def upsert_feature_pr(ctx: pm.Ctx, gh: github.Gh, head: str) -> dict[str, Any]:
     return {"pr": pr["number"], "action": action, "head_sha": head, "base": base, "body": body}
 
 
-def cmd_pr(ctx: pm.Ctx, gh: github.Gh, reason: str | None) -> dict[str, Any]:
+def cmd_pr(ctx: pm.Ctx, gh: github.Gh, reason: str | None, notes: str | None = None) -> dict[str, Any]:
     """Open or update the feature PR. Resume-safe: the PR is found by head and base,
     so a crash after it was created updates that PR instead of opening another."""
     head = pm.remote_head(ctx.root, ctx.feature_branch)
-    if is_bug(ctx) and not any(p["status"] == "passed" for p in ctx.state["pieces"].values()):
-        ctx.log("feature", "handover", "refused", head, "no piece passed: nothing verified on " + ctx.feature_branch)
-        raise core.NightshiftError(f"bug run {ctx.name}: PR refused: no piece passed, so nothing on "
-                                   f"{ctx.feature_branch} is verified; stop the run instead")
     reason = reason or default_stop_reason(ctx)
+    if notes is not None:
+        handover_state(ctx)["notes"] = Path(notes).read_text(encoding="utf-8")
     step = "feature:0:handover"
-    done = nsstate.step_done(ctx.state, step, {"head": head, "reason": reason})
+    done = nsstate.step_done(ctx.state, step, {"head": head, "reason": reason, "notes": notes is not None})
     if done and ctx.state.get("stop_reason") == reason and handover_state(ctx).get("pr") == done["result"]["pr"]:
         return {"pr": done["result"]["pr"], "action": "unchanged", "head_sha": head, "base": base_branch(ctx),
                 "stop_reason": reason, "skipped": True}
     nsstate.stop(ctx.state, reason)
-    nsstate.step_intent(ctx.state, step, {"head": head, "reason": reason})
+    inputs = {"head": head, "reason": reason, "notes": notes is not None}
+    nsstate.step_intent(ctx.state, step, inputs)
     ctx.save()
     out = upsert_feature_pr(ctx, gh, head)
-    nsstate.step_complete(ctx.state, step, {"head": head, "reason": reason}, {"pr": out["pr"]})
+    nsstate.step_complete(ctx.state, step, inputs, {"pr": out["pr"]})
     ctx.save()
     ctx.log("feature", "handover", reason, head, f"feature PR #{out['pr']}; stop: {reason}")
     released = release_own_lease(ctx)
@@ -630,6 +637,7 @@ def main(argv: list[str]) -> int:
     ap, sub, common = pm.cli_parser(__doc__)
     p = sub.add_parser("pr", parents=[common])
     p.add_argument("--stop-reason", choices=nsstate.STOP_REASONS)
+    p.add_argument("--notes", metavar="FILE", help="handover-notes.md: ## Summary and ## Merge danger, inserted verbatim")
     v = sub.add_parser("preview", parents=[common])
     v.add_argument("--stop", action="store_true")
     v.add_argument("--timeout", type=float, help="health-check seconds (default preview.health_timeout, 30)")
@@ -644,13 +652,10 @@ def main(argv: list[str]) -> int:
     sub.add_parser("cleanup", parents=[common])
     sub.add_parser("close-issues", parents=[common])
     args = ap.parse_args(argv)
-    bug = getattr(args, "bug", None)
-    if bug and args.cmd == "close-issues":
-        raise core.NightshiftError(f"handover {args.cmd} is for a feature run, not a bug run")
-    ctx = pm.load_ctx(args.feature, bug=bug)
+    ctx = pm.load_ctx(args.feature)
     gh = github.Gh(pm.resolve_repo(ctx.root, args.repo), ctx.root)
     if args.cmd == "pr":
-        out = cmd_pr(ctx, gh, args.stop_reason)
+        out = cmd_pr(ctx, gh, args.stop_reason, args.notes)
         text = f"{out['action']} feature PR #{out['pr']} at {out['head_sha']}; stop: {out['stop_reason']}"
     elif args.cmd == "preview":
         if args.stop:

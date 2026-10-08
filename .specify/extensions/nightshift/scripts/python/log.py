@@ -4,8 +4,6 @@
 - ``append --piece --step --outcome [--sha] [--detail]``: one ``log.jsonl`` entry;
 - ``tail [-n N]``: the last N entries.
 
-``--bug SLUG`` (exclusive with ``--feature``) addresses a fix run (``bug-<slug>``).
-
 The logbook is append-only; entries are never rewritten. Timestamps are ISO 8601 with the local time zone offset
 (D20). Append-only is **mechanical** for this CLI and **behavioural** otherwise:
 an agent with file access could still edit the files.
@@ -22,14 +20,11 @@ sys.dont_write_bytecode = True  # no __pycache__ inside the installed extension 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import nightshift_core as core  # noqa: E402
-import nightshift_model as model  # noqa: E402
 import nightshift_state as nstate  # noqa: E402
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    scope = ap.add_mutually_exclusive_group()
-    scope.add_argument("--feature", help="feature directory")
-    scope.add_argument("--bug", metavar="SLUG", help="a fix run (bug-<slug>) instead of a feature")
+    ap.add_argument("--feature", help="feature directory")
     ap.add_argument("--json", action="store_true", help="print JSON")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("append")
@@ -44,7 +39,7 @@ def main(argv: list[str]) -> int:
         sp.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="print JSON")
     args = ap.parse_args(argv)
     root = core.find_project_root()
-    name = f"bug-{model.bug_dir(root, args.bug).name}" if args.bug else core.resolve_feature_dir(root, args.feature).name
+    name = core.resolve_feature_dir(root, args.feature).name
     st = nstate.load(root, name)
 
     if args.cmd == "append":

@@ -12,12 +12,6 @@ Subcommands:
   The builder's exit code and claims are recorded but never count as a pass (D-VER);
   ``postconditions`` and ``checks`` decide.
 
-``--bug SLUG`` addresses a bug run (``bug-<slug>``; its "feature branch" is
-``fix/<slug>``). A ``fix`` piece gets ``templates/prompt-fix-builder.md`` (the assessment
-verbatim, reproduction first) instead of the feature builder prompt, and the assessment
-and every ``specs/`` file are gate paths. After a refused reproduction the next round
-restarts the local, unpushed phase branch from the base (``reset_to_base``, set by
-``checks.py``; mechanical).
 - ``review --piece``: run the fresh, read-only critic on the prompt ``verdict.py inputs``
   rendered and store its raw answer for ``verdict.py review``.
 
@@ -62,13 +56,11 @@ parse_duration = core.parse_duration  # '90s', '45m', '8h' or seconds
 class Ctx:
     def __init__(self, args: argparse.Namespace):
         self.root = core.find_project_root()
-        self.bug = getattr(args, "bug", None)
-        self.fdir, self.name = model.run_target(self.root, args.feature, self.bug)
+        self.fdir = core.resolve_feature_dir(self.root, args.feature)
+        self.name = self.fdir.name
         self.feature = core.feature_id(self.root, self.fdir)
         self.state = st.load(self.root, self.name)
         self.cfg = config.load(self.root)
-        if self.bug:
-            self.cfg["gate_paths"] = list(self.cfg["gate_paths"]) + model.BUG_GATES
         self.key = args.piece
         self.p = st.piece(self.state, self.key)
         self.run_dir = st.run_dir(self.root, self.name)
@@ -93,6 +85,16 @@ def cmd_start(c: Ctx) -> dict[str, Any]:
     fb = c.state["feature_branch"]
     git(c.root, "fetch", "-q", "origin", f"refs/heads/{fb}:refs/remotes/origin/{fb}")
     head = git(c.root, "rev-parse", f"refs/remotes/origin/{fb}")
+    if c.p.get("fresh_branch"):
+        # Released after its merge was reverted: keep the old branch under a new name and
+        # start again from the feature head, where the reverted work is absent.
+        old = f"{c.branch}-park-{len(c.p.get('parks') or [])}"
+        if c.worktree.is_dir():
+            git(c.root, "worktree", "remove", "--force", str(c.worktree))
+        if git(c.root, "rev-parse", "--verify", "--quiet", f"refs/heads/{c.branch}", check=False):
+            git(c.root, "branch", "-M", c.branch, old)
+        c.p.update(fresh_branch=None, base_sha=None)
+        c.log("start", "fresh_branch", head, f"reverted attempt kept as {old}")
     if c.worktree.is_dir():
         current = git(c.worktree, "branch", "--show-current", check=False)
         if current != c.branch:
@@ -117,14 +119,12 @@ def _bar(c: Ctx) -> tuple[str, model.Piece | None, model.Derivation]:
     spec_path = c.fdir / "spec.md"
     spec = core.parse_spec(spec_path) if spec_path.is_file() else None
     record = core.load_record(core.record_path(c.root, c.name))
-    d = model.derive(c.root, c.fdir, record)
+    d = model.derive(c.root, c.fdir)
     piece = next((p for p in d.pieces if p.key == c.key), None)
     lines = []
-    refs = c.p.get("bar_refs") or []
-    if refs:  # an added piece (a correction): the cited criteria are the bar
-        by_ref = {s.ref: s.text for s in (spec.scenarios if spec else [])}
-        lines = [f"- **{r}**: {by_ref[r]}" if r in by_ref else f"- **{r}** (see spec.md)" for r in refs]
-        return "\n".join(lines), piece, d
+    if piece and piece.kind == "convergence":  # the traced gaps' cited lines (D-3')
+        bar = model.freeze_bar(c.root, c.fdir, c.key, c.p["loop"])
+        return model.bar_markdown(bar), piece, d
     if piece and piece.labels.get("Independent Test"):
         lines.append(f"**Independent Test**: {piece.labels['Independent Test']}")
     if spec and piece:
@@ -138,10 +138,11 @@ def _bar(c: Ctx) -> tuple[str, model.Piece | None, model.Derivation]:
 
 
 def _task_refs(c: Ctx, piece: model.Piece | None) -> str:
-    """The tasks the builder may work on; a correction (D-FB) has no tasks, only its bar."""
+    """The tasks the builder may work on (a Convergence piece: its traced tasks only)."""
     if piece is None:
-        return "_none: fix the defect against the bar below; tick no task_" if c.p.get("added") else "_unknown_"
-    refs = [core.task_ref(c.feature, t.id) for t in piece.tasks]
+        return "_unknown_"
+    excluded = model.excluded_tasks(c.root, c.fdir, c.key)
+    refs = [core.task_ref(c.feature, t.id) for t in piece.tasks if t.id not in excluded]
     return ", ".join(refs) or "_none_"
 
 
@@ -161,35 +162,21 @@ def _unseen(c: Ctx, path: str | None) -> str:
     if path:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         items = list(data.get("unseen_findings", data) if isinstance(data, dict) else data)
-    added = c.p.get("added") or {}
-    if c.p["loop"] == "fix" and added.get("source"):  # a correction of a bug run (D-FB)
-        items.insert(0, {"severity": "blocker", "path": "-", "lines": "*",
-                         "rationale": f"Owner feedback against {', '.join(c.p.get('bar_refs') or [])}: "
-                                      f"{added['source']}"})
     return "\n".join(f"- **{f.get('severity', '?')}** `{f.get('path', '')}` {f.get('lines', '')}: "
                      f"{f.get('rationale', f)}" for f in items) or "_None._"
 
 
 def _grounding(c: Ctx) -> str:
-    """P2: what the run-start re-grounding found moved in code this piece's plan relies on."""
-    lines = (((c.state.get("grounding") or {}).get("pieces") or {}).get(c.key) or {}).get("briefing") or []
-    if not lines:
-        return ""
-    return ("## Code moved since planning (re-grounding; the plan's intent still stands)\n"
-            + "\n".join(f"- {b}" for b in lines) + "\n")
+    """P2: the run-start re-grounding's drift note for this piece, if any."""
+    note = ((c.state.get("grounding") or {}).get("pieces") or {}).get(c.key)
+    return f"## Code moved since planning (re-grounding)\n{note}\n" if note else ""
 
 
-def _render_prompt(c: Ctx, findings_file: str | None) -> tuple[str, str]:
-    """(file name, text) of this round's builder prompt."""
+def _render_prompt(c: Ctx, findings_file: str | None) -> str:
+    """This round's builder prompt."""
     gates = ", ".join(f"`{g}`" for g in c.cfg["gate_paths"])
-    if c.p["loop"] == "fix":
-        assessment = (c.fdir / "assessment.md").read_text(encoding="utf-8").strip()
-        return "prompt-fix-builder.md", core.render_template(c.root, "prompt-fix-builder.md", {
-            "slug": c.bug, "round": c.p["round"], "branch": c.branch, "base": c.p["base_sha"],
-            "assessment": assessment, "unseen_findings": _unseen(c, findings_file),
-            "check_results": _check_results(c), "gate_paths": gates})
     bar, piece, _ = _bar(c)
-    return "prompt-builder.md", core.render_template(c.root, "prompt-builder.md", {
+    return core.render_template(c.root, "prompt-builder.md", {
         "grounding": _grounding(c), "piece": c.key, "phase_title": piece.title if piece else c.key, "round": c.p["round"],
         "feature": c.feature, "task_refs": _task_refs(c, piece),
         "bar": bar, "unseen_findings": _unseen(c, findings_file),
@@ -200,14 +187,15 @@ def _render_prompt(c: Ctx, findings_file: str | None) -> tuple[str, str]:
 # (runtime-tested 2026-10-02). Every role is a fresh, unsaved print-mode session.
 READ_TOOLS = "Read,Grep,Glob"
 ROLE_FLAGS: dict[str, list[str]] = {
+    # The piece orchestrator (piece.py) runs one piece's loop through the scripts.
+    "piece": ["--permission-mode", "bypassPermissions"],
+    # /speckit-converge appends to tasks.md and may run the tests (piece.py converge).
+    "converge": ["--permission-mode", "bypassPermissions"],
     # The builder edits its own worktree and runs /speckit-implement.
     "builder": ["--permission-mode", "bypassPermissions"],
     # The critic reads the code in place; no shell, no writes (behavioural; `verdict`
     # checks the tree mechanically).
     "critic": ["--permission-mode", "dontAsk", "--tools", READ_TOOLS],
-    # The grounding analyst (core review stage 7) reads like a critic; `grounding.py`
-    # checks the tree mechanically.
-    "grounding": ["--permission-mode", "dontAsk", "--tools", READ_TOOLS],
 }
 
 
@@ -226,7 +214,7 @@ def role_env(argv: list[str], extra: dict[str, str] | None = None) -> dict[str, 
     return core.tool_env(extra)
 
 
-def role_argv(c: Ctx, role: str, prompt_file: Path, add_dirs: list[Path] | None = None) -> list[str]:
+def role_argv(c: Any, role: str, prompt_file: Path, add_dirs: list[Path] | None = None) -> list[str]:
     """The configured CLI for a role. The prompt is fed on stdin unless the configured
     command names ``{prompt_file}``. A bare ``claude`` gets print mode, no session
     persistence, JSON output (the call wrapper) and the role's flags from ``ROLE_FLAGS``; any
@@ -236,7 +224,7 @@ def role_argv(c: Ctx, role: str, prompt_file: Path, add_dirs: list[Path] | None 
     (the evidence folder). A read-only critic runs in ``dontAsk`` mode, where a Read
     outside cwd is denied, so a bare ``claude`` gets one ``--add-dir`` each (D23b,
     D24b: a critic could not read a file in the evidence folder)."""
-    raw = c.cfg["cli"].get(role) or (c.cfg["cli"].get("critic") if role == "grounding" else None) or "claude"
+    raw = c.cfg["cli"].get(role) or "claude"
     argv = shlex.split(raw) if isinstance(raw, str) else [str(a) for a in raw]
     if len(argv) == 1 and Path(argv[0]).name == "claude":
         if role not in ROLE_FLAGS:
@@ -503,14 +491,13 @@ def cmd_build(c: Ctx, findings_file: str | None) -> dict[str, Any]:
         raise core.NightshiftError(f"{c.key}: no worktree; run `phase.py start` first")
     ev = c.run_dir / "evidence" / c.key / f"round-{c.p['round']}"
     ev.mkdir(parents=True, exist_ok=True)
-    pname = "prompt-fix-builder.md" if c.p["loop"] == "fix" else "prompt-builder.md"
-    pfile = ev / pname
+    pfile = ev / "prompt-builder.md"
     step = f"{c.key}:{c.p['round']}:build"
     resumed = bool((c.state["steps"].get(step) or {}).get("intent")) and pfile.is_file()
     if resumed:
         prompt = pfile.read_text(encoding="utf-8")
     else:
-        _, prompt = _render_prompt(c, findings_file)
+        prompt = _render_prompt(c, findings_file)
     inputs = {"round": c.p["round"], "base": c.p["base_sha"], "prompt": core.sha256_text(prompt)}
     done = st.step_done(c.state, step, inputs)
     if done:
@@ -543,26 +530,13 @@ def cmd_build(c: Ctx, findings_file: str | None) -> dict[str, Any]:
         c.save()
         c.log("build", "retry", head, f"{why}{f'; stray builder {stray} killed' if stray else ''}")
     else:
-        if c.p.pop("reset_to_base", False):
-            # The reproduction was refused last round; the phase branch is local and
-            # unpushed, so the script restarts it from the base instead of trusting a rewrite.
-            git(c.worktree, "reset", "-q", "--hard", c.p["base_sha"])
-            git(c.worktree, "clean", "-q", "-fd", "-e", ".nightshift")
         pfile.write_text(prompt, encoding="utf-8")
         st.step_intent(c.state, step, inputs)
         c.state["steps"][step]["intent"]["head"] = git(c.worktree, "rev-parse", "HEAD")
         c.save()
-    if c.p["loop"] == "fix":
-        stale = c.worktree / ".nightshift" / "repro.json"
-        if stale.exists():
-            stale.unlink()
     argv = role_argv(c, "builder", pfile)
-    extra = {"NIGHTSHIFT_PIECE": c.key}
-    extra.update({"NIGHTSHIFT_BUG": c.bug} if c.bug else
-                 {"SPECIFY_FEATURE_DIRECTORY": c.feature, "SPECIFY_FEATURE_NO_PERSIST": "1"})
-    env = role_env(argv, extra)
-    if c.bug:  # a bug run has no Spec Kit feature to pin
-        env.pop("SPECIFY_FEATURE_DIRECTORY", None)
+    env = role_env(argv, {"NIGHTSHIFT_PIECE": c.key, "SPECIFY_FEATURE_DIRECTORY": c.feature,
+                          "SPECIFY_FEATURE_NO_PERSIST": "1"})
     env.pop("NIGHTSHIFT_TEST_CRASH", None)
 
     def started_builder(pid: int) -> None:
@@ -634,7 +608,6 @@ def cmd_review(c: Ctx) -> dict[str, Any]:
 def main(argv: list[str]) -> int:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--feature", default=argparse.SUPPRESS)
-    common.add_argument("--bug", metavar="SLUG", default=argparse.SUPPRESS)
     common.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], parents=[common])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -645,7 +618,6 @@ def main(argv: list[str]) -> int:
             sp.add_argument("--findings", help="JSON file from `verdict.py next --json` (unseen findings)")
     args = ap.parse_args(argv)
     args.feature = getattr(args, "feature", None)
-    args.bug = getattr(args, "bug", None)
     args.json = getattr(args, "json", False)
     c = Ctx(args)
     if args.cmd == "start":

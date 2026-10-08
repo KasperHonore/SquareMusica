@@ -78,7 +78,7 @@ def main(argv: list[str]) -> int:
     f.add_argument("--title", required=True)
     f.add_argument("--body", default="")
     args = ap.parse_args(argv)
-    ctx = pm.load_ctx(args.feature, bug=getattr(args, "bug", None))
+    ctx = pm.load_ctx(args.feature)
     out = file_issue(ctx, args.piece, args.title, args.body, pm.resolve_repo(ctx.root, args.repo))
     pm.emit(args, out, f"{out['action']} #{out['issue']}: {out['title']}")
     return 0

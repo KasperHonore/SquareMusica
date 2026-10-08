@@ -1,7 +1,7 @@
 <!-- speckit-nightshift: feature={{feature}} phase={{piece}} -->
 # {{title}}
 
-Part of `{{feature}}`, phases {{phases}}. Loop: **{{loop}}**. {{loop_reason}}
+Part of `{{feature}}`, phases {{phases}}.
 
 **Readiness:** {{readiness}}
 **Depends on:** {{depends_on}}

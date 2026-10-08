@@ -14,29 +14,21 @@ it. Each result is ``{id, sha, argv, exit, duration_s, log, origin:
 With ``--piece`` and an existing run, the piece's ``checks`` sub-status is set to
 ``passed`` or ``failed`` and a logbook entry is appended.
 
-**Environment error** (D23: a full /tmp made all five checks exit 1 in under 3 s with
-empty logs). When every check failed *and* every log is empty (0 bytes), the run is
-classified ``environment_error``, not ``failed``: the evidence says so, the piece's
-``checks`` sub-status is left untouched, the logbook records outcome
-``environment_error``, the resume step stays
-open (a retry runs again) and the exit code is 3. The same holds when the clean
-checkout or the evidence directory cannot be created or written (ENOSPC, EDQUOT,
-permissions; 1.1.3, L1 phase D): no check ran, ``environment_detail`` says why. Anything else (one check green, one
-byte of output, a timeout, a check that cannot start) is a normal failure. The
-heuristic is mechanical; what the orchestrator does next (retry once, then stop with
-``environment_failure``) is behavioural.
+**Environment error.** A red that says nothing about the code is classified
+``environment_error``, not ``failed``, when any of these holds:
 
-**A fix piece's done condition** (loop ``fix``, a bug run ``--bug SLUG``; core review
-stage 2, P4). Before the configured checks, the reproduction rule runs, by script:
-``.nightshift/repro.json`` in the piece's worktree names ``{check_id, argv}``. The oldest
-commit after the piece's base (the *repro commit*) must change test files only, and
-``argv`` must name one of them. ``argv`` runs in a clean detached checkout at the repro
-commit (it must **fail**) and at ``--sha`` (it must **pass**), and the repro test files
-must be unchanged between the two (they stay as the regression test). The result is the
-piece's ``repro`` in run state (script-owned, P3) and ``repro`` in ``checks.json``. A
-refused reproduction fails the checks without running the others; ``verdict.py next``
-then restarts the round from the base. That the test exercises the reported symptom is
-**behavioural** (the builder's, judged by the critic).
+- every check failed and every log is empty (D23: a full /tmp, five checks red in 3 s);
+- a failed check's log says the disk is full or over quota (``No space left on device``,
+  ``Disk quota exceeded``, ``ENOSPC``, ``EDQUOT``), or a failed install check
+  (``install`` or ``npm ci`` in its id or argv) has an empty log (L1 phase E Finding 1: an
+  EDQUOT inside ``npm ci`` broke the tests too, and the red was cached as a code failure);
+- the clean checkout or the evidence directory cannot be created (1.1.3, L1 phase D).
+
+Then the evidence says so, the piece's ``checks`` sub-status is left untouched, the
+logbook records ``environment_error``, the step is never cached (a retry runs again) and
+the exit code is 3. Anything else (a timeout, a check that cannot start, a red test with
+output) is a normal failure. The classification is mechanical; what the orchestrator does
+next (retry once, then stop with ``environment_failure``) is behavioural.
 
 Safeguards: running in a clean checkout and judging by exit code are
 **mechanical**. Which SHA is passed in is the orchestrator's choice
@@ -66,9 +58,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import nightshift_config as config  # noqa: E402
 import nightshift_core as core  # noqa: E402
-import nightshift_model as model  # noqa: E402
 import nightshift_state as nstate  # noqa: E402
-import postconditions  # noqa: E402
 
 COMBINED = "_combined"
 ENV_ERROR_EXIT = 3
@@ -168,106 +158,28 @@ def run_checks(root: Path, name: str, scope: str, sha: str, checks: list[dict[st
     return data
 
 
+ENV_TEXT = re.compile(r"No space left on device|Disk quota exceeded|\bENOSPC\b|\bEDQUOT\b")
+INSTALL = re.compile(r"\binstall\b|\bnpm ci\b", re.I)
+
+
+def _tail(path: str) -> str:
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, 2)
+            fh.seek(max(0, fh.tell() - 256_000))
+            return fh.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+
+
 def environment_error(results: list[dict[str, Any]]) -> bool:
-    """Conservative: every check failed (non-zero exit, not a timeout) and every log is 0 bytes."""
-    def empty(r: dict[str, Any]) -> bool:
-        try:
-            return Path(r["log"]).stat().st_size == 0
-        except OSError:
-            return False
-    return bool(results) and all(r["exit"] not in (0, None) and not r["timed_out"] and empty(r)
-                                 for r in results)
-
-
-# ---------------------------------------------------------------------------
-# The reproduction rule (a fix piece's done condition)
-# ---------------------------------------------------------------------------
-
-REPRO_FILE = ".nightshift/repro.json"
-
-
-def _read_repro(wt: Path) -> dict[str, Any]:
-    path = wt / REPRO_FILE
-    if not path.is_file():
-        raise ValueError(f"{REPRO_FILE} is missing: the builder must name its reproduction check")
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"{REPRO_FILE} is not valid JSON: {exc}") from exc
-    argv = data.get("argv") if isinstance(data, dict) else None
-    cid = str((data or {}).get("check_id") or "") if isinstance(data, dict) else ""
-    if not cid or not isinstance(argv, list) or not argv or not all(isinstance(a, str) for a in argv):
-        raise ValueError(f"{REPRO_FILE} needs check_id and a non-empty argv list of strings")
-    return {"id": cid, "argv": argv, "timeout": int(data.get("timeout") or 300)}
-
-
-def _names_test(argv: list[str], tests: list[str]) -> bool:
-    joined = " ".join(argv)
-    return any(t in joined or (t.endswith(".py") and t[:-3].replace("/", ".") in joined) for t in tests)
-
-
-def evaluate_repro(root: Path, name: str, piece: str, wt: Path, base: str, head: str) -> dict[str, Any]:
-    """Fails at the base side, passes at ``head``, test unchanged; never raises on a bad builder."""
-    commits = git(wt, "rev-list", "--reverse", "--first-parent", f"{base}..{head}").split()
-    out: dict[str, Any] = {"ok": False, "ran": False, "base_sha": base, "fix_sha": head, "repro_sha": None,
-                           "check_id": None, "argv": None, "before_exit": None, "after_exit": None,
-                           "test_files": []}
-    try:
-        check = _read_repro(wt)
-    except ValueError as exc:
-        return {**out, "reason": str(exc)}
-    out.update(check_id=check["id"], argv=check["argv"])
-    if len(commits) < 2:
-        return {**out, "reason": "no reproduction commit before the fix commit (the failing test must be "
-                                 "committed alone, first)"}
-    repro = out["repro_sha"] = commits[0]
-    changed = [x for x in git(wt, "diff", "--name-only", "--no-renames", base, repro).splitlines() if x]
-    tests = [x for x in changed if postconditions.is_test_path(x)]
-    others = [x for x in changed if not postconditions.is_test_path(x)]
-    out["test_files"] = tests
-    if others or not tests:
-        return {**out, "reason": "the reproduction commit must add test files only; it also changes "
-                                 + (", ".join(others) or "nothing testable")}
-    if not _names_test(check["argv"], tests):
-        return {**out, "reason": f"the reproduction argv does not name its test ({', '.join(tests)})"}
-    moved = [t for t in tests if postconditions.blob(wt, repro, t) != postconditions.blob(wt, head, t)]
-    if moved:
-        return {**out, "reason": "the reproduction test changed after it was committed: " + ", ".join(moved)}
-    before = run_checks(root, name, f"{piece}-repro", repro, [check])["checks"][0]
-    after = run_checks(root, name, f"{piece}-repro", head, [check])["checks"][0]
-    out.update(ran=True, before_exit=before["exit"], after_exit=after["exit"],
-               before_log=before["log"], after_log=after["log"])
-    if before["timed_out"] or before["exit"] == 0:
-        return {**out, "reason": "the reproduction timed out before the fix" if before["timed_out"]
-                else "the reproduction passes before the fix: it does not reproduce the bug"}
-    if after["timed_out"] or after["exit"] != 0:
-        return {**out, "reason": f"the reproduction still fails at the fix commit (exit {after['exit']})"}
-    return {**out, "ok": True, "reason": "failed before the fix, passes after it"}
-
-
-def run_piece(root: Path, name: str, piece: str, sha: str, checks: list[dict[str, Any]]) -> dict[str, Any]:
-    """The checks of one piece at ``sha``; a fix piece runs its reproduction rule first."""
-    st = nstate.load(root, name) if nstate.state_path(root, name).is_file() else None
-    p = (st or {}).get("pieces", {}).get(piece) or {}
-    if p.get("loop") != "fix":
-        return run_checks(root, name, piece, sha, checks)
-    wt = nstate.run_dir(root, name) / "worktrees" / piece
-    repro = evaluate_repro(root, name, piece, wt if wt.is_dir() else root, p["base_sha"], sha)
-    nstate.update(root, name, lambda s: s["pieces"][piece].__setitem__("repro", repro))
-    nstate.log(root, name, nstate.load(root, name), piece=piece, step="repro",
-               outcome="verified" if repro["ok"] else "refused", sha=sha,
-               detail=f"{repro['reason']} (before exit {repro['before_exit']}, after exit {repro['after_exit']})")
-    if repro["ok"]:
-        result = run_checks(root, name, piece, sha, checks)
-    else:  # the other checks would say nothing about a reproduction that does not hold
-        result = run_checks(root, name, piece, sha, [])
-        result["ok"] = False
-    result["repro"] = repro
-    path = Path(result["evidence"])
-    data = json.loads(path.read_text(encoding="utf-8"))
-    data.update(ok=result["ok"], repro=repro)
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    return result
+    """A red caused by the machine, not the code (see the module docstring)."""
+    failed = [r for r in results if r["exit"] not in (0, None) and not r["timed_out"]]
+    empty = [r for r in failed if not _tail(r["log"])]
+    if results and len(empty) == len(results):
+        return True
+    return any(ENV_TEXT.search(_tail(r["log"])) for r in failed) or any(
+        INSTALL.search(f"{r['id']} {' '.join(r['argv'])}") for r in empty)
 
 
 def failure_detail(r: dict[str, Any]) -> str:
@@ -344,16 +256,14 @@ def record_state(root: Path, name: str, piece: str | None, result: dict[str, Any
         nstate.log(root, name, st, piece=key, step="combined" if piece is None else "checks",
                    outcome="environment_error", sha=result["sha"],
                    detail=(result.get("environment_detail") or
-                           f"all {len(result['checks'])} check(s) failed with empty logs "
-                           f"(free space in {tempfile.gettempdir()}?)") + "; checks sub-status unchanged")
+                           "; ".join(failure_detail(r) for r in result["checks"] if r["exit"] != 0)
+                           + f" (disk full or over quota in {tempfile.gettempdir()}?)") + "; checks sub-status unchanged")
         return ["environment_error: not judged; retry once, then stop with environment_failure"]
     if piece:
         nstate.set_sub(st, piece, "checks", "passed" if result["ok"] else "failed")
         nstate.save(root, name, st)
     failed = [r for r in result["checks"] if r["exit"] != 0 or r["timed_out"]]
     detail = "; ".join(failure_detail(r) for r in failed) or f"{len(result['checks'])} check(s) green"
-    if result.get("repro") and not result["repro"]["ok"]:
-        detail = f"reproduction refused: {result['repro']['reason']}"
     nstate.log(root, name, st, piece=key, step="combined" if piece is None else "checks",
                outcome="passed" if result["ok"] else "failed", sha=result["sha"], detail=detail)
     return []
@@ -362,7 +272,6 @@ def record_state(root: Path, name: str, piece: str | None, result: dict[str, Any
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--feature", help="feature directory")
-    ap.add_argument("--bug", metavar="SLUG", help="a bug run (bug-<slug>) instead of a feature")
     scope = ap.add_mutually_exclusive_group(required=True)
     scope.add_argument("--piece", help="piece key; evidence under evidence/<piece>/<sha>/")
     scope.add_argument("--combined", action="store_true",
@@ -373,7 +282,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--json", action="store_true", help="print JSON")
     args = ap.parse_args(argv)
     root = core.find_project_root()
-    fdir, name = model.run_target(root, args.feature, args.bug)
+    name = core.resolve_feature_dir(root, args.feature).name
     cfg = config.load(root, args.config)
     if not cfg["checks"]:
         raise core.NightshiftError(f"no checks configured ({cfg['source']}); nothing would be observed")
@@ -406,7 +315,7 @@ def main(argv: list[str]) -> int:
         nstate.save(root, name, st)
     try:
         result = run_checks(root, name, COMBINED, sha, cfg["checks"]) if args.combined \
-            else run_piece(root, name, args.piece, sha, cfg["checks"])
+            else run_checks(root, name, args.piece, sha, cfg["checks"])
     except CheckoutFailure as exc:
         result = {"scope": COMBINED if args.combined else args.piece, "sha": sha, "ok": False,
                   "environment_error": True, "environment_detail": str(exc), "at": nstate.now(),

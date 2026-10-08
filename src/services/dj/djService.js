@@ -3,6 +3,9 @@ import { db } from '../../persistence/db.js';
 import { getDjConfig } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { DjError, DJ_UNAVAILABLE, INVALID_INTERVAL, INVALID_LOOKAHEAD } from './errors.js';
+import { createLinePlanner } from './linePlanner.js';
+import { writeLine } from './lineWriter.js';
+import { getPlayer, getQueue } from '../playback.js';
 
 // The AI DJ service (research R12). One API for all three transports; it never
 // imports src/transports/ (Constitution II). Constructed only when the DJ env
@@ -18,6 +21,7 @@ let settings = null;
 let breaker = null;
 let caps = null;
 let midnightTimer = null;
+let planner = null;
 
 function freshBreaker() {
   return { consecutiveFailures: 0, openUntil: null, halfOpen: false, health: 'ok' };
@@ -63,6 +67,7 @@ function scheduleMidnightReset() {
   midnightTimer = setTimeout(
     () => {
       midnightTimer = null;
+      planner?.logDailyStats();
       caps = readCaps();
       broadcast();
       scheduleMidnightReset();
@@ -76,8 +81,35 @@ function broadcast() {
   musicManager.emit('dj:state', getState());
 }
 
+function createPlanner() {
+  return createLinePlanner({
+    getSettings: () => settings,
+    getQueue,
+    getPlayer,
+    getConnectedUsers: () => musicManager.getVoiceContext?.()?.connectedUsers ?? [],
+    getOptOuts: () => db.getShoutoutOptOuts?.() ?? new Set(),
+    canAttempt,
+    isLineCapReached,
+    writeLine,
+    onLineSuccess: () => {
+      // A line counts once TTS succeeded: that is when the cost is incurred (R9).
+      recordSuccess();
+      recordUsage('lines');
+    },
+    onLineFailure: (kind, error) => {
+      // A rejected line is the model's fault, not an outage, but it still
+      // counts toward the breaker (contracts §5a).
+      recordFailure(kind === 'quota' ? 'quota' : kind, error);
+    }
+  });
+}
+
+const onTrackChange = (track) => planner?.onTrackChange(track);
+const onQueueUpdate = () => planner?.onQueueUpdate();
+
 /**
- * Load settings and usage, and register the state getter with the mediator.
+ * Load settings and usage, register the state getter with the mediator, and
+ * start listening for transitions.
  */
 export function init() {
   settings = db.getDjSettings();
@@ -90,6 +122,9 @@ export function init() {
   caps = readCaps();
   initialised = true;
   musicManager.setGetDjState(getState);
+  planner = createPlanner();
+  musicManager.on('track:change', onTrackChange);
+  musicManager.on('queue:update', onQueueUpdate);
   scheduleMidnightReset();
   logger.info('[DJ] Service initialised');
 }
@@ -152,7 +187,15 @@ export function setSettings(partial = {}, _actor = null) {
   if (interval !== undefined) change.interval = interval;
   if (lookahead !== undefined) change.lookahead = lookahead;
 
+  const restartCount =
+    (interval !== undefined && interval !== settings.interval) ||
+    (enabled === true && !settings.enabled);
+
   settings = db.updateDjSettings(change);
+  // FR-006: a new interval, or switching the DJ on, starts the count afresh.
+  if (restartCount) planner?.resetCounter();
+  // A line may be due now that wasn't before (e.g. enabled mid-track).
+  planner?.onQueueUpdate();
   broadcast();
   return getState();
 }
@@ -249,10 +292,26 @@ export function isThemedCapReached() {
   return Boolean(caps?.themedTracks.reached);
 }
 
+/** Log the day's line counters and stop pending work (process shutdown). */
+export function shutdown() {
+  if (!initialised) return;
+  planner?.logDailyStats();
+  planner?.stop();
+}
+
+/** Test hook: the planner wired by init(). */
+export function _getPlannerForTests() {
+  return planner;
+}
+
 /** Test hook: tear down module state and timers. */
 export function _resetForTests() {
   if (midnightTimer) clearTimeout(midnightTimer);
   midnightTimer = null;
+  planner?.stop();
+  planner = null;
+  musicManager.off?.('track:change', onTrackChange);
+  musicManager.off?.('queue:update', onQueueUpdate);
   initialised = false;
   settings = null;
   breaker = null;

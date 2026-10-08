@@ -79,11 +79,17 @@ class MusicPlayer extends EventEmitter {
   /**
    * Mix a DJ line (48 kHz s16le stereo) over the current track with ducking.
    * @param {Buffer} pcm
+   * Accepted while the new resource is still buffering: trackStart fires right
+   * after audioPlayer.play(), before the first frame is read, and the mixer
+   * applies the overlay from its first chunk.
    * @returns {boolean} False if nothing is playing, paused, or mixing is off
    */
   overlay(pcm) {
     if (!this._mixingEnabled || !this._mixer) return false;
-    if (this.audioPlayer.state.status !== AudioPlayerStatus.Playing) return false;
+    const { status } = this.audioPlayer.state;
+    if (status !== AudioPlayerStatus.Playing && status !== AudioPlayerStatus.Buffering) {
+      return false;
+    }
     this._mixer.overlay(pcm);
     return true;
   }

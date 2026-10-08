@@ -153,6 +153,14 @@ describe('MusicPlayer mixing path (ADR-002)', () => {
     expect(player.overlay(Buffer.alloc(8))).toBe(false);
   });
 
+  it('overlay() is accepted while the new resource is still buffering (trackStart time)', async () => {
+    const player = new MusicPlayer();
+    player.setMixingEnabled(true);
+    await player.play(track('a'), connection);
+    player.audioPlayer.state = { ...player.audioPlayer.state, status: 'buffering' };
+    expect(player.overlay(Buffer.alloc(8))).toBe(true);
+  });
+
   it('pause(), stop() and play() each cancel the current overlay', async () => {
     const player = new MusicPlayer();
     player.setMixingEnabled(true);

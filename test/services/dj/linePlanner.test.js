@@ -453,3 +453,135 @@ describe('trackKey', () => {
     expect(keyMatches(null, t)).toBe(false);
   });
 });
+
+describe('themed intro (FR-006 exception, FR-028)', () => {
+  let session;
+
+  function makeThemedPlanner() {
+    return createLinePlanner({
+      getSettings: () => settings,
+      getQueue: () => queue,
+      getPlayer: () => player,
+      getConnectedUsers: () => users,
+      getOptOuts: () => optOuts,
+      canAttempt: () => breakerOk,
+      isLineCapReached: () => capReached,
+      writeLine,
+      getTheme: () => session?.theme ?? null,
+      getIntroTheme: () => (session?.introPending ? session.theme : null),
+      clearIntro: () => {
+        if (session) session.introPending = false;
+      }
+    });
+  }
+
+  beforeEach(() => {
+    settings = { enabled: true, interval: 3 };
+    session = null;
+    planner.stop();
+    planner = makeThemedPlanner();
+  });
+
+  it('on an empty queue the intro is spoken over the first themed track', async () => {
+    session = { theme: 'classic rock', introPending: true };
+    planner.onIntroPending(); // nothing queued yet: nothing to prepare
+    expect(writeLine).not.toHaveBeenCalled();
+
+    queue.add(track('p1', 200));
+    planner.onQueueUpdate(); // the first pick lands: prepare its intro now
+    await flush();
+    expect(writeLine).toHaveBeenCalledOnce();
+    const ctx = writeLine.mock.calls[0][0];
+    expect(ctx).toMatchObject({ intro: true, theme: 'classic rock' });
+    expect(keyMatches(ctx.forKey, queue.getCurrent())).toBe(true);
+
+    planner.onTrackChange(queue.getCurrent()); // cold start: not a transition
+    expect(player.overlay).toHaveBeenCalledOnce();
+    expect(session.introPending).toBe(false);
+    expect(planner.getTransitionsSinceSpoken()).toBe(0);
+  });
+
+  it('an intro still being written when the track starts is spoken within the grace window', async () => {
+    let release;
+    writeLine = vi.fn(
+      (ctx) =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({
+              forKey: ctx.forKey,
+              text: 'Welcome!',
+              pcm: PCM,
+              factIds: [],
+              namedUserIds: []
+            });
+        })
+    );
+    planner = makeThemedPlanner();
+    session = { theme: 'rock', introPending: true };
+    queue.add(track('p1', 200));
+    planner.onQueueUpdate();
+    await flush(); // the intro request is out, not answered
+    planner.onTrackChange(queue.getCurrent());
+    expect(player.overlay).not.toHaveBeenCalled();
+    release();
+    await flush();
+    expect(player.overlay).toHaveBeenCalledOnce();
+    expect(session.introPending).toBe(false);
+  });
+
+  it('after a theme change the intro is spoken over the next track to start', async () => {
+    startQueue([track('a', 200), track('b', 200), track('c', 200)]);
+    await flush();
+    writeLine.mockClear();
+    session = { theme: 'jazz', introPending: true };
+    planner.onIntroPending();
+    await flush();
+    expect(writeLine).toHaveBeenCalledOnce();
+    expect(writeLine.mock.calls[0][0]).toMatchObject({ intro: true, theme: 'jazz' });
+    expect(keyMatches(writeLine.mock.calls[0][0].forKey, queue.peekNext())).toBe(true);
+
+    advance(); // transition 1 of 3: not due, but the intro is
+    expect(player.overlay).toHaveBeenCalledOnce();
+    expect(session.introPending).toBe(false);
+  });
+
+  it('the intro does not change transitionsSinceSpoken', async () => {
+    startQueue([track('a', 10), track('b', 10), track('c', 10), track('d', 10)]);
+    await flush();
+    advance();
+    await flush();
+    expect(planner.getTransitionsSinceSpoken()).toBe(1);
+    session = { theme: 'jazz', introPending: true };
+    planner.onIntroPending();
+    await flush();
+    advance(); // intro spoken; this transition still counts
+    expect(player.overlay).toHaveBeenCalledOnce();
+    expect(planner.getTransitionsSinceSpoken()).toBe(2);
+    await flush();
+    advance(); // third transition: the ordinary line is due
+    await flush();
+    expect(player.overlay).toHaveBeenCalledTimes(2);
+    expect(planner.getTransitionsSinceSpoken()).toBe(0);
+  });
+
+  it('with commentary disabled introPending is cleared and nothing is spoken', async () => {
+    settings.enabled = false;
+    session = { theme: 'rock', introPending: true };
+    queue.add(track('p1', 200));
+    planner.onIntroPending();
+    planner.onQueueUpdate();
+    planner.onTrackChange(queue.getCurrent());
+    await flush();
+    expect(session.introPending).toBe(false);
+    expect(writeLine).not.toHaveBeenCalled();
+    expect(player.overlay).not.toHaveBeenCalled();
+  });
+
+  it('ordinary lines carry the active theme into the context', async () => {
+    settings.interval = 1;
+    session = { theme: 'rock', introPending: false };
+    startQueue([track('a', 10), track('b', 10)]);
+    await flush();
+    expect(writeLine.mock.calls[0][0]).toMatchObject({ theme: 'rock', intro: false });
+  });
+});

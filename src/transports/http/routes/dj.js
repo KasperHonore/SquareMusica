@@ -4,7 +4,9 @@ import {
   getStateOrUnavailable,
   getShoutouts,
   setSettings,
-  setShoutouts
+  setShoutouts,
+  startTheme,
+  stopTheme
 } from '../../../services/dj/djService.js';
 import { DjError } from '../../../services/dj/errors.js';
 import { describeDjError } from '../../../services/dj/messages.js';
@@ -85,6 +87,36 @@ router.put('/shoutouts/me', authMiddleware, (req, res) => {
 
   try {
     res.json(setShoutouts(req.user?.discord_id, body.enabled));
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+/**
+ * POST /api/dj/theme - `{ theme, lookahead? }` starts themed mode, or changes the
+ * theme when it is already running. Answers once the first pick is queued.
+ */
+router.post('/theme', authMiddleware, async (req, res) => {
+  const body = req.body;
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ error: 'Request body must be a JSON object.' });
+  }
+
+  try {
+    res.json(
+      await startTheme({ theme: body.theme, lookahead: body.lookahead }, actorFrom(req.user), {
+        transport: 'http'
+      })
+    );
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+/** DELETE /api/dj/theme - stop themed mode; queued picks stay. */
+router.delete('/theme', authMiddleware, (req, res) => {
+  try {
+    res.json(stopTheme(actorFrom(req.user)));
   } catch (error) {
     sendError(res, error);
   }

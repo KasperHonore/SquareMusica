@@ -377,3 +377,30 @@ describe('shout-outs: forbidden names and allowed members (R6 step 3, SC-003)', 
     });
   });
 });
+
+describe('themed intro (FR-028)', () => {
+  const introCtx = () => buildContext({ previous: null, next, theme: 'classic rock', intro: true });
+
+  it('uses the intro prompt and accepts a line citing the theme fact', async () => {
+    const ctx = introCtx();
+    const themeFact = ctx.facts.find((f) => f.kind === 'theme');
+    reply('Buckle up for a classic rock road trip! First up, Dancing Queen.', [themeFact.id]);
+    await expect(writeLine(ctx)).resolves.toMatchObject({ forKey: 'https://y/next' });
+    const call = chatJson.mock.calls[0][0];
+    expect(call.system).not.toBe(SYSTEM_PROMPT);
+    expect(call.system).toMatch(/theme/i);
+    expect(JSON.parse(call.user)).toMatchObject({ theme: 'classic rock', intro: true });
+  });
+
+  it('rejects an intro that does not cite the theme fact', async () => {
+    reply('Up next, Dancing Queen!', ['f1']);
+    await expect(writeLine(introCtx())).rejects.toMatchObject({ kind: 'validation' });
+  });
+
+  it('an ordinary line still needs a track fact', async () => {
+    const ctx = buildContext({ previous, next, theme: 'classic rock' });
+    const themeFact = ctx.facts.find((f) => f.kind === 'theme');
+    reply('What a theme tonight!', [themeFact.id]);
+    await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+  });
+});

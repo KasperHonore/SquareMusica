@@ -281,3 +281,33 @@ describe('DatabaseManager.migrate() — AI DJ history.artist (feature 002)', () 
     manager.close();
   });
 });
+
+describe('DatabaseManager.migrate() — AI DJ history.added_by_dj (FR-027)', () => {
+  it('adds added_by_dj as INTEGER NOT NULL DEFAULT 0; old rows read 0', () => {
+    seedLegacyDatabase();
+
+    const manager = new DatabaseManager(dbPath);
+    const column = manager.db
+      .pragma('table_info(history)')
+      .find((col) => col.name === 'added_by_dj');
+    expect(column).toBeDefined();
+    expect(column.type).toBe('INTEGER');
+    expect(column.notnull).toBe(1);
+    expect(column.dflt_value).toBe('0');
+    expect(manager.db.prepare('SELECT added_by_dj FROM history').get().added_by_dj).toBe(0);
+    manager.close();
+
+    let second;
+    expect(() => {
+      second = new DatabaseManager(dbPath);
+    }).not.toThrow();
+    expect(columnNames(second.db, 'history').filter((c) => c === 'added_by_dj')).toHaveLength(1);
+    second.close();
+  });
+
+  it('creates added_by_dj on a fresh install', () => {
+    const manager = new DatabaseManager(dbPath);
+    expect(columnNames(manager.db, 'history')).toContain('added_by_dj');
+    manager.close();
+  });
+});

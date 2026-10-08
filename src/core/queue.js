@@ -26,6 +26,7 @@
  * @property {ResolutionStatus} [status] - Resolution status for Spotify tracks
  * @property {boolean} [hasPlayed] - This entry has started at least once
  * @property {boolean} [loopReplay] - This start was chosen by loop mode
+ * @property {boolean} [addedByDj] - Picked by the AI DJ's themed mode (FR-027)
  */
 
 class Queue {
@@ -33,10 +34,15 @@ class Queue {
     this.tracks = [];
     this.currentIndex = 0;
     this.loopMode = 'off'; // 'off' | 'track' | 'queue'
+    // Set by the DJ while themed mode runs (research R8): member tracks then go
+    // ahead of the DJ's upcoming picks, and musicManager refuses to shuffle.
+    this.prioritizeMemberTracks = false;
   }
 
   /**
-   * Add a track to the end of the queue
+   * Add a track to the end of the queue. While prioritizeMemberTracks is set, a
+   * member's track goes before the first upcoming DJ pick instead, so member
+   * requests stay in FIFO order ahead of the DJ (FR-024).
    * @param {Track} track
    */
   add(track) {
@@ -44,10 +50,51 @@ class Queue {
     if (this.tracks.length === 0) {
       this.currentIndex = 0;
     }
+    if (this.prioritizeMemberTracks && !track.addedByDj) {
+      const firstPick = this.tracks.findIndex(
+        (entry, i) => i > this.currentIndex && entry.addedByDj
+      );
+      if (firstPick !== -1) {
+        this.tracks.splice(firstPick, 0, { ...track, addedAt: new Date() });
+        return;
+      }
+    }
     this.tracks.push({
       ...track,
       addedAt: new Date()
     });
+  }
+
+  /**
+   * Insert a track at `index`, clamped so it lands after the current track.
+   * @param {number} index
+   * @param {Track} track
+   * @returns {number} The index the track was inserted at
+   */
+  insertAt(index, track) {
+    if (this.tracks.length === 0) {
+      this.currentIndex = 0;
+      this.tracks.push({ ...track, addedAt: new Date() });
+      return 0;
+    }
+    const min = this.currentIndex + 1;
+    const max = this.tracks.length;
+    const at = Math.min(Math.max(Number.isInteger(index) ? index : max, min), max);
+    this.tracks.splice(at, 0, { ...track, addedAt: new Date() });
+    return at;
+  }
+
+  /**
+   * Count the entries after the current one that match `predicate`.
+   * @param {(track: Track) => boolean} predicate
+   * @returns {number}
+   */
+  countUpcoming(predicate) {
+    let count = 0;
+    for (let i = this.currentIndex + 1; i < this.tracks.length; i++) {
+      if (predicate(this.tracks[i])) count++;
+    }
+    return count;
   }
 
   /**

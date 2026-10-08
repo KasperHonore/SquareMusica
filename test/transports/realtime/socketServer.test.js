@@ -34,7 +34,9 @@ vi.mock('../../../src/transports/realtime/handlers.js', () => ({
   handleVoiceJoin: vi.fn(() => vi.fn()),
   handleVoiceLeave: vi.fn(() => vi.fn()),
   handleDjSettings: vi.fn(() => vi.fn()),
-  handleDjShoutouts: vi.fn(() => vi.fn())
+  handleDjShoutouts: vi.fn(() => vi.fn()),
+  handleDjThemeStart: vi.fn(() => vi.fn()),
+  handleDjThemeStop: vi.fn(() => vi.fn())
 }));
 
 const roomEmit = vi.fn();

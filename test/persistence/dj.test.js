@@ -181,3 +181,81 @@ describe('DJ grounding reads (R6, FR-018)', () => {
     expect(rows.map((r) => r.artist)).toEqual(['Spot Artist', 'Chan', null]);
   });
 });
+
+describe('themed-mode history (FR-021b, FR-027)', () => {
+  const play = (url, userId, { loop = false, dj = false, title = url, artist = null } = {}) =>
+    manager.db
+      .prepare(
+        `INSERT INTO history (title, url, duration, requested_by, requested_by_id,
+           is_loop_replay, artist, added_by_dj)
+         VALUES (?, ?, 200, ?, ?, ?, ?, ?)`
+      )
+      .run(title, url, userId ?? 'SquareMusica DJ', userId, loop ? 1 : 0, artist, dj ? 1 : 0);
+
+  it('getTopTracks() ranks counted plays and excludes loop replays and DJ rows', () => {
+    play('a', 'U1', { artist: 'ABBA', title: 'Dancing Queen' });
+    play('a', 'U1', { title: 'Dancing Queen' });
+    play('b', 'U2');
+    play('b', 'U2', { loop: true });
+    play('b', 'U2', { loop: true });
+    play('c', null, { dj: true });
+    play('c', null, { dj: true });
+    play('c', null, { dj: true });
+
+    const rows = manager.getTopTracks({ limit: 10 });
+    expect(rows.map((r) => [r.url, r.count])).toEqual([
+      ['a', 2],
+      ['b', 1]
+    ]);
+    expect(rows[0]).toMatchObject({ title: 'Dancing Queen', artist: 'ABBA', duration: 200 });
+    expect(rows[1].artist).toBeNull();
+  });
+
+  it('getTopTracks({ userIds }) counts only those members’ plays', () => {
+    play('a', 'U1');
+    play('b', 'U2');
+    play('b', 'U2');
+    expect(manager.getTopTracks({ userIds: ['U1'], limit: 10 }).map((r) => r.url)).toEqual(['a']);
+    expect(manager.getTopTracks({ userIds: [], limit: 10 })).toEqual([]);
+  });
+
+  it('getTopTracks() honours the limit', () => {
+    for (const url of ['a', 'b', 'c']) play(url, 'U1');
+    expect(manager.getTopTracks({ limit: 2 })).toHaveLength(2);
+  });
+
+  it('addToHistory() records a DJ pick as the DJ, with no member id', () => {
+    manager.addToHistory(
+      {
+        title: 'Pick',
+        url: 'https://y/p',
+        duration: 100,
+        addedByDj: true,
+        requestedBy: 'SquareMusica DJ',
+        requestedById: null
+      },
+      'g1',
+      { addedByDj: true }
+    );
+    expect(
+      manager.db.prepare('SELECT requested_by, requested_by_id, added_by_dj FROM history').get()
+    ).toEqual({ requested_by: 'SquareMusica DJ', requested_by_id: null, added_by_dj: 1 });
+  });
+
+  it('addToHistory() records a member track with added_by_dj = 0', () => {
+    manager.addToHistory({ title: 'M', url: 'https://y/m', requestedBy: 'K', requestedById: 'U1' });
+    expect(manager.db.prepare('SELECT added_by_dj FROM history').get().added_by_dj).toBe(0);
+  });
+
+  it('getDjSkipAward() ignores skips of DJ picks (target_user_id IS NULL)', () => {
+    const skip = manager.db.prepare(
+      `INSERT INTO events (event_type, actor_id, actor_name, target_user_id, target_user_name)
+       VALUES ('skip', ?, ?, ?, ?)`
+    );
+    skip.run('U1', 'Kasper', null, null);
+    skip.run('U1', 'Kasper', null, null);
+    expect(manager.getDjSkipAward()).toBeUndefined();
+    skip.run('U1', 'Kasper', 'U2', 'Anna');
+    expect(manager.getDjSkipAward()).toMatchObject({ userId: 'U2', value: 1 });
+  });
+});

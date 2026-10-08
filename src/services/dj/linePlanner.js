@@ -28,6 +28,10 @@ const PREPARE_RETRY_MS = 10 * 1000;
  * @param {(ctx: Object, recent: string[]) => Promise<Object>} deps.writeLine
  * @param {() => void} [deps.onLineSuccess] - TTS succeeded (usage + breaker)
  * @param {(kind: string, error: Error) => void} [deps.onLineFailure]
+ * @param {() => string|null} [deps.getTheme] - the active theme, else null
+ * @param {() => string|null} [deps.getIntroTheme] - the theme while its intro is
+ *   pending (FR-028), else null
+ * @param {() => void} [deps.clearIntro] - the intro was spoken, or commentary is off
  */
 export function createLinePlanner(deps) {
   const {
@@ -41,7 +45,10 @@ export function createLinePlanner(deps) {
     isLineCapReached,
     writeLine,
     onLineSuccess = () => {},
-    onLineFailure = () => {}
+    onLineFailure = () => {},
+    getTheme = () => null,
+    getIntroTheme = () => null,
+    clearIntro = () => {}
   } = deps;
 
   let currentTrack = null;
@@ -79,6 +86,19 @@ export function createLinePlanner(deps) {
     return transitionsSinceSpoken + 1 >= settings().interval;
   }
 
+  /**
+   * The theme whose intro is still to be spoken (FR-028). With commentary off
+   * the intro is never spoken, so it is cleared and themed mode stays silent.
+   */
+  function pendingIntro() {
+    const theme = getIntroTheme() ?? null;
+    if (theme && !settings().enabled) {
+      clearIntro();
+      return null;
+    }
+    return theme;
+  }
+
   function speak(line, key) {
     const reason = silenceReason({ forPreparation: false });
     if (reason) return drop(reason, key);
@@ -93,12 +113,20 @@ export function createLinePlanner(deps) {
       }
     }
     if (spoken.includes(line.text)) return drop('validation', key, ' (repeat)');
+    // An intro for a theme that has since stopped or already been introduced.
+    if (line.intro && !getIntroTheme()) return drop('stale', key, ' (intro)');
 
     if (!getPlayer()?.overlay?.(line.pcm)) return drop('late', key, ' (player not playing)');
 
-    transitionsSinceSpoken = 0;
     spoken.push(line.text);
     if (spoken.length > SPOKEN_MEMORY) spoken.shift();
+    if (line.intro) {
+      // The intro is the FR-006 exception: it leaves the interval count alone.
+      clearIntro();
+      logger.info(`[DJ] Theme intro spoken key=${key} chars=${line.text.length}`);
+      return;
+    }
+    transitionsSinceSpoken = 0;
     daily.spoken++;
     logger.info(`[DJ] Line spoken key=${key} chars=${line.text.length}`);
   }
@@ -140,7 +168,34 @@ export function createLinePlanner(deps) {
     return !keyMatches(trackKey(currentTrack), current);
   }
 
+  /** The track the themed intro will be spoken over: the next one to start. */
+  function introTarget() {
+    const queue = getQueue();
+    // Idle (e.g. themed mode on an empty queue): the track about to start.
+    if (!currentTrack || isSwitching()) return queue?.getCurrent?.() ?? null;
+    return queue?.peekNext?.() ?? null;
+  }
+
+  /**
+   * Prepare the intro for the next track to start, straight away rather than in
+   * the last 30 s of the current track (FR-028).
+   */
+  function prepareIntro(theme) {
+    // An intro is already waiting on the track that just started.
+    if (awaiting) return;
+    const target = introTarget();
+    if (!target) return;
+    if (prepared?.intro && keyMatches(prepared.forKey, target)) return;
+    if (inflight && !inflight.cancelled) {
+      if (inflight.intro && keyMatches(inflight.forKey, target)) return;
+      cancelInflight();
+    }
+    startJob(target, { intro: theme, previous: currentTrack });
+  }
+
   function prepare() {
+    const theme = pendingIntro();
+    if (theme) return prepareIntro(theme);
     if (inflight) {
       pendingPrepare = true;
       return;
@@ -150,24 +205,34 @@ export function createLinePlanner(deps) {
     const queue = getQueue();
     const next = queue?.peekNext?.() ?? null;
     if (!next || !nextIsDue()) return;
-    const key = trackKey(next);
     if (keyMatches(prepared?.forKey, next) || keyMatches(attemptedKey, next)) return;
+    startJob(next, { intro: null, previous: currentTrack });
+  }
+
+  /**
+   * Write one line for `next`. `intro` is the theme when this is the themed
+   * intro, else null.
+   * @returns {boolean} whether a job started
+   */
+  function startJob(next, { intro, previous }) {
+    const key = trackKey(next);
     // Last gate: an open breaker refuses, and a half-open one lets this through.
     if (silenceReason({ forPreparation: true }) || !canAttempt()) {
       scheduleRetry();
-      return;
+      return false;
     }
     clearRetry();
 
     prepared = null;
-    attemptedKey = key;
-    const job = { forKey: key, cancelled: false };
+    if (!intro) attemptedKey = key;
+    const job = { forKey: key, cancelled: false, intro: Boolean(intro) };
     inflight = job;
     const startedAt = Date.now();
     const ctx = buildContext({
-      previous: currentTrack,
+      previous,
       next,
-      theme: null,
+      theme: intro ?? getTheme() ?? null,
+      intro: Boolean(intro),
       present: getConnectedUsers() ?? [],
       recentLines: spoken,
       store
@@ -180,11 +245,14 @@ export function createLinePlanner(deps) {
           onLineSuccess();
           const ms = Date.now() - startedAt;
           if (job.cancelled) return drop('stale', key);
+          if (job.intro) line = { ...line, intro: true };
           logger.info(`[DJ] Line prepared key=${key} chars=${line.text.length} ms=${ms}`);
           if (awaiting && keyMatches(key, awaiting.track)) {
             const spokenKey = awaiting.key;
             clearAwaiting();
             speak(line, spokenKey);
+            // The ordinary line for this track was held back behind the intro.
+            if (line.intro) pendingPrepare = true;
           } else {
             prepared = line;
           }
@@ -205,6 +273,7 @@ export function createLinePlanner(deps) {
         }
       })
       .catch((error) => logger.warn('[DJ] Line preparation error:', error?.message ?? error));
+    return true;
   }
 
   function schedulePreparation(track) {
@@ -253,9 +322,12 @@ export function createLinePlanner(deps) {
     const key = trackKey(track);
     const line = prepared;
     prepared = null;
+    if (isTransition) transitionsSinceSpoken++;
 
-    if (isTransition) {
-      transitionsSinceSpoken++;
+    if (pendingIntro()) {
+      // FR-006 exception: the intro is due at the next start, transition or not.
+      speakIntroAt(track, key, line);
+    } else if (isTransition) {
       if (transitionsSinceSpoken >= settings().interval) {
         const reason = silenceReason({ forPreparation: false });
         if (reason) {
@@ -287,10 +359,41 @@ export function createLinePlanner(deps) {
     // Anything prepared or in flight for another track is stale now.
     if (inflight && !inflight.cancelled && !keyMatches(inflight.forKey, track)) cancelInflight();
     schedulePreparation(track);
+    // An intro still pending (missed the last start) targets the next track now.
+    if (pendingIntro()) prepare();
+  }
+
+  /**
+   * Speak the themed intro over `track` if it is ready or lands within the
+   * FR-003 window. A missed intro stays pending for the next track to start.
+   */
+  function speakIntroAt(track, key, line) {
+    if (line?.intro && keyMatches(line.forKey, track)) {
+      speak(line, key);
+      return;
+    }
+    if (inflight && !inflight.cancelled && inflight.intro && keyMatches(inflight.forKey, track)) {
+      awaiting = {
+        key,
+        track,
+        timer: setTimeout(() => {
+          awaiting = null;
+          if (inflight && keyMatches(inflight.forKey, track)) inflight.cancelled = true;
+          drop('late', key, ' (intro)');
+          prepare();
+        }, SPEAK_GRACE_MS)
+      };
+      awaiting.timer.unref?.();
+      return;
+    }
+    drop('late', key, ' (intro)');
   }
 
   /** Mediator `queue:update`: re-prepare when the predicted next track changed. */
   function onQueueUpdate() {
+    // A pending intro follows whatever track will start next, even while idle.
+    const theme = pendingIntro();
+    if (theme) return prepareIntro(theme);
     // Mid-switch the track about to start is not peekNext(); trackStart settles
     // whether the prepared line still fits.
     if (!currentTrack || isSwitching()) return;
@@ -331,6 +434,11 @@ export function createLinePlanner(deps) {
     discardIfNaming((id) => id === userId);
   }
 
+  /** A theme started or changed: prepare its intro now (FR-028). */
+  function onIntroPending() {
+    prepare();
+  }
+
   /** Restart the interval count (setting changes, FR-006). */
   function resetCounter() {
     transitionsSinceSpoken = 0;
@@ -358,6 +466,7 @@ export function createLinePlanner(deps) {
     onQueueUpdate,
     onVoiceContext,
     onOptOut,
+    onIntroPending,
     resetCounter,
     logDailyStats,
     stop,

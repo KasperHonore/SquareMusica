@@ -20,7 +20,13 @@ import {
   createStatsEvent,
   captureTrack
 } from '../../shared/statsEvents.js';
-import { getStateOrUnavailable, setSettings, setShoutouts } from '../../services/dj/djService.js';
+import {
+  getStateOrUnavailable,
+  setSettings,
+  setShoutouts,
+  startTheme,
+  stopTheme
+} from '../../services/dj/djService.js';
 import { DjError } from '../../services/dj/errors.js';
 import { describeDjError } from '../../services/dj/messages.js';
 import { logger } from '../../utils/logger.js';
@@ -262,11 +268,18 @@ export function handlePlayerControl(socket) {
             musicManager.setLoop(value);
           }
           break;
-        case 'shuffle':
-          musicManager.shuffleQueue();
+        case 'shuffle': {
+          const { shuffled, reason } = musicManager.shuffleQueue();
+          if (!shuffled && reason) {
+            // Refused during themed mode (FR-024a): nothing changed, nothing recorded.
+            const { code, text } = describeDjError(reason);
+            socket.emit('error', { code, message: text });
+            break;
+          }
           // Acts on the queue as a whole, so no track is recorded.
           emitAction(STATS_EVENT_TYPES.SHUFFLE, socket.user, null);
           break;
+        }
         case 'clear':
           musicManager.clearUpcomingQueue();
           // This surface keeps the current track playing and drops the rest —
@@ -457,6 +470,83 @@ export function handleDjShoutouts(socket) {
       }
       logger.error('DJ shout-outs error:', err);
       socket.emit('error', { message: 'Failed to change shout-outs. Please try again.' });
+    }
+  };
+}
+
+/** The socket user as a DJ actor `{ id, name }`. */
+function djActor(socket) {
+  return {
+    id: socket.user?.discord_id ?? null,
+    name: socket.user?.global_name || socket.user?.username || null
+  };
+}
+
+/**
+ * Report a DjError as `error { code, message }` with the shared text.
+ * @returns {boolean} whether the error was a known DJ outcome
+ */
+function emitDjError(socket, err) {
+  if (!(err instanceof DjError)) return false;
+  const described = describeDjError(err.code, {
+    resetsAt: getStateOrUnavailable().caps?.resetsAt
+  });
+  if (!described) return false;
+  socket.emit('error', { code: described.code, message: described.text });
+  return true;
+}
+
+/**
+ * Start themed mode, or change the theme (contracts §3). The new state reaches
+ * every client through the service's `dj:state` broadcast.
+ * @param {Socket} socket - Socket.io socket instance
+ * @returns {Function} Event handler
+ */
+export function handleDjThemeStart(socket) {
+  return async (payload) => {
+    if (isThrottled(socket, 'dj')) {
+      socket.emit('error', {
+        message: 'You are changing DJ settings too quickly. Please slow down.'
+      });
+      return;
+    }
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+      socket.emit('error', { message: 'Theme settings must be an object.' });
+      return;
+    }
+
+    try {
+      await startTheme({ theme: payload.theme, lookahead: payload.lookahead }, djActor(socket), {
+        transport: 'socket'
+      });
+    } catch (err) {
+      if (emitDjError(socket, err)) return;
+      logger.error('DJ theme start error:', err);
+      socket.emit('error', { message: 'Failed to start themed mode. Please try again.' });
+    }
+  };
+}
+
+/**
+ * Stop themed mode (contracts §3). Queued picks stay.
+ * @param {Socket} socket - Socket.io socket instance
+ * @returns {Function} Event handler
+ */
+export function handleDjThemeStop(socket) {
+  return () => {
+    if (isThrottled(socket, 'dj')) {
+      socket.emit('error', {
+        message: 'You are changing DJ settings too quickly. Please slow down.'
+      });
+      return;
+    }
+
+    try {
+      stopTheme(djActor(socket));
+    } catch (err) {
+      if (emitDjError(socket, err)) return;
+      logger.error('DJ theme stop error:', err);
+      socket.emit('error', { message: 'Failed to stop themed mode. Please try again.' });
     }
   };
 }

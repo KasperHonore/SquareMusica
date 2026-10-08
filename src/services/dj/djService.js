@@ -9,6 +9,10 @@ import { musicManager } from '../../core/musicManager.js';
 import { db } from '../../persistence/db.js';
 import { getDjConfig } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
+import { getPlayer, getQueue } from '../playback.js';
+import { buildContext } from './context.js';
+import { writeLine } from './lineWriter.js';
+import { createLinePlanner } from './linePlanner.js';
 import { DjError, DJ_UNAVAILABLE, INVALID_INTERVAL, INVALID_LOOKAHEAD } from './errors.js';
 
 const BREAKER_THRESHOLD = 3;
@@ -27,6 +31,10 @@ const breaker = { failures: 0, openUntil: null, halfOpenInFlight: false };
 let usageDay = null;
 let usage = { lines: 0, themed_tracks: 0 };
 let midnightTimer = null;
+
+let planner = null;
+let onTrackChange = null;
+let onQueueUpdate = null;
 
 // Local calendar day as YYYY-MM-DD. Same value as SQLite's
 // date('now','localtime'): DatabaseManager.checkTimezone() refuses to start if
@@ -88,6 +96,7 @@ function scheduleMidnightReset() {
   clearTimeout(midnightTimer);
   const delay = Math.max(0, nextLocalMidnight().getTime() - Date.now());
   midnightTimer = setTimeout(() => {
+    planner?.rollDay();
     loadUsage();
     broadcast();
     scheduleMidnightReset();
@@ -106,6 +115,24 @@ export function init() {
   loadUsage();
   musicManager.setGetDjState(getState);
   scheduleMidnightReset();
+
+  planner = createLinePlanner({
+    getSettings: () => settings,
+    getQueue,
+    getPlayer,
+    getVoiceContext: () => musicManager.getVoiceContext(),
+    getOptOuts: () => db.getShoutoutOptOuts?.() ?? new Set(),
+    isCapReached: () => capsState().lines.reached,
+    isBreakerOpen,
+    canAttempt,
+    buildContext,
+    writeLine: writeLineTracked
+  });
+  onTrackChange = (track) => planner.onTrackChange(track);
+  onQueueUpdate = () => planner.onQueueUpdate();
+  musicManager.on('track:change', onTrackChange);
+  musicManager.on('queue:update', onQueueUpdate);
+
   initialized = true;
   logger.info('[DJ] Service initialised');
 }
@@ -114,6 +141,26 @@ export function init() {
 export function shutdown() {
   clearTimeout(midnightTimer);
   midnightTimer = null;
+  if (onTrackChange) musicManager.off('track:change', onTrackChange);
+  if (onQueueUpdate) musicManager.off('queue:update', onQueueUpdate);
+  onTrackChange = null;
+  onQueueUpdate = null;
+  planner?.shutdown();
+  planner = null;
+}
+
+// writeLine with its outcome fed to the breaker, and a successful TTS counted
+// against the daily line cap (R9: the cost is incurred whether or not it plays).
+async function writeLineTracked(ctx, recentSpoken) {
+  try {
+    const line = await writeLine(ctx, recentSpoken);
+    recordSuccess();
+    recordUsage('lines');
+    return line;
+  } catch (error) {
+    recordFailure(error?.kind ?? 'llm', error);
+    throw error;
+  }
 }
 
 /**
@@ -169,10 +216,26 @@ export function setSettings(partial, _actor = null) {
   if (interval !== undefined) changes.interval = interval;
   if (lookahead !== undefined) changes.lookahead = lookahead;
 
+  const restartCount =
+    (changes.interval !== undefined && changes.interval !== settings.interval) ||
+    (changes.enabled === true && settings.enabled === false);
+
   db.updateDjSettings(changes);
   settings = { ...settings, ...changes };
+  if (restartCount) planner?.resetCounter();
+  else planner?.refresh();
   broadcast();
   return getState();
+}
+
+/**
+ * Whether the breaker currently blocks external calls. Unlike canAttempt(),
+ * never claims the half-open slot.
+ * @returns {boolean}
+ */
+export function isBreakerOpen() {
+  if (breaker.openUntil === null) return false;
+  return Date.now() < breaker.openUntil || breaker.halfOpenInFlight;
 }
 
 /**

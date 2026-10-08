@@ -49,10 +49,10 @@ specify extension list                                             # installed v
 ```
 
 Or install a tagged release without a clone (asks you to confirm the source). The latest
-tag is `v1.1.3`; 2.0.0 is not tagged yet, so use `--dev` for it:
+tag is `v2.0.0` (built and tested offline, not yet confirmed live):
 
 ```bash
-specify extension add nightshift --from https://github.com/KasperHonore/spec-kit-nightshift/archive/refs/tags/v1.1.3.zip
+specify extension add nightshift --from https://github.com/KasperHonore/spec-kit-nightshift/archive/refs/tags/v2.0.0.zip
 specify extension add nightshift --from <newer tag URL> --force    # update
 ```
 
@@ -208,6 +208,11 @@ NIGHTSHIFT_SPECIFY=/path/to/specify python3 -m unittest discover -s tests -t .
 - [docs/prompts/](docs/prompts/): install-and-run and run-report prompts; reports go to
   [docs/field-reports/](docs/field-reports/). Spike reports: [docs/spikes/](docs/spikes/).
 - [AGENTS.md](AGENTS.md): instructions for agents working in this repository.
+
+## Changes in 2.0.1 (2026-10-08)
+
+- Task IDs with a one-letter suffix (`T019a`) are tasks. Before, ticking one counted as
+  editing `tasks.md` and parked the piece (first live 2.0 run, SquareMusica 002).
 
 ## Changes in 2.0.0 (2026-10-07, rebuild)
 

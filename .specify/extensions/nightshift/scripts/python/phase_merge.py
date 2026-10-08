@@ -599,7 +599,7 @@ def _pushed_revert(ctx: Ctx, merged: str, head: str) -> str:
     return out.splitlines()[0] if out else ""
 
 
-TASK_LINE_RE = re.compile(r"^- \[[ xX]\] (?P<id>T\d+)\b.*$", re.M)
+TASK_LINE_RE = re.compile(r"^- \[[ xX]\] (?P<id>T\d+[a-z]?)\b.*$", re.M)
 
 
 def tick_tasks(body: str, tasks: dict[str, core.Task]) -> str:

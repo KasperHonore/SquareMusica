@@ -20,7 +20,7 @@ from typing import Any
 
 # The extension version; keep equal to ``extension.version`` in extension.yml
 # (tests/test_version.py). Bump both on every change a consumer should pick up.
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 SCHEMA_VERSION = 1
 MARKER_PREFIX = "speckit-nightshift:"
 
@@ -364,7 +364,7 @@ def now_iso() -> str:
 PHASE_RE = re.compile(r"^##\s+Phase\s+(?P<num>\d+)\s*:\s*(?P<title>.+?)\s*$")
 H2_RE = re.compile(r"^##\s+(?!#)")
 TASK_RE = re.compile(
-    r"^\s*[-*]\s+\[(?P<check>[ xX])\]\s+(?P<id>T\d{3,})(?=\s|$)(?P<rest>.*)$"
+    r"^\s*[-*]\s+\[(?P<check>[ xX])\]\s+(?P<id>T\d{3,}[a-z]?)(?=\s|$)(?P<rest>.*)$"
 )
 MARKER_RE = re.compile(r"^\s*\[(?P<m>P|US\d+)\]")
 # Converge's tag: `per <ref list> (<gap-type>)`. Converge's template puts it at end of

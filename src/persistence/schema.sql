@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS users (
 -- stats feature have a NULL requested_by_id, and that NULL-ness is the launch
 -- boundary — no stats query counts them. is_loop_replay is 1 when loop mode
 -- started the play automatically; those rows stay for the History page but are
--- never counted either (FR-005a).
+-- never counted either (FR-005a). added_by_dj is 1 for the DJ's themed picks,
+-- which also carry a NULL requested_by_id; the flag records why (FR-027).
 CREATE TABLE IF NOT EXISTS history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   guild_id TEXT,
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS history (
   requested_by_id TEXT,
   requested_by_avatar TEXT,
   is_loop_replay INTEGER NOT NULL DEFAULT 0,
+  added_by_dj INTEGER NOT NULL DEFAULT 0,
   played_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -180,3 +180,39 @@ describe('extractQuantities', () => {
     expect(extractQuantities('three of you are here')).toEqual([3]);
   });
 });
+
+describe('lineWriter: themed intro (FR-028)', () => {
+  const introCtx = {
+    forKey: 'dj:theme-intro',
+    intro: true,
+    previous: null,
+    next: null,
+    theme: 'classic rock road trip',
+    present: [],
+    allowedNames: [],
+    facts: [{ id: 'f1', kind: 'theme', text: "Tonight's theme: classic rock road trip." }],
+    recentLines: []
+  };
+
+  it('asks for a one-or-two-sentence intro to the theme and voices it', async () => {
+    chatJson.mockResolvedValueOnce({
+      line: 'Buckle up, it is a classic rock road trip tonight!',
+      factIds: ['f1']
+    });
+    const line = await writeLine(introCtx, []);
+
+    const { system, user } = chatJson.mock.calls[0][0];
+    expect(system).toMatch(/introducing the theme/i);
+    expect(system).toMatch(/ONE or TWO/);
+    expect(user).toMatchObject({ intro: true, theme: 'classic rock road trip' });
+    expect(user).not.toHaveProperty('next');
+    expect(line.forKey).toBe('dj:theme-intro');
+    expect(synthesize).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies the same validation (three sentences are rejected)', async () => {
+    chatJson.mockResolvedValueOnce({ line: 'One. Two. Three.', factIds: ['f1'] });
+    await expect(writeLine(introCtx, [])).rejects.toBeInstanceOf(LineError);
+    expect(synthesize).not.toHaveBeenCalled();
+  });
+});

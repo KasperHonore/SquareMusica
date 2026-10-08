@@ -60,4 +60,40 @@ router.patch('/', authMiddleware, (req, res) => {
   }
 });
 
+/**
+ * POST /api/dj/theme - Start themed mode, or change the theme when it is on.
+ * Body { theme, lookahead? }. Answers once the first pick is queued.
+ */
+router.post('/theme', authMiddleware, async (req, res) => {
+  const body = req.body;
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return res
+      .status(400)
+      .json({ code: 'INVALID_REQUEST', message: 'Body must be a JSON object.' });
+  }
+  const input = { theme: body.theme };
+  if (body.lookahead !== undefined) input.lookahead = body.lookahead;
+
+  try {
+    res.json(await djService.startTheme(input, actorFrom(req.user), { transport: 'http' }));
+  } catch (error) {
+    if (error instanceof DjError) return sendDjError(res, error);
+    logger.error('[DJ API] Failed to start theme:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/dj/theme - Stop themed mode. Queued picks stay.
+ */
+router.delete('/theme', authMiddleware, (req, res) => {
+  try {
+    res.json(djService.stopTheme(actorFrom(req.user)));
+  } catch (error) {
+    if (error instanceof DjError) return sendDjError(res, error);
+    logger.error('[DJ API] Failed to stop theme:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

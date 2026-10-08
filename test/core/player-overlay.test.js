@@ -149,6 +149,8 @@ describe('MusicPlayer mixing path (R1, contracts §4)', () => {
     player.once('trackStart', () => (accepted = player.overlay(Buffer.alloc(8))));
     await player.play(track('a'), connection);
     expect(player.audioPlayer.state.status).toBe('buffering');
+    expect(player.isBuffering()).toBe(true);
+    expect(player.isPlaying()).toBe(false);
     expect(accepted).toBe(true);
     expect(h.mixers[0].overlay).toHaveBeenCalled();
   });
@@ -213,6 +215,7 @@ async function fakePlayer({ playable = true } = {}) {
   p.state = 'idle';
   p.isPlaying = vi.fn(() => p.state === 'playing');
   p.isPaused = vi.fn(() => p.state === 'paused');
+  p.isBuffering = vi.fn(() => p.state === 'buffering');
   p.stop = vi.fn(() => {
     p.state = 'idle';
   });
@@ -330,6 +333,16 @@ describe('musicManager.ensurePlaying() shared start path (FR-026)', () => {
     expect(advanceAndPlay).not.toHaveBeenCalled();
   });
 
+  it('returns false and does not restart the track while it is buffering', async () => {
+    const player = await fakePlayer();
+    player.state = 'buffering';
+    musicManager.setPlayer(player);
+    musicManager.queue = seedQueue(['a'], 0);
+    expect(await musicManager.ensurePlaying()).toBe(false);
+    expect(advanceAndPlay).not.toHaveBeenCalled();
+    expect(player.play).not.toHaveBeenCalled();
+  });
+
   it('when nothing can play: returns false, stops the player, emits track:change(null) once', async () => {
     const player = await fakePlayer({ playable: false });
     musicManager.setPlayer(player);
@@ -356,5 +369,77 @@ describe('musicManager.getFullState() dj field', () => {
     musicManager.setGetDjState(() => state);
     expect(musicManager.getFullState().dj).toBe(state);
     musicManager.setGetDjState(null);
+  });
+});
+
+describe('musicManager themed-mode guards (FR-024a, FR-024b)', () => {
+  let player;
+
+  beforeEach(async () => {
+    musicManager.removeAllListeners();
+    musicManager.setOnQueueCleared(null);
+    player = await fakePlayer();
+    player.state = 'playing';
+    musicManager.player = player;
+  });
+
+  it('shuffleQueue() refuses while themed mode is on and changes nothing', () => {
+    const q = seedQueue(['a', 'b', 'c', 'd'], 1);
+    q.prioritizeMemberTracks = true;
+    musicManager.queue = q;
+    const before = q.tracks.slice();
+    const updates = [];
+    musicManager.on('queue:update', (u) => updates.push(u));
+
+    expect(musicManager.shuffleQueue()).toEqual({
+      shuffled: false,
+      reason: 'THEMED_MODE_ACTIVE'
+    });
+    expect(q.tracks).toEqual(before);
+    expect(q.currentIndex).toBe(1);
+    expect(updates).toHaveLength(0);
+  });
+
+  it('shuffleQueue() shuffles and emits one queue:update when themed mode is off', () => {
+    musicManager.queue = seedQueue(['a', 'b', 'c'], 0);
+    const updates = [];
+    musicManager.on('queue:update', (u) => updates.push(u));
+
+    expect(musicManager.shuffleQueue()).toEqual({ shuffled: true });
+    expect(updates).toHaveLength(1);
+  });
+
+  const CLEARS = ['clearQueue', 'clearUpcomingQueue', 'clearAllButCurrent', 'stop'];
+
+  for (const method of CLEARS) {
+    it(`${method}() calls the cleared hook once, before its queue:update`, () => {
+      musicManager.queue = seedQueue(['a', 'b', 'c'], 0);
+      const order = [];
+      musicManager.setOnQueueCleared(() => order.push('hook'));
+      musicManager.on('queue:update', () => order.push('queue:update'));
+
+      musicManager[method]();
+
+      expect(order.filter((e) => e === 'hook')).toHaveLength(1);
+      expect(order.indexOf('hook')).toBeLessThan(order.indexOf('queue:update'));
+      musicManager.setOnQueueCleared(null);
+    });
+
+    it(`${method}() does not throw with no hook set`, () => {
+      musicManager.queue = seedQueue(['a', 'b'], 0);
+      expect(() => musicManager[method]()).not.toThrow();
+    });
+  }
+
+  it('onTrackChange records a DJ pick with addedByDj', async () => {
+    const { db } = await import('../../src/persistence/db.js');
+    db.addToHistory.mockClear();
+    const pick = { ...track('p'), addedByDj: true, requestedBy: 'SquareMusica DJ' };
+    musicManager.onTrackChange(pick);
+    expect(db.addToHistory).toHaveBeenCalledWith(
+      pick,
+      musicManager.guildId,
+      expect.objectContaining({ addedByDj: true })
+    );
   });
 });

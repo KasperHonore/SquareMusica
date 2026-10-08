@@ -14,14 +14,26 @@ import { db } from '../../persistence/db.js';
 import { getDjConfig } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { getPlayer, getQueue } from '../playback.js';
-import { DjError, DJ_UNAVAILABLE, INVALID_INTERVAL, INVALID_LOOKAHEAD } from './errors.js';
+import {
+  DjError,
+  DJ_UNAVAILABLE,
+  INVALID_INTERVAL,
+  INVALID_LOOKAHEAD,
+  INVALID_THEME,
+  NOT_IN_VOICE,
+  SERVICE_UNAVAILABLE,
+  CAP_REACHED
+} from './errors.js';
 import { createLinePlanner } from './linePlanner.js';
+import { createThemeEngine } from './themeEngine.js';
+import { isClean } from './contentFilter.js';
 
 const BREAKER_THRESHOLD = 3;
 const BREAKER_OPEN_MS = 5 * 60 * 1000;
 const BREAKER_QUOTA_OPEN_MS = 30 * 60 * 1000;
 
 const USAGE_FIELDS = { lines: 'lines', themedTracks: 'themed_tracks' };
+const MAX_THEME_CHARS = 200;
 
 let initialized = false;
 let settings = null; // { enabled, interval, lookahead }
@@ -30,6 +42,8 @@ let caps = null; // { lines: {used,limit,reached}, themedTracks: {...}, resetsAt
 let midnightTimer = null;
 let planner = null;
 let mediatorListeners = null;
+let themes = null;
+let startingPlayback = false;
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -48,7 +62,13 @@ export function init() {
   initialized = true;
   musicManager.setGetDjState(getState);
   scheduleMidnightReset();
+  startThemeEngine();
   startPlanner();
+  // Every clear or stop, on any surface, ends themed mode before the engine
+  // could see the emptied queue and refill it (FR-024b).
+  musicManager.setOnQueueCleared(() => {
+    if (themes?.session) stopTheme(null, 'queue-cleared');
+  });
   logger.info(
     `[DJ] Initialized (enabled=${settings.enabled}, interval=${settings.interval}, ` +
       `lookahead=${settings.lookahead})`
@@ -58,6 +78,8 @@ export function init() {
 /** Stop timers and forget state. Used on shutdown and by tests. */
 export function shutdown() {
   stopPlanner();
+  if (initialized) musicManager.setOnQueueCleared(null);
+  stopThemeEngine();
   if (midnightTimer) {
     clearTimeout(midnightTimer);
     midnightTimer = null;
@@ -96,7 +118,7 @@ export function getState() {
       themedTracks: { ...caps.themedTracks },
       resetsAt: caps.resetsAt
     },
-    theme: null
+    theme: themes?.getState() ?? null
   };
 }
 
@@ -164,7 +186,171 @@ export function setSettings(partial, _actor = null) {
   if (intervalChanged || switchedOn) planner?.resetCounter();
   broadcast();
   if (settings.enabled) planner?.poke();
+  // A larger lookahead is filled straight away (FR-022).
+  if (changes.lookahead !== undefined) themes?.poke();
   return getState();
+}
+
+// ---------------------------------------------------------------------------
+// Themed mode (R8, FR-021–FR-029)
+// ---------------------------------------------------------------------------
+
+function startThemeEngine() {
+  themes = createThemeEngine({
+    getQueue: () => getQueue(),
+    addToQueue: (track) => musicManager.addToQueue(track),
+    getLookahead: () => settings.lookahead,
+    getVoiceContext: () => musicManager.getVoiceContext(),
+    isConnected: () => musicManager.getPlayerState().connected,
+    history: db,
+    isBreakerOpen,
+    canAttempt,
+    recordSuccess,
+    recordFailure,
+    isCapReached: () => isCapReached('themedTracks'),
+    recordUsage: () => recordUsage('themedTracks'),
+    onChange: broadcast,
+    onPicksAdded: startPlaybackIfIdle
+  });
+}
+
+function stopThemeEngine() {
+  themes?.stop();
+  themes = null;
+  const queue = getQueue();
+  if (queue) queue.prioritizeMemberTracks = false;
+}
+
+/** Start playback when a pick lands in an idle queue (SC-005). Never awaited. */
+function startPlaybackIfIdle() {
+  const player = getPlayer();
+  if (
+    startingPlayback ||
+    !player ||
+    player.isPlaying?.() ||
+    player.isPaused?.() ||
+    player.isBuffering?.()
+  ) {
+    return;
+  }
+  startingPlayback = true;
+  Promise.resolve()
+    .then(() => musicManager.ensurePlaying())
+    .catch((error) => logger.warn('[DJ] Could not start themed playback:', error?.message))
+    .finally(() => {
+      startingPlayback = false;
+    });
+}
+
+/**
+ * Start themed mode, or change the theme when it is already on (US4/AC7).
+ * Resolves once the first pick is in the queue and playback has been asked to
+ * start; the rest of the first batch keeps resolving in the background.
+ *
+ * @param {{ theme: string, lookahead?: number }} input
+ * @param {{ id: string|null, name: string|null }|null} actor
+ * @param {{ transport: 'discord'|'http'|'socket', channelId?: string }} origin
+ * @returns {Promise<Object>} The new DjState; `theme` is null when a clear or
+ *   stop ended themed mode before its first pick landed
+ * @throws {DjError} DJ_UNAVAILABLE, INVALID_THEME, INVALID_LOOKAHEAD,
+ *   NOT_IN_VOICE, SERVICE_UNAVAILABLE, CAP_REACHED, NO_TRACKS_FOR_THEME
+ */
+export async function startTheme(input, actor = null, origin = { transport: 'http' }) {
+  requireInitialized();
+  const { theme: rawTheme, lookahead } = input ?? {};
+  const theme = typeof rawTheme === 'string' ? rawTheme.trim() : '';
+  if (!theme || theme.length > MAX_THEME_CHARS || !isClean(theme)) {
+    throw new DjError(INVALID_THEME, 'Theme must be 1–200 characters.');
+  }
+  if (lookahead !== undefined && lookahead !== 5 && lookahead !== 10) {
+    throw new DjError(INVALID_LOOKAHEAD, 'Lookahead must be 5 or 10.');
+  }
+  if (!musicManager.getPlayerState().connected) throw new DjError(NOT_IN_VOICE);
+  if (isBreakerOpen()) throw new DjError(SERVICE_UNAVAILABLE);
+  if (isCapReached('themedTracks')) throw new DjError(CAP_REACHED);
+
+  const writeLookahead = () => {
+    if (lookahead !== undefined && lookahead !== settings.lookahead) {
+      db.updateDjSettings({ lookahead });
+      settings = { ...settings, lookahead };
+    }
+  };
+
+  if (themes.session) {
+    writeLookahead();
+    themes.changeTheme(theme);
+    logger.info(`[DJ] Theme changed by ${actor?.name ?? 'unknown'}: "${theme}"`);
+    if (!settings.enabled) themes.session.introPending = false;
+    broadcast();
+    planner?.poke();
+    return getState();
+  }
+
+  // Used by the first top-up, but only written once the start succeeds, so a
+  // failed start leaves the previous state unchanged.
+  const before = settings;
+  if (lookahead !== undefined) settings = { ...settings, lookahead };
+  const queue = getQueue();
+  if (queue) queue.prioritizeMemberTracks = true;
+  try {
+    const started = themes.start({
+      theme,
+      startedBy: { id: actor?.id ?? null, name: actor?.name ?? null },
+      origin: origin ?? { transport: 'http' }
+    });
+    // The session (with introPending) exists now: start writing the intro so
+    // it is ready when the first pick starts playing (FR-028).
+    if (!settings.enabled) themes.session.introPending = false;
+    planner?.poke();
+    await started;
+  } catch (error) {
+    settings = before;
+    if (queue && !themes?.session) queue.prioritizeMemberTracks = false;
+    logger.info(`[DJ] Themed mode did not start (${error?.code ?? error?.message})`);
+    throw error;
+  }
+  settings = before;
+  // A clear or stop during the first batch already ended it (FR-024b).
+  if (!themes?.session) return getState();
+  writeLookahead();
+  logger.info(`[DJ] Themed mode started by ${actor?.name ?? 'unknown'}: "${theme}"`);
+  startPlaybackIfIdle();
+  broadcast();
+  planner?.poke();
+  return getState();
+}
+
+/**
+ * Stop themed mode. Queued picks stay; member songs append normally again
+ * (US4/AC4). Also the target of the queue-cleared hook (FR-024b).
+ * @param {Object|null} [actor]
+ * @param {string} [reason] - 'member' or 'queue-cleared'
+ * @returns {Object} The new DjState
+ */
+export function stopTheme(actor = null, reason = 'member') {
+  requireInitialized();
+  const queue = getQueue();
+  if (queue) queue.prioritizeMemberTracks = false;
+  if (!themes?.session) return getState();
+  themes.stop();
+  logger.info(`[DJ] Themed mode stopped (${reason}${actor?.name ? ` by ${actor.name}` : ''})`);
+  broadcast();
+  return getState();
+}
+
+/**
+ * Where the running theme was started (`{ transport, channelId? }`), or null.
+ * Not part of the broadcast state; the Discord transport uses it to post its
+ * stall notices to the right channel (FR-029).
+ */
+export function getThemeOrigin() {
+  return themes?.session ? { ...themes.session.origin } : null;
+}
+
+function requireInitialized() {
+  if (!initialized) {
+    throw new DjError(DJ_UNAVAILABLE, "The DJ isn't set up on this server.");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +364,13 @@ function startPlanner() {
     getQueue: () => getQueue(),
     getPlayer: () => getPlayer(),
     getOptOuts: () => db.getShoutoutOptOuts?.() ?? new Set(),
+    getTheme: () =>
+      themes?.session
+        ? { theme: themes.session.theme, introPending: themes.session.introPending }
+        : null,
+    clearIntroPending: () => {
+      if (themes?.session) themes.session.introPending = false;
+    },
     isBreakerOpen,
     canAttempt,
     isCapReached: () => isCapReached('lines'),
@@ -192,10 +385,20 @@ function startPlanner() {
     }
   });
   mediatorListeners = {
-    'track:change': (track) => planner.onTrackChange(track),
-    'queue:update': () => planner.onQueueUpdate(),
+    'track:change': (track) => {
+      planner.onTrackChange(track);
+      themes?.onTrackChange(track);
+    },
+    'queue:update': (payload) => {
+      planner.onQueueUpdate();
+      themes?.onQueueUpdate(payload);
+    },
     'player:state': () => planner.poke(),
-    'voice:context': () => planner.poke()
+    'voice:context': () => {
+      planner.poke();
+      // Listeners joining or leaving, or the bot leaving voice (NOT_IN_VOICE).
+      themes?.poke();
+    }
   };
   for (const [event, fn] of Object.entries(mediatorListeners)) musicManager.on(event, fn);
 }
@@ -274,7 +477,10 @@ export function recordSuccess() {
   breaker.consecutiveFailures = 0;
   breaker.openUntil = null;
   breaker.trialInFlight = false;
-  if (getHealth() !== before) broadcast();
+  if (getHealth() !== before) {
+    broadcast();
+    if (themes?.session?.status === 'stalled') themes.poke();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -352,6 +558,7 @@ function scheduleMidnightReset() {
     caps = readCaps();
     planner?.logDailyStats();
     broadcast();
+    if (themes?.session?.status === 'stalled') themes.poke();
     scheduleMidnightReset();
   }, delay);
   midnightTimer.unref?.();

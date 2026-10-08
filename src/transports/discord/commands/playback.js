@@ -200,9 +200,6 @@ export async function handleSkip(interaction) {
 export async function handleStop(interaction) {
   if (!(await requireVoiceConnection(interaction))) return;
 
-  const p = getPlayer();
-  const q = getQueue();
-
   // Deliberately records nothing. This does empty the queue, so emitting
   // clear_queue here looks like closing a gap — it is not. `stop` is not one of
   // the tracked actions, and HTTP's and realtime's stop paths (both
@@ -210,10 +207,9 @@ export async function handleStop(interaction) {
   // here would make Discord the one surface that records a stop, which is a
   // parity violation rather than a fix for one. Discord's clear_queue comes from
   // handleClear alone.
-  p.stop();
-  q.clear();
-  musicManager.emitQueueUpdate();
-  musicManager.emit('track:change', null);
+  // Through the mediator, like HTTP and realtime, so a stop ends themed mode
+  // the same way on every surface (FR-024b).
+  musicManager.stop();
 
   await interaction.reply('Stopped playback and cleared the queue.');
 }

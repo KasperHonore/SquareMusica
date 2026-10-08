@@ -1,4 +1,5 @@
 import { useSocketContext } from '../context/SocketContext';
+import { ThemeControl } from '../components/dj/ThemeControl';
 
 const INTERVALS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const LOOKAHEADS = [5, 10];
@@ -68,7 +69,7 @@ function CapLine({ label, cap, resetsAt }) {
  * through dj:settings. Never displays DJ line text (FR-001a).
  */
 export function Dj() {
-  const { djState, setDjSettings } = useSocketContext();
+  const { djState, setDjSettings, startTheme, stopTheme } = useSocketContext();
 
   if (!djState) {
     return (
@@ -100,7 +101,7 @@ export function Dj() {
     );
   }
 
-  const { enabled, interval, lookahead, health, caps } = djState;
+  const { enabled, interval, lookahead, health, caps, theme } = djState;
   const degraded = health === 'degraded';
 
   return (
@@ -156,6 +157,15 @@ export function Dj() {
           ))}
         </select>
       </Row>
+
+      <ThemeControl
+        theme={theme}
+        lookahead={lookahead}
+        onStart={startTheme}
+        onStop={stopTheme}
+        cardStyle={cardStyle}
+        selectStyle={selectStyle}
+      />
 
       <Row label="Health">
         <span

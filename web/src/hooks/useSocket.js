@@ -198,6 +198,17 @@ export function useSocket() {
     [socket]
   );
 
+  const startTheme = useCallback(
+    (theme, lookahead) => {
+      socket?.emit('dj:theme:start', lookahead ? { theme, lookahead } : { theme });
+    },
+    [socket]
+  );
+
+  const stopTheme = useCallback(() => {
+    socket?.emit('dj:theme:stop');
+  }, [socket]);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -230,6 +241,8 @@ export function useSocket() {
     createPlaylist,
     deletePlaylist,
     setDjSettings,
+    startTheme,
+    stopTheme,
     clearError,
     clearNotice
   };

@@ -479,3 +479,99 @@ describe('linePlanner: logging (T031, SC-002)', () => {
     );
   });
 });
+
+describe('linePlanner: themed intro (FR-006 exception, FR-028)', () => {
+  function withTheme(opts = {}) {
+    const theme = { theme: 'classic rock road trip', introPending: true };
+    let n = 0;
+    // An intro context has no next track; it is about the theme.
+    const writeLine = vi.fn(async (ctx) => ({
+      forKey: ctx.forKey,
+      text: ctx.intro ? `Intro ${++n} for ${ctx.theme}.` : `Line ${++n} into ${ctx.next.title}.`,
+      pcm: PCM,
+      factIds: ['f1'],
+      namedUserIds: [],
+      preparedAt: Date.now()
+    }));
+    h = setup({
+      writeLine,
+      getTheme: () => theme,
+      clearIntroPending: vi.fn(() => {
+        theme.introPending = false;
+      }),
+      ...opts
+    });
+    h.theme = theme;
+    h.writeLine = writeLine; // setup() returns its default, not the override
+    return h;
+  }
+
+  it('on an empty queue, the intro is spoken over the first themed track (not a transition)', async () => {
+    withTheme({ interval: 3 });
+    h.planner.poke(); // the theme just started: prepare the intro now
+    await settle();
+    expect(h.writeLine).toHaveBeenCalledWith(
+      expect.objectContaining({ intro: true, theme: 'classic rock road trip' }),
+      expect.any(Array)
+    );
+
+    start(0);
+    await settle();
+    expect(h.player.mix).toHaveBeenCalledTimes(1);
+    expect(h.theme.introPending).toBe(false);
+    expect(h.planner.transitionsSinceSpoken).toBe(0);
+  });
+
+  it('after a theme change, the intro is spoken over the next track to start', async () => {
+    withTheme({ interval: 3 });
+    h.theme.introPending = false;
+    await playThrough(2); // 1 transition, no line yet at interval 3
+    expect(h.player.mix).not.toHaveBeenCalled();
+
+    h.theme.theme = 'rainy day lo-fi';
+    h.theme.introPending = true;
+    h.planner.poke();
+    await settle();
+    start(2);
+    await settle();
+
+    expect(h.player.mix).toHaveBeenCalledTimes(1);
+    expect(h.planner.spoken).toEqual([expect.stringMatching(/^Intro \d+ for rainy day lo-fi/)]);
+    expect(h.writeLine).toHaveBeenCalledWith(
+      expect.objectContaining({ intro: true, theme: 'rainy day lo-fi' }),
+      expect.any(Array)
+    );
+  });
+
+  it('the intro does not reset transitionsSinceSpoken', async () => {
+    withTheme({ interval: 3 });
+    h.theme.introPending = false;
+    await playThrough(3); // 2 transitions
+    expect(h.planner.transitionsSinceSpoken).toBe(2);
+
+    h.theme.introPending = true;
+    h.planner.poke();
+    await settle();
+    start(3); // 3rd transition, carrying the intro
+    await settle();
+    expect(h.player.mix).toHaveBeenCalledTimes(1);
+    expect(h.planner.transitionsSinceSpoken).toBe(3);
+
+    // The count was not reset, so the next transition is already past the interval.
+    start(4);
+    await settle();
+    expect(h.player.mix).toHaveBeenCalledTimes(2);
+    expect(h.planner.transitionsSinceSpoken).toBe(0);
+  });
+
+  it('with commentary disabled, introPending is cleared and nothing is spoken', async () => {
+    withTheme({ enabled: false });
+    h.planner.poke();
+    await settle();
+    expect(h.theme.introPending).toBe(false);
+    start(0);
+    await settle();
+    expect(h.writeLine).not.toHaveBeenCalled();
+    expect(h.player.mix).not.toHaveBeenCalled();
+  });
+});

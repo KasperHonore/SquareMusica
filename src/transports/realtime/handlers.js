@@ -262,11 +262,17 @@ export function handlePlayerControl(socket) {
             musicManager.setLoop(value);
           }
           break;
-        case 'shuffle':
-          musicManager.shuffleQueue();
+        case 'shuffle': {
+          const { shuffled, reason } = musicManager.shuffleQueue();
+          // Refused while themed mode runs (FR-024a); nothing changed, nothing recorded.
+          if (!shuffled && reason) {
+            socket.emit('error', { code: reason, message: textFor(reason) });
+            break;
+          }
           // Acts on the queue as a whole, so no track is recorded.
           emitAction(STATS_EVENT_TYPES.SHUFFLE, socket.user, null);
           break;
+        }
         case 'clear':
           musicManager.clearUpcomingQueue();
           // This surface keeps the current track playing and drops the rest —
@@ -424,6 +430,66 @@ export function handleDjSettings(socket) {
       }
       logger.error('DJ settings error:', err);
       socket.emit('error', { message: 'Failed to change DJ settings. Please try again.' });
+    }
+  };
+}
+
+function socketActor(socket) {
+  return { id: socket.user?.discord_id ?? null, name: socket.user?.username ?? null };
+}
+
+/**
+ * Start themed mode, or change the theme (`dj:theme:start { theme, lookahead? }`).
+ * The new state reaches every client through the `dj:state` broadcast.
+ * @param {Socket} socket - Socket.io socket instance
+ * @returns {Function} Event handler
+ */
+export function handleDjThemeStart(socket) {
+  return async (payload) => {
+    if (isThrottled(socket, 'dj')) {
+      socket.emit('error', { message: 'You are changing the DJ too quickly. Please slow down.' });
+      return;
+    }
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+      socket.emit('error', { message: 'Theme request must be an object.' });
+      return;
+    }
+    const input = { theme: payload.theme };
+    if (payload.lookahead !== undefined) input.lookahead = payload.lookahead;
+
+    try {
+      await djService.startTheme(input, socketActor(socket), { transport: 'socket' });
+    } catch (err) {
+      if (err instanceof DjError) {
+        emitDjError(socket, err);
+        return;
+      }
+      logger.error('DJ theme start error:', err);
+      socket.emit('error', { message: 'Failed to start themed mode. Please try again.' });
+    }
+  };
+}
+
+/**
+ * Stop themed mode (`dj:theme:stop`). Queued picks stay.
+ * @param {Socket} socket - Socket.io socket instance
+ * @returns {Function} Event handler
+ */
+export function handleDjThemeStop(socket) {
+  return () => {
+    if (isThrottled(socket, 'dj')) {
+      socket.emit('error', { message: 'You are changing the DJ too quickly. Please slow down.' });
+      return;
+    }
+    try {
+      djService.stopTheme(socketActor(socket));
+    } catch (err) {
+      if (err instanceof DjError) {
+        emitDjError(socket, err);
+        return;
+      }
+      logger.error('DJ theme stop error:', err);
+      socket.emit('error', { message: 'Failed to stop themed mode. Please try again.' });
     }
   };
 }

@@ -20,8 +20,13 @@ export function SocketProvider({ children }) {
     reorderQueue,
     removeFromQueue,
     addToQueue,
-    playerControl
+    playerControl,
+    voiceContext
   } = socket;
+
+  // Members in the bot's voice channel, from initial:state and voice:context.
+  // voiceContext, setShoutouts and shoutoutsEnabled also pass through as-is.
+  const listeners = useMemo(() => voiceContext?.connectedUsers ?? [], [voiceContext]);
 
   // Transform playlists from server format to component format (albums)
   const albums = useMemo(
@@ -85,6 +90,7 @@ export function SocketProvider({ children }) {
   const value = {
     ...socket,
     albums,
+    listeners,
     upcomingTracks,
     reorderUpcoming,
     removeUpcoming,

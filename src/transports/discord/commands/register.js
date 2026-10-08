@@ -105,6 +105,17 @@ const commands = [
             .addChoices({ name: '5', value: 5 }, { name: '10', value: 10 })
         )
     )
+    .addSubcommand((sub) =>
+      sub
+        .setName('shoutouts')
+        .setDescription('Let the DJ mention you by name (on by default)')
+        .addBooleanOption((option) =>
+          option
+            .setName('enabled')
+            .setDescription('Leave empty to see your current setting')
+            .setRequired(false)
+        )
+    )
 ];
 
 const rest = new REST().setToken(process.env.DISCORD_TOKEN);

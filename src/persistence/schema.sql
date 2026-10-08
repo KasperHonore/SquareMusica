@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS history (
   requested_by_id TEXT,
   requested_by_avatar TEXT,
   is_loop_replay INTEGER NOT NULL DEFAULT 0,
+  artist TEXT,
   played_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -77,6 +78,8 @@ CREATE INDEX IF NOT EXISTS idx_playlists_created_at ON playlists(created_at);
 -- index created only there would never exist on a new deployment and every
 -- stats query would scan unindexed. IF NOT EXISTS makes the duplication safe.
 CREATE INDEX IF NOT EXISTS idx_history_requested_by_id ON history(requested_by_id);
+-- Per-track play counts for the DJ's member facts (feature 002, FR-018).
+CREATE INDEX IF NOT EXISTS idx_history_url ON history(url);
 CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_actor ON events(actor_id);
 CREATE INDEX IF NOT EXISTS idx_events_target ON events(target_user_id);
@@ -95,6 +98,17 @@ CREATE TABLE IF NOT EXISTS dj_settings (
 CREATE TABLE IF NOT EXISTS dj_shoutout_optouts (
   user_id TEXT PRIMARY KEY,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Every display name the DJ has seen per member while they were in voice. The
+-- DJ names people by display name, which history.requested_by (the username)
+-- does not hold, so this is what lets it forbid an absent member's spoken name
+-- (research R6 step 3, US3/AC2).
+CREATE TABLE IF NOT EXISTS dj_member_names (
+  user_id TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, display_name)
 );
 
 -- Daily DJ usage for the operator caps. day is date('now','localtime').

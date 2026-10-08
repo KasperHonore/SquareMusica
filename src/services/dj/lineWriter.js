@@ -155,14 +155,117 @@ export function countSentences(text, phrases = []) {
   return terminators.length + (trailing ? 0 : 1);
 }
 
+/** Whether `text` contains `name` as a whole word or phrase, case-insensitively. */
+function mentions(text, name) {
+  if (!name) return false;
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(name)}(?![\\p{L}\\p{N}])`, 'iu').test(text);
+}
+
+/**
+ * Whether `text` uses a forbidden `name` as a name. Most names match
+ * case-insensitively. A `lenient` name (a history username with no link to anyone
+ * seen in voice) that is a single all-lowercase word such as "music" or "party"
+ * is also an ordinary word, so it only counts when written capitalised
+ * mid-sentence, or in capitals. Display names and present members' usernames are
+ * never lenient: Discord falls back to the lowercase username as the display
+ * name, and "Kasper, this one's for you" must still be caught.
+ */
+function namesForbidden(text, name, lenient = false) {
+  if (!name) return false;
+  if (!lenient || !/^\p{Ll}+$/u.test(name)) return mentions(text, name);
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(name)}(?![\\p{L}\\p{N}])`, 'giu');
+  for (const m of text.matchAll(re)) {
+    const word = m[0];
+    if (word === word.toLowerCase()) continue;
+    const sentenceStart = /(?:^|[.!?…]\s+)$/u.test(text.slice(0, m.index));
+    if (sentenceStart && word.slice(1) === word.slice(1).toLowerCase()) continue;
+    return true;
+  }
+  return false;
+}
+
+// Claims about a member's own history ("played it three times", "your
+// favourite") and about who queued a track. A named member is only the subject
+// of such a claim when a cited fact is about them (FR-005, FR-018).
+const PLAY_CLAIM_RE =
+  /\b(?:played|plays|spins|spun|favou?rites?|most[- ]played|on repeat|constantly|loves?)\b/i;
+const QUEUE_CLAIM_RE =
+  /\b(?:queued?|queues|queuing|queueing|picked|picks|requested|chose|choice)\b/i;
+
+// A connection between the track and the people listening ("a room
+// favourite", "you all love this one") needs a cited member or group fact
+// (US3/AC4). Plain "played" is left out so "we just played X" stays a music line.
+const CONNECTION_CLAIM_RE =
+  /\b(?:favou?rites?|most[- ]played|on repeat|constantly|loves?|(?:played|plays|spun|spins|queued|requested)\s+(?:it|this)\b)/i;
+// A pronoun or "you" in a sentence that names nobody refers back to the members
+// named in the sentence before it.
+const PRONOUN_RE = /\b(?:he|she|they|him|her|them|his|hers|their|theirs|you|your|yours)\b/i;
+
+function splitSentences(text) {
+  return text.split(/(?<=[.!?…])\s+/).filter((part) => part.trim());
+}
+
+/**
+ * Reject a claim attributed to an allowed member that their own cited facts do
+ * not back: a quantity, a play-history claim, or a queue claim in a sentence
+ * that names them, or that refers back to them by pronoun (US3/AC1: every claim
+ * is true).
+ * @returns {string|null} why the line is rejected
+ */
+function misattributedClaim(text, ctx, citedFacts, phrases) {
+  const members = ctx.allowedMembers ?? [];
+  if (members.length === 0) return null;
+  let previousNamed = [];
+  for (const sentence of splitSentences(maskPhrases(text, phrases))) {
+    let named = members.filter((m) => mentions(sentence, m.name));
+    if (named.length === 0 && PRONOUN_RE.test(sentence)) named = previousNamed;
+    previousNamed = named;
+    if (named.length === 0) continue;
+    const namedIds = new Set(named.map((m) => m.userId));
+    const factsOf = (userId, kind) =>
+      citedFacts.filter((f) => f.userId === userId && f.kind === kind);
+
+    const backed = new Set();
+    for (const fact of citedFacts) {
+      if (fact.kind === 'member' && namedIds.has(fact.userId)) {
+        for (const n of factNumbers(fact)) backed.add(n);
+      }
+    }
+    const loose = quantitiesIn(sentence).filter((q) => !backed.has(q));
+    if (loose.length > 0) return `quantity ${loose.join(', ')} not about the member named`;
+
+    for (const member of named) {
+      if (PLAY_CLAIM_RE.test(sentence) && factsOf(member.userId, 'member').length === 0) {
+        return `play history claimed for ${member.name} without their fact`;
+      }
+      if (QUEUE_CLAIM_RE.test(sentence) && factsOf(member.userId, 'track').length === 0) {
+        return `queue claimed for ${member.name} without their fact`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Discord ids of the allowed members a line names (data-model.md DJ Line
+ * `namedUserIds`); the planner re-checks these right before speaking.
+ * @param {string} text
+ * @param {Object} ctx
+ * @returns {string[]}
+ */
+export function namedUserIdsIn(text, ctx) {
+  return (ctx.allowedMembers ?? [])
+    .filter((member) => mentions(text, member.name))
+    .map((member) => member.userId);
+}
+
 function normalise(text) {
   return text.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 /**
- * Validate a model response against the context (R6 steps 1, 2 and 4, plus the
- * FR-005 quantity check and the content filter). Step 3 (forbidden names) is
- * added in US3.
+ * Validate a model response against the context (R6 steps 1–4, plus the FR-005
+ * quantity check and the content filter).
  * @param {unknown} response
  * @param {Object} ctx
  * @param {string[]} recentSpoken
@@ -198,6 +301,25 @@ export function validateLine(response, ctx, recentSpoken = []) {
   for (const id of factIds) for (const n of factNumbers(factsById.get(id))) allowed.add(n);
   const unsupported = quantitiesIn(text).filter((q) => !allowed.has(q));
   if (unsupported.length > 0) reject(`unsupported quantity ${unsupported.join(', ')}`);
+
+  // R6 step 3: no forbidden name (a known member or a present member who isn't
+  // allowed). Titles and artists are masked first so a band that shares a
+  // member's name can still be introduced.
+  const unmasked = maskPhrases(text, phrases);
+  const lenient = new Set(ctx.lenientNames ?? []);
+  const forbidden = (ctx.forbiddenNames ?? []).find((name) =>
+    namesForbidden(unmasked, name, lenient.has(name))
+  );
+  if (forbidden) reject('names a member who may not be named');
+  const cited = factIds.map((id) => factsById.get(id));
+  if (
+    CONNECTION_CLAIM_RE.test(unmasked) &&
+    !cited.some((f) => f.kind === 'member' || f.kind === 'group')
+  ) {
+    reject('claims a connection with the listeners without a member or group fact');
+  }
+  const misattributed = misattributedClaim(text, ctx, cited, phrases);
+  if (misattributed) reject(misattributed);
 
   // Real titles and artists can contain a blocked word (e.g. "Gypsy"); the
   // filter judges what the model added around them. Masking is case-sensitive
@@ -251,5 +373,12 @@ export async function writeLine(ctx, recentSpoken = []) {
     throw new LineError(error?.kind === 'quota' ? 'quota' : 'tts', error.message, error);
   }
 
-  return { forKey: ctx.forKey, text, pcm, factIds, namedUserIds: [], preparedAt: Date.now() };
+  return {
+    forKey: ctx.forKey,
+    text,
+    pcm,
+    factIds,
+    namedUserIds: namedUserIdsIn(text, ctx),
+    preparedAt: Date.now()
+  };
 }

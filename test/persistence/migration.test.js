@@ -238,3 +238,46 @@ describe('DatabaseManager.migrate() — upgrade from a database without is_loop_
     second.close();
   });
 });
+
+describe('DatabaseManager.migrate() — AI DJ history.artist (feature 002)', () => {
+  it('adds a nullable artist column and idx_history_url; old rows read as null', () => {
+    seedLegacyDatabase();
+
+    const manager = new DatabaseManager(dbPath);
+    const column = manager.db.pragma('table_info(history)').find((col) => col.name === 'artist');
+    expect(column).toBeDefined();
+    expect(column.notnull).toBe(0);
+    expect(indexNames(manager.db, 'history')).toContain('idx_history_url');
+    expect(manager.db.prepare('SELECT artist FROM history').get().artist).toBeNull();
+    manager.close();
+
+    let second;
+    expect(() => {
+      second = new DatabaseManager(dbPath);
+    }).not.toThrow();
+    expect(columnNames(second.db, 'history').filter((c) => c === 'artist')).toHaveLength(1);
+    second.close();
+  });
+
+  it('creates dj_member_names on an existing database, idempotently', () => {
+    seedLegacyDatabase();
+
+    const manager = new DatabaseManager(dbPath);
+    expect(columnNames(manager.db, 'dj_member_names')).toEqual(
+      expect.arrayContaining(['user_id', 'display_name', 'seen_at'])
+    );
+    manager.recordMemberNames([{ userId: 'K', displayName: 'kasper' }]);
+    manager.close();
+
+    const second = new DatabaseManager(dbPath);
+    expect(second.getKnownDisplayNames()).toEqual(['kasper']);
+    second.close();
+  });
+
+  it('creates artist and idx_history_url on a fresh install', () => {
+    const manager = new DatabaseManager(dbPath);
+    expect(columnNames(manager.db, 'history')).toContain('artist');
+    expect(indexNames(manager.db, 'history')).toContain('idx_history_url');
+    manager.close();
+  });
+});

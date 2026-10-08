@@ -73,3 +73,111 @@ describe('dj_usage (FR-033)', () => {
     expect(manager.getDjUsage(today).lines).toBe(1);
   });
 });
+
+function play(
+  m,
+  { url, title = 'Song', userId, name = `name-${userId}`, loop = 0, artist = null, playedAt = null }
+) {
+  m.db
+    .prepare(
+      `INSERT INTO history (title, url, requested_by, requested_by_id, is_loop_replay, artist, played_at)
+       VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`
+    )
+    .run(title, url, name, userId ?? null, loop, artist, playedAt);
+}
+
+describe('dj_shoutout_optouts (FR-019)', () => {
+  it('setShoutoutOptOut(uid, true) opts out; false deletes the row', () => {
+    expect(manager.isShoutoutOptedOut('A')).toBe(false);
+    manager.setShoutoutOptOut('A', true);
+    manager.setShoutoutOptOut('A', true);
+    expect(manager.isShoutoutOptedOut('A')).toBe(true);
+    expect(manager.getShoutoutOptOuts()).toEqual(new Set(['A']));
+
+    manager.setShoutoutOptOut('A', false);
+    expect(manager.isShoutoutOptedOut('A')).toBe(false);
+    expect(manager.getShoutoutOptOuts().size).toBe(0);
+    expect(manager.db.prepare('SELECT COUNT(*) AS n FROM dj_shoutout_optouts').get().n).toBe(0);
+  });
+});
+
+describe('DJ grounding reads (R6, FR-018)', () => {
+  it('getUserPlayCountsForUrl() excludes loop replays and DJ picks', () => {
+    const url = 'https://y/x';
+    for (let i = 0; i < 3; i++) play(manager, { url, userId: 'A' });
+    play(manager, { url, userId: 'A', loop: 1 });
+    play(manager, { url, userId: 'B' });
+    play(manager, { url, userId: null, name: 'SquareMusica DJ' });
+    play(manager, { url: 'https://y/other', userId: 'A' });
+    play(manager, { url, userId: 'C' });
+
+    expect(manager.getUserPlayCountsForUrl(url, ['A', 'B'])).toEqual([
+      { userId: 'A', count: 3 },
+      { userId: 'B', count: 1 }
+    ]);
+    expect(manager.getUserPlayCountsForUrl(url, [])).toEqual([]);
+  });
+
+  it('getUserTopTrack() returns the most-played counted track, or null', () => {
+    expect(manager.getUserTopTrack('A')).toBeNull();
+    play(manager, { url: 'https://y/loop', userId: 'A', loop: 1 });
+    expect(manager.getUserTopTrack('A')).toBeNull();
+
+    play(manager, { url: 'https://y/1', title: 'One', userId: 'A' });
+    play(manager, { url: 'https://y/2', title: 'Two', userId: 'A' });
+    play(manager, { url: 'https://y/2', title: 'Two', userId: 'A' });
+    for (let i = 0; i < 5; i++) play(manager, { url: 'https://y/loop', userId: 'A', loop: 1 });
+    expect(manager.getUserTopTrack('A')).toEqual({ url: 'https://y/2', title: 'Two', count: 2 });
+  });
+
+  it('getKnownMemberNames() returns the latest name per member and never DJ picks', () => {
+    play(manager, { url: 'u', userId: 'A', name: 'Old A' });
+    play(manager, { url: 'u', userId: 'A', name: 'New A' });
+    play(manager, { url: 'u', userId: 'B', name: 'Bea' });
+    play(manager, { url: 'u', userId: null, name: 'SquareMusica DJ' });
+    play(manager, { url: 'u', userId: null, name: 'Legacy Person' });
+
+    const names = manager.getKnownMemberNames();
+    expect(names.sort()).toEqual(['Bea', 'New A']);
+    expect(names).not.toContain('SquareMusica DJ');
+  });
+
+  it('recordMemberNames() keeps every display name seen per member', () => {
+    manager.recordMemberNames([
+      { userId: 'A', displayName: 'Anna' },
+      { userId: 'B', displayName: null }
+    ]);
+    manager.recordMemberNames([{ userId: 'A', displayName: 'Anna B.' }]);
+    manager.recordMemberNames([{ userId: 'A', displayName: 'Anna' }]);
+    expect(manager.getKnownDisplayNames()).toEqual(['Anna', 'Anna B.']);
+  });
+
+  it('getArtistQueuersSince() counts distinct present members in the window', () => {
+    play(manager, { url: 'u1', userId: 'A', artist: 'ABBA' });
+    play(manager, { url: 'u2', userId: 'A', artist: 'abba' });
+    play(manager, { url: 'u3', userId: 'B', artist: 'ABBA' });
+    play(manager, { url: 'u4', userId: 'C', artist: 'ABBA' }); // not present
+    play(manager, { url: 'u5', userId: 'D', artist: 'ABBA', loop: 1 }); // loop replay
+    play(manager, { url: 'u6', userId: 'E', artist: 'ABBA', playedAt: '2000-01-01 12:00:00' });
+    play(manager, { url: 'u7', userId: 'F', artist: null });
+
+    expect(manager.getArtistQueuersSince('Abba', ['A', 'B', 'D', 'E', 'F'], 7)).toBe(2);
+    expect(manager.getArtistQueuersSince(null, ['F'], 7)).toBe(0);
+    expect(manager.getArtistQueuersSince('', ['F'], 7)).toBe(0);
+  });
+
+  it('addToHistory() writes the artist from Spotify data, else the channel', () => {
+    manager.addToHistory({
+      title: 'S',
+      url: 'u1',
+      requestedBy: 'A',
+      requestedById: 'A',
+      channel: 'Chan',
+      spotifyData: { artists: ['Spot Artist'] }
+    });
+    manager.addToHistory({ title: 'S', url: 'u2', requestedBy: 'A', channel: 'Chan' });
+    manager.addToHistory({ title: 'S', url: 'u3', requestedBy: 'A' });
+    const rows = manager.db.prepare('SELECT url, artist FROM history ORDER BY id').all();
+    expect(rows.map((r) => r.artist)).toEqual(['Spot Artist', 'Chan', null]);
+  });
+});

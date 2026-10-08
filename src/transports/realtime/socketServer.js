@@ -13,7 +13,8 @@ import {
   handlePlayerControl,
   handleVoiceJoin,
   handleVoiceLeave,
-  handleDjSettings
+  handleDjSettings,
+  handleDjShoutouts
 } from './handlers.js';
 
 let io;
@@ -97,6 +98,9 @@ export function setupSocketServer(httpServer) {
     );
     socket.emit(ServerEvents.INITIAL_STATE, initialState);
 
+    // Per-member pushes (e.g. dj:shoutouts) go to this room, keyed by Discord id.
+    if (socket.user.discord_id) socket.join(`user:${socket.user.discord_id}`);
+
     // Register client event handlers
     socket.on(ClientEvents.QUEUE_ADD, handleQueueAdd(socket));
     socket.on(ClientEvents.QUEUE_REMOVE, handleQueueRemove(socket));
@@ -105,6 +109,7 @@ export function setupSocketServer(httpServer) {
     socket.on(ClientEvents.VOICE_JOIN, handleVoiceJoin(socket));
     socket.on(ClientEvents.VOICE_LEAVE, handleVoiceLeave(socket));
     socket.on(ClientEvents.DJ_SETTINGS, handleDjSettings(socket));
+    socket.on(ClientEvents.DJ_SHOUTOUTS, handleDjShoutouts(socket));
 
     // Playlist event handlers
     socket.on(ClientEvents.PLAYLIST_CREATE, ({ name, spotifyUrl, coverImage }) => {
@@ -174,6 +179,13 @@ export function setupSocketServer(httpServer) {
       'dj:state',
       (state) => {
         io.emit(ServerEvents.DJ_STATE, state);
+      }
+    ],
+    [
+      'dj:shoutouts',
+      ({ userId, enabled }) => {
+        // Personal: only that member's own sockets hear it.
+        io.to(`user:${userId}`).emit(ServerEvents.DJ_SHOUTOUTS, { enabled });
       }
     ]
   ];

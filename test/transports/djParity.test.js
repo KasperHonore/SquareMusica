@@ -8,13 +8,41 @@ import express from 'express';
 //
 // OPERATIONS is a table so US3 and US4 append rows rather than tests.
 const { service } = vi.hoisted(() => ({
-  service: { getStateOrUnavailable: null, getState: null, setSettings: null }
+  service: {
+    getStateOrUnavailable: null,
+    getState: null,
+    setSettings: null,
+    getShoutouts: null,
+    setShoutouts: null
+  }
 }));
 
 vi.mock('../../src/services/dj/djService.js', () => ({
   getStateOrUnavailable: (...args) => service.getStateOrUnavailable(...args),
   getState: (...args) => service.getState(...args),
-  setSettings: (...args) => service.setSettings(...args)
+  setSettings: (...args) => service.setSettings(...args),
+  getShoutouts: (...args) => service.getShoutouts(...args),
+  setShoutouts: (...args) => service.setShoutouts(...args)
+}));
+// socketServer is driven against a fake io that records per-room emits, so the
+// "Own shout-outs" row can assert who receives the dj:shoutouts push.
+const { fakeIo } = vi.hoisted(() => {
+  const io = {
+    roomEmits: [],
+    use() {},
+    on() {},
+    emit() {},
+    close() {},
+    to(room) {
+      return { emit: (event, payload) => io.roomEmits.push({ room, event, payload }) };
+    }
+  };
+  return { fakeIo: io };
+});
+vi.mock('socket.io', () => ({
+  Server: function Server() {
+    return fakeIo;
+  }
 }));
 vi.mock('../../src/transports/http/middleware/auth.js', () => ({
   authMiddleware: (req, _res, next) => {
@@ -35,9 +63,13 @@ vi.mock('../../src/transports/discord/voiceManager.js', () => ({
   getChannelCache: vi.fn(() => null),
   getChannelInfo: vi.fn(() => null)
 }));
-vi.mock('../../src/transports/discord/client.js', () => ({
-  client: { isReady: vi.fn(() => true), guilds: { fetch: vi.fn() } }
-}));
+vi.mock('../../src/transports/discord/client.js', async () => {
+  const { EventEmitter } = await import('events');
+  return {
+    client: { isReady: vi.fn(() => true), guilds: { fetch: vi.fn() } },
+    botEvents: new EventEmitter()
+  };
+});
 vi.mock('../../src/transports/discord/commands/utils/checks.js', () => ({
   requireVoiceConnection: vi.fn().mockResolvedValue(true)
 }));
@@ -48,7 +80,7 @@ vi.mock('../../src/services/trackResolver.js', () => ({
   triggerLookaheadIfNeeded: vi.fn()
 }));
 vi.mock('../../src/persistence/db.js', () => ({
-  db: { logEvent: vi.fn(), getHistory: vi.fn(() => []) }
+  db: { logEvent: vi.fn(), getHistory: vi.fn(() => []), getPlaylists: vi.fn(() => []) }
 }));
 vi.mock('../../src/integrations/youtube.js', () => ({ search: vi.fn() }));
 vi.mock('../../src/utils/logger.js', () => ({
@@ -96,7 +128,15 @@ vi.mock('../../src/services/playback.js', () => ({
 
 import djRouter from '../../src/transports/http/routes/dj.js';
 import queueRouter from '../../src/transports/http/routes/queue.js';
-import { handleDjSettings, handlePlayerControl } from '../../src/transports/realtime/handlers.js';
+import {
+  handleDjSettings,
+  handleDjShoutouts,
+  handlePlayerControl
+} from '../../src/transports/realtime/handlers.js';
+import {
+  setupSocketServer,
+  shutdownSocketServer
+} from '../../src/transports/realtime/socketServer.js';
 import { handleDj } from '../../src/transports/discord/commands/dj.js';
 import { handleClear as discordClear } from '../../src/transports/discord/commands/queue.js';
 import { musicManager } from '../../src/core/musicManager.js';
@@ -129,6 +169,12 @@ beforeEach(async () => {
   service.getStateOrUnavailable = vi.fn(() => STATE);
   service.getState = vi.fn(() => STATE);
   service.setSettings = vi.fn(() => STATE);
+  service.getShoutouts = vi.fn(() => ({ enabled: true }));
+  // Mirrors the real service contract: one dj:shoutouts per change (T053).
+  service.setShoutouts = vi.fn((userId, enabled) => {
+    musicManager.emit('dj:shoutouts', { userId, enabled });
+    return { enabled };
+  });
 
   const app = express();
   app.use(express.json());
@@ -151,13 +197,14 @@ function socket() {
   return { emit: vi.fn(), user: { username: 'socket-actor', discord_id: `socket-${socketSeq}` } };
 }
 
-function interaction(subcommand, integers = {}) {
+function interaction(subcommand, integers = {}, booleans = {}) {
   return {
     guildId: 'g1',
     user: { id: 'discord-1', username: 'discord-actor' },
     options: {
       getSubcommand: vi.fn(() => subcommand),
-      getInteger: vi.fn((name) => integers[name] ?? null)
+      getInteger: vi.fn((name) => integers[name] ?? null),
+      getBoolean: vi.fn((name) => booleans[name] ?? null)
     },
     reply: vi.fn().mockResolvedValue(undefined)
   };
@@ -209,6 +256,24 @@ const OPERATIONS = [
     discord: () => runDiscord(interaction('lookahead', { size: 10 })),
     http: () => runHttp('PATCH', { lookahead: 10 }),
     socket: () => runSocket({ lookahead: 10 })
+  },
+  // Own shout-outs: the member id is the Discord id on every surface (R12), so
+  // `args` holds only the value; the id is checked per surface below.
+  {
+    name: 'Own shout-outs off',
+    method: 'setShoutouts',
+    args: [false],
+    discord: () => runDiscord(interaction('shoutouts', {}, { enabled: false })),
+    http: () => runHttp('PUT', { enabled: false }, '/shoutouts/me'),
+    socket: () => runShoutoutsSocket({ enabled: false })
+  },
+  {
+    name: 'Own shout-outs read',
+    method: 'getShoutouts',
+    args: [],
+    discord: () => runDiscord(interaction('shoutouts')),
+    http: () => runHttp('GET', undefined, '/shoutouts/me'),
+    socket: null // pushed via dj:shoutouts; the page loads it over HTTP once
   }
 ];
 
@@ -225,8 +290,8 @@ async function runDiscord(i) {
   return { reply: content, ephemeral };
 }
 
-async function runHttp(method, body) {
-  const res = await fetch(`${baseUrl}/api/dj`, {
+async function runHttp(method, body, path = '') {
+  const res = await fetch(`${baseUrl}/api/dj${path}`, {
     method,
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body)
@@ -241,6 +306,13 @@ async function runSocket(payload) {
   return { error: errorCall ? errorCall[1] : null, user: s.user };
 }
 
+async function runShoutoutsSocket(payload, s = socket()) {
+  const ack = vi.fn();
+  await handleDjShoutouts(s)(payload, ack);
+  const errorCall = s.emit.mock.calls.find(([event]) => event === 'error');
+  return { error: errorCall ? errorCall[1] : null, user: s.user, ack };
+}
+
 const SURFACES = ['discord', 'http', 'socket'];
 
 describe('every DJ operation makes the same service call on every surface', () => {
@@ -253,6 +325,13 @@ describe('every DJ operation makes the same service call on every surface', () =
         const fn = service[op.method];
         expect(fn).toHaveBeenCalledTimes(1);
         const call = fn.mock.calls[0];
+        if (op.method === 'setShoutouts' || op.method === 'getShoutouts') {
+          // The member is always the Discord id (R12 Member identity).
+          const memberId = surface === 'socket' ? result.user.discord_id : ACTORS[surface].id;
+          expect(call[0]).toBe(memberId);
+          expect(call.slice(1)).toEqual(op.args);
+          return;
+        }
         expect(call.slice(0, op.args.length)).toEqual(op.args);
         if (op.method === 'setSettings') {
           const expectedActor =
@@ -382,5 +461,82 @@ describe('dj:settings uses the per-user dj throttle (1000 ms)', () => {
       'error',
       expect.objectContaining({ message: expect.any(String) })
     );
+  });
+});
+
+describe('Own shout-outs (FR-019, contracts §3)', () => {
+  it('Discord replies ephemerally with the current value', async () => {
+    const off = await runDiscord(interaction('shoutouts', {}, { enabled: false }));
+    expect(off.ephemeral).toBe(true);
+    expect(off.reply).toMatch(/off/);
+
+    const read = await runDiscord(interaction('shoutouts'));
+    expect(read.ephemeral).toBe(true);
+    expect(read.reply).toMatch(/on/);
+  });
+
+  it('HTTP returns { enabled } and the socket acks { enabled }', async () => {
+    expect(await runHttp('PUT', { enabled: false }, '/shoutouts/me')).toEqual({
+      status: 200,
+      body: { enabled: false }
+    });
+    expect(await runHttp('GET', undefined, '/shoutouts/me')).toEqual({
+      status: 200,
+      body: { enabled: true }
+    });
+    const { ack } = await runShoutoutsSocket({ enabled: false });
+    expect(ack).toHaveBeenCalledWith({ enabled: false });
+  });
+
+  it('DJ_UNAVAILABLE maps identically on every surface', async () => {
+    const code = DJ_UNAVAILABLE;
+    const text = DJ_MESSAGES[code].text;
+    service.setShoutouts = vi.fn(() => {
+      throw new DjError(code, 'service text');
+    });
+
+    const discord = await runDiscord(interaction('shoutouts', {}, { enabled: false }));
+    const httpResult = await runHttp('PUT', { enabled: false }, '/shoutouts/me');
+    const socketResult = await runShoutoutsSocket({ enabled: false });
+
+    expect(discord).toEqual({ reply: text, ephemeral: true });
+    expect(httpResult).toEqual({ status: 503, body: { code, message: text } });
+    expect(socketResult.error).toEqual({ code, message: text });
+  });
+
+  describe('a change pushes dj:shoutouts only to that member', () => {
+    beforeEach(() => {
+      fakeIo.roomEmits = [];
+      setupSocketServer({});
+    });
+
+    afterEach(() => {
+      shutdownSocketServer();
+    });
+
+    const CHANGE = {
+      discord: () => runDiscord(interaction('shoutouts', {}, { enabled: false })),
+      http: () => runHttp('PUT', { enabled: false }, '/shoutouts/me'),
+      socket: () =>
+        runShoutoutsSocket(
+          { enabled: false },
+          {
+            emit: vi.fn(),
+            user: { username: 'socket-actor', discord_id: 'socket-member' }
+          }
+        )
+    };
+    const MEMBER = { discord: 'discord-1', http: 'http-1', socket: 'socket-member' };
+
+    for (const surface of SURFACES) {
+      it(`${surface}: exactly one dj:shoutouts { enabled } to user:<id>`, async () => {
+        await CHANGE[surface]();
+
+        const pushes = fakeIo.roomEmits.filter((e) => e.event === 'dj:shoutouts');
+        expect(pushes).toEqual([
+          { room: `user:${MEMBER[surface]}`, event: 'dj:shoutouts', payload: { enabled: false } }
+        ]);
+      });
+    }
   });
 });

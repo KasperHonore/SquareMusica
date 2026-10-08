@@ -32,10 +32,19 @@ vi.mock('../../../src/transports/realtime/handlers.js', () => ({
   handleQueueReorder: vi.fn(() => vi.fn()),
   handlePlayerControl: vi.fn(() => vi.fn()),
   handleVoiceJoin: vi.fn(() => vi.fn()),
-  handleVoiceLeave: vi.fn(() => vi.fn())
+  handleVoiceLeave: vi.fn(() => vi.fn()),
+  handleDjSettings: vi.fn(() => vi.fn()),
+  handleDjShoutouts: vi.fn(() => vi.fn())
 }));
 
-const fakeIo = { use: vi.fn(), on: vi.fn(), emit: vi.fn(), close: vi.fn() };
+const roomEmit = vi.fn();
+const fakeIo = {
+  use: vi.fn(),
+  on: vi.fn(),
+  emit: vi.fn(),
+  close: vi.fn(),
+  to: vi.fn(() => ({ emit: roomEmit }))
+};
 vi.mock('socket.io', () => ({
   Server: vi.fn(function Server() {
     return fakeIo;
@@ -55,7 +64,8 @@ const MANAGER_EVENTS = [
   'player:state',
   'resolution:progress',
   'voice:context',
-  'dj:state'
+  'dj:state',
+  'dj:shoutouts'
 ];
 
 describe('socketServer setup idempotency', () => {
@@ -106,5 +116,36 @@ describe('dj:state re-broadcast', () => {
     const state = { available: true, enabled: true };
     musicManager.emit('dj:state', state);
     expect(fakeIo.emit).toHaveBeenCalledWith('dj:state', state);
+  });
+});
+
+describe('dj:shoutouts is personal', () => {
+  afterEach(() => {
+    shutdownSocketServer();
+    vi.clearAllMocks();
+  });
+
+  it('each socket with a discord_id joins user:<discord_id> on connection', () => {
+    musicManager.getFullState = vi.fn(() => ({}));
+    setupSocketServer({});
+    const onConnection = fakeIo.on.mock.calls.find(([event]) => event === 'connection')[1];
+    const socket = {
+      user: { username: 'a', discord_id: 'D1' },
+      emit: vi.fn(),
+      on: vi.fn(),
+      join: vi.fn()
+    };
+    onConnection(socket);
+    expect(socket.join).toHaveBeenCalledWith('user:D1');
+    delete musicManager.getFullState;
+  });
+
+  it('forwards dj:shoutouts only to that member room, without the user id', () => {
+    setupSocketServer({});
+    musicManager.emit('dj:shoutouts', { userId: 'D1', enabled: false });
+    expect(fakeIo.to).toHaveBeenCalledWith('user:D1');
+    expect(roomEmit).toHaveBeenCalledTimes(1);
+    expect(roomEmit).toHaveBeenCalledWith('dj:shoutouts', { enabled: false });
+    expect(fakeIo.emit).not.toHaveBeenCalledWith('dj:shoutouts', expect.anything());
   });
 });

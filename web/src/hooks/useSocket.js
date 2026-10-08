@@ -28,6 +28,9 @@ export function useSocket() {
   const [playlists, setPlaylists] = useState([]);
   // DjState (contracts §1); null until the server's initial:state arrives.
   const [djState, setDjState] = useState(null);
+  // This member's own shout-out preference: null until the DJ page loads it
+  // (GET /api/dj/shoutouts/me), then kept current by dj:shoutouts pushes.
+  const [shoutoutsEnabled, setShoutoutsEnabled] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -108,6 +111,11 @@ export function useSocket() {
 
     newSocket.on('dj:state', (state) => {
       setDjState(state);
+    });
+
+    // Sent only to this member's own sockets, whichever surface made the change.
+    newSocket.on('dj:shoutouts', ({ enabled }) => {
+      setShoutoutsEnabled(enabled);
     });
 
     newSocket.on('playlists:update', (updatedPlaylists) => {
@@ -200,6 +208,16 @@ export function useSocket() {
     [socket]
   );
 
+  // The ack and the dj:shoutouts push both carry the saved value.
+  const setShoutouts = useCallback(
+    (enabled) => {
+      socket?.emit('dj:shoutouts', { enabled }, (result) => {
+        if (typeof result?.enabled === 'boolean') setShoutoutsEnabled(result.enabled);
+      });
+    },
+    [socket]
+  );
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -221,6 +239,8 @@ export function useSocket() {
     botInfo,
     playlists,
     djState,
+    shoutoutsEnabled,
+    setShoutoutsEnabled,
     error,
     notice,
     addToQueue,
@@ -232,6 +252,7 @@ export function useSocket() {
     createPlaylist,
     deletePlaylist,
     setDjSettings,
+    setShoutouts,
     clearError,
     clearNotice
   };

@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { useSocketContext } from '../context/SocketContext';
+import { ListenerList } from '../components/dj/ListenerList';
 
 const INTERVALS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const LOOKAHEADS = [5, 10];
@@ -18,7 +20,35 @@ function resetTime(resetsAt) {
  * (FR-001a).
  */
 export function Dj() {
-  const { djState, setDjSettings } = useSocketContext();
+  const { djState, setDjSettings, listeners, shoutoutsEnabled, setShoutoutsEnabled, setShoutouts } =
+    useSocketContext();
+  const [shoutoutsError, setShoutoutsError] = useState(null);
+  const available = djState?.available === true;
+
+  // Load this member's preference once; dj:shoutouts pushes keep it current.
+  useEffect(() => {
+    if (!available) return undefined;
+    let cancelled = false;
+    fetch('/api/dj/shoutouts/me', { credentials: 'include' })
+      .then((response) => {
+        if (!response.ok) throw new Error('Failed to load your shout-out setting.');
+        return response.json();
+      })
+      .then((body) => {
+        if (!cancelled) setShoutoutsEnabled(body.enabled);
+      })
+      .catch((err) => {
+        if (!cancelled) setShoutoutsError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [available, setShoutoutsEnabled]);
+
+  // A dj:shoutouts push after a failed load supersedes the load error.
+  useEffect(() => {
+    if (shoutoutsEnabled !== null) setShoutoutsError(null);
+  }, [shoutoutsEnabled]);
 
   if (!djState) {
     return (
@@ -85,6 +115,35 @@ export function Dj() {
             ))}
           </div>
         </Row>
+      </section>
+
+      <section>
+        <SectionHeading>You</SectionHeading>
+        <Row label="Shout-outs about me">
+          {shoutoutsEnabled === null ? (
+            <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+              {shoutoutsError ?? 'Loading…'}
+            </span>
+          ) : (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={shoutoutsEnabled}
+              onClick={() => setShoutouts(!shoutoutsEnabled)}
+              style={{
+                ...pillStyle(shoutoutsEnabled),
+                minWidth: '56px'
+              }}
+            >
+              {shoutoutsEnabled ? 'On' : 'Off'}
+            </button>
+          )}
+        </Row>
+      </section>
+
+      <section>
+        <SectionHeading>Listening now</SectionHeading>
+        <ListenerList listeners={listeners} />
       </section>
 
       <section>

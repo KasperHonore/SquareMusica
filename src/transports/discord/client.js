@@ -67,6 +67,10 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
 
   if (!leftBotChannel && !joinedBotChannel) return;
 
+  // Every join or leave of the bot's channel refreshes the listener list: the DJ
+  // drops lines naming someone who left, and dashboards update (R7).
+  musicManager.emitVoiceContext();
+
   // Prefer cached channel membership to avoid REST calls on frequent voice events.
   const humanMembers = botChannel.members?.filter((m) => !m.user.bot).size;
 

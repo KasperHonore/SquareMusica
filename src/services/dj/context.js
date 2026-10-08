@@ -208,7 +208,11 @@ export function addMemberFacts(ctx, { previousTrack = null, nextTrack, store = n
       }
     }
 
+    // Known members by history username and by every display name seen in
+    // voice: the DJ says display names, so an absent member's spoken name must
+    // stay forbidden too (R6 step 3, US3/AC2).
     for (const name of store.getKnownMemberNames()) forbid(name);
+    for (const name of store.getKnownDisplayNames?.() ?? []) forbid(name);
   }
 
   // Everyone present who is not named by a fact is off limits, opted out or not.
@@ -256,6 +260,12 @@ export function buildContext({
   if (theme) addFact('theme', `Tonight's theme is "${theme}".`);
 
   const optOuts = store?.getShoutoutOptOuts?.() ?? new Set();
+  const members = presentMembers(present, optOuts);
+  // Only present members are ever named, so recording them here covers every
+  // name the DJ can have said.
+  store?.recordMemberNames?.(
+    members.map((m) => ({ userId: m.userId, displayName: m.displayName ?? m.username }))
+  );
 
   return addMemberFacts(
     {
@@ -263,7 +273,7 @@ export function buildContext({
       previous: previous ? trackFact(previous, 't1') : null,
       next: trackFact(next, 't2'),
       theme,
-      present: presentMembers(present, optOuts),
+      present: members,
       allowedNames: [],
       allowedMembers: [],
       forbiddenNames: [],

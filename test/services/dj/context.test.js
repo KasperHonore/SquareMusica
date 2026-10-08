@@ -118,6 +118,24 @@ describe('member facts (FR-016–FR-018)', () => {
   });
 });
 
+describe('display names of absent members (R6 step 3, US3/AC2)', () => {
+  it('a member seen in voice stays forbidden by display name after leaving', () => {
+    plays('B', NEXT_URL, 3, { name: 'bob_u' }); // history holds the username
+    buildContext({ previous, next, present: [A, B], store });
+    const ctx = buildContext({ previous, next, present: [A], store });
+    expect(ctx.forbiddenNames).toEqual(expect.arrayContaining(['Bob', 'bob_u']));
+    expect(ctx.allowedNames).not.toContain('Bob');
+  });
+
+  it('a present, named member is not forbidden by their recorded display name', () => {
+    plays('A', NEXT_URL, 3, { name: 'anna_u' });
+    buildContext({ previous, next, present: [A], store });
+    const ctx = buildContext({ previous, next, present: [A], store });
+    expect(ctx.allowedNames).toEqual(['Anna']);
+    expect(ctx.forbiddenNames).not.toContain('Anna');
+  });
+});
+
 describe('queuedBy (FR-017, FR-020)', () => {
   const queuedByC = { ...next, requestedBy: 'carl_u', requestedById: 'C' };
 

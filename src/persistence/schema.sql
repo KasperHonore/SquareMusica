@@ -100,6 +100,17 @@ CREATE TABLE IF NOT EXISTS dj_shoutout_optouts (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Every display name the DJ has seen per member while they were in voice. The
+-- DJ names people by display name, which history.requested_by (the username)
+-- does not hold, so this is what lets it forbid an absent member's spoken name
+-- (research R6 step 3, US3/AC2).
+CREATE TABLE IF NOT EXISTS dj_member_names (
+  user_id TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, display_name)
+);
+
 -- Daily DJ usage for the operator caps. day is date('now','localtime').
 CREATE TABLE IF NOT EXISTS dj_usage (
   day TEXT PRIMARY KEY,

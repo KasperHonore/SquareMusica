@@ -142,6 +142,16 @@ describe('DJ grounding reads (R6, FR-018)', () => {
     expect(names).not.toContain('SquareMusica DJ');
   });
 
+  it('recordMemberNames() keeps every display name seen per member', () => {
+    manager.recordMemberNames([
+      { userId: 'A', displayName: 'Anna' },
+      { userId: 'B', displayName: null }
+    ]);
+    manager.recordMemberNames([{ userId: 'A', displayName: 'Anna B.' }]);
+    manager.recordMemberNames([{ userId: 'A', displayName: 'Anna' }]);
+    expect(manager.getKnownDisplayNames()).toEqual(['Anna', 'Anna B.']);
+  });
+
   it('getArtistQueuersSince() counts distinct present members in the window', () => {
     play(manager, { url: 'u1', userId: 'A', artist: 'ABBA' });
     play(manager, { url: 'u2', userId: 'A', artist: 'abba' });

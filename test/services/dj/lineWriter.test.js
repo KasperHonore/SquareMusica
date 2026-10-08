@@ -233,4 +233,72 @@ describe('shout-outs: forbidden names and allowed members (R6 step 3, SC-003)', 
       expect(payload.allowedNames).toEqual(['Carl']);
     });
   });
+
+  describe('history stores usernames, the DJ says display names (US3/AC2)', () => {
+    it('a member who was named and then left is forbidden by display name', async () => {
+      plays('B', 'bob_u', next.url, 3); // requested_by is the Discord username
+      const before = buildContext({ previous, next, present: [A, B], store });
+      expect(before.allowedNames).toContain('Bob');
+
+      const after = buildContext({ previous, next, present: [A], store });
+      expect(after.allowedNames).not.toContain('Bob');
+      reply("Bob, this one's for you: Dancing Queen!", ['f2']);
+      await expect(writeLine(after, ['Bob, here is Dancing Queen again!'])).rejects.toMatchObject({
+        kind: 'validation'
+      });
+      expect(synthesize).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a claim must be about the member the cited fact is about (US3/AC1)', () => {
+    const queuedByC = { ...next, requestedBy: 'carl_u', requestedById: 'C' };
+
+    function ctxAnnaPlaysCarlQueued() {
+      plays('A', 'anna_u', next.url, 3);
+      const ctx = buildContext({ previous, next: queuedByC, present: [A, C], store });
+      expect(ctx.allowedNames.sort()).toEqual(['Anna', 'Carl']);
+      return { ctx, annaFact: ctx.facts.find((f) => f.kind === 'member' && f.userId === 'A') };
+    }
+
+    it("rejects Anna's play count attributed to Carl", async () => {
+      const { ctx, annaFact } = ctxAnnaPlaysCarlQueued();
+      reply('Carl has played Dancing Queen three times!', ['f2', annaFact.id]);
+      await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+    });
+
+    it('rejects a play-history claim without a number about a queuer-only member', async () => {
+      const { ctx } = ctxAnnaPlaysCarlQueued();
+      reply('Carl plays Dancing Queen constantly!', ['f2']);
+      await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+      expect(synthesize).not.toHaveBeenCalled();
+    });
+
+    it('rejects a queue claim about a member who did not queue the track', async () => {
+      const { ctx, annaFact } = ctxAnnaPlaysCarlQueued();
+      reply('Anna queued Dancing Queen!', ['f2', annaFact.id]);
+      await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+    });
+
+    it('accepts each claim attributed to the right member', async () => {
+      const { ctx, annaFact } = ctxAnnaPlaysCarlQueued();
+      reply('Carl queued Dancing Queen. Anna has played it three times!', ['f2', annaFact.id]);
+      const line = await writeLine(ctx);
+      expect(line.namedUserIds.sort()).toEqual(['A', 'C']);
+    });
+  });
+
+  describe('a username that is also an ordinary word', () => {
+    it('blocks it as a name but not as a word', async () => {
+      plays('P', 'party', 'https://y/p', 1);
+      const ctx = buildContext({ previous, next, present: [A], store });
+      expect(ctx.forbiddenNames).toContain('party');
+
+      reply("Let's party, here comes Dancing Queen!", ['f2']);
+      await expect(writeLine(ctx)).resolves.toBeTruthy();
+      reply('Party time, here comes Dancing Queen!', ['f2']);
+      await expect(writeLine(ctx)).resolves.toBeTruthy();
+      reply('This one goes out to Party: Dancing Queen!', ['f2']);
+      await expect(writeLine(ctx)).rejects.toMatchObject({ kind: 'validation' });
+    });
+  });
 });

@@ -162,6 +162,76 @@ function mentions(text, name) {
 }
 
 /**
+ * Whether `text` uses a forbidden `name` as a name. An all-lowercase single-word
+ * name (a Discord username such as "music" or "party") is also an ordinary word,
+ * so it only counts when written capitalised mid-sentence, or in capitals; any
+ * other name (display names, usernames with digits or symbols) matches
+ * case-insensitively.
+ */
+function namesForbidden(text, name) {
+  if (!name) return false;
+  if (!/^\p{Ll}+$/u.test(name)) return mentions(text, name);
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(name)}(?![\\p{L}\\p{N}])`, 'giu');
+  for (const m of text.matchAll(re)) {
+    const word = m[0];
+    if (word === word.toLowerCase()) continue;
+    const sentenceStart = /(?:^|[.!?…]\s+)$/u.test(text.slice(0, m.index));
+    if (sentenceStart && word.slice(1) === word.slice(1).toLowerCase()) continue;
+    return true;
+  }
+  return false;
+}
+
+// Claims about a member's own history ("played it three times", "your
+// favourite") and about who queued a track. A named member is only the subject
+// of such a claim when a cited fact is about them (FR-005, FR-018).
+const PLAY_CLAIM_RE =
+  /\b(?:played|plays|spins|spun|favou?rites?|most[- ]played|on repeat|constantly|loves?)\b/i;
+const QUEUE_CLAIM_RE =
+  /\b(?:queued?|queues|queuing|queueing|picked|picks|requested|chose|choice)\b/i;
+
+function splitSentences(text) {
+  return text.split(/(?<=[.!?…])\s+/).filter((part) => part.trim());
+}
+
+/**
+ * Reject a claim attributed to an allowed member that their own cited facts do
+ * not back: a quantity, a play-history claim, or a queue claim in a sentence
+ * that names them (US3/AC1: every claim is true).
+ * @returns {string|null} why the line is rejected
+ */
+function misattributedClaim(text, ctx, citedFacts, phrases) {
+  const members = ctx.allowedMembers ?? [];
+  if (members.length === 0) return null;
+  for (const sentence of splitSentences(maskPhrases(text, phrases))) {
+    const named = members.filter((m) => mentions(sentence, m.name));
+    if (named.length === 0) continue;
+    const namedIds = new Set(named.map((m) => m.userId));
+    const factsOf = (userId, kind) =>
+      citedFacts.filter((f) => f.userId === userId && f.kind === kind);
+
+    const backed = new Set();
+    for (const fact of citedFacts) {
+      if (fact.kind === 'member' && namedIds.has(fact.userId)) {
+        for (const n of factNumbers(fact)) backed.add(n);
+      }
+    }
+    const loose = quantitiesIn(sentence).filter((q) => !backed.has(q));
+    if (loose.length > 0) return `quantity ${loose.join(', ')} not about the member named`;
+
+    for (const member of named) {
+      if (PLAY_CLAIM_RE.test(sentence) && factsOf(member.userId, 'member').length === 0) {
+        return `play history claimed for ${member.name} without their fact`;
+      }
+      if (QUEUE_CLAIM_RE.test(sentence) && factsOf(member.userId, 'track').length === 0) {
+        return `queue claimed for ${member.name} without their fact`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Discord ids of the allowed members a line names (data-model.md DJ Line
  * `namedUserIds`); the planner re-checks these right before speaking.
  * @param {string} text
@@ -221,8 +291,11 @@ export function validateLine(response, ctx, recentSpoken = []) {
   // allowed). Titles and artists are masked first so a band that shares a
   // member's name can still be introduced.
   const unmasked = maskPhrases(text, phrases);
-  const forbidden = (ctx.forbiddenNames ?? []).find((name) => mentions(unmasked, name));
+  const forbidden = (ctx.forbiddenNames ?? []).find((name) => namesForbidden(unmasked, name));
   if (forbidden) reject('names a member who may not be named');
+  const cited = factIds.map((id) => factsById.get(id));
+  const misattributed = misattributedClaim(text, ctx, cited, phrases);
+  if (misattributed) reject(misattributed);
 
   // Real titles and artists can contain a blocked word (e.g. "Gypsy"); the
   // filter judges what the model added around them. Masking is case-sensitive

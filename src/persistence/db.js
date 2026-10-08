@@ -786,6 +786,35 @@ export class DatabaseManager {
   }
 
   /**
+   * Remember the display names of members seen in voice, so a name the DJ may
+   * have said stays forbidden after that member leaves (R6 step 3).
+   * @param {Array<{ userId: string, displayName: string|null }>} members
+   */
+  recordMemberNames(members) {
+    const stmt = this.db.prepare(
+      `INSERT INTO dj_member_names (user_id, display_name) VALUES (?, ?)
+       ON CONFLICT(user_id, display_name) DO UPDATE SET seen_at = CURRENT_TIMESTAMP`
+    );
+    const run = this.db.transaction((rows) => {
+      for (const { userId, displayName } of rows) {
+        if (userId && displayName) stmt.run(userId, displayName);
+      }
+    });
+    run(members ?? []);
+  }
+
+  /**
+   * Every display name recorded by recordMemberNames(), for any member.
+   * @returns {string[]}
+   */
+  getKnownDisplayNames() {
+    return this.db
+      .prepare('SELECT DISTINCT display_name FROM dj_member_names ORDER BY display_name')
+      .pluck()
+      .all();
+  }
+
+  /**
    * How many of `userIds` have counted plays of `artist` in the last `days`
    * local days. Anonymous group facts only; a NULL artist never matches.
    * @param {string} artist

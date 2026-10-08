@@ -25,5 +25,6 @@ export const ClientEvents = {
   VOICE_JOIN: 'voice:join',
   VOICE_LEAVE: 'voice:leave',
   PLAYLIST_CREATE: 'playlist:create',
-  PLAYLIST_DELETE: 'playlist:delete'
+  PLAYLIST_DELETE: 'playlist:delete',
+  DJ_SETTINGS: 'dj:settings'
 };

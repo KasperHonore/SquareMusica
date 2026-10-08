@@ -20,6 +20,9 @@ import {
   createStatsEvent,
   captureTrack
 } from '../../shared/statsEvents.js';
+import { getStateOrUnavailable, setSettings } from '../../services/dj/djService.js';
+import { DjError } from '../../services/dj/errors.js';
+import { describeDjError } from '../../services/dj/messages.js';
 import { logger } from '../../utils/logger.js';
 
 // Minimum interval (ms) between accepted events of a given type. Lightweight
@@ -28,7 +31,8 @@ import { logger } from '../../utils/logger.js';
 // open tabs can't multiply their budget by the number of connections.
 const THROTTLE_INTERVALS_MS = {
   'queue:add': 1000,
-  'voice:join': 3000
+  'voice:join': 3000,
+  dj: 1000
 };
 
 // Longest throttle window. An entry older than this can never trigger a denial,
@@ -364,6 +368,52 @@ export function handleVoiceLeave(socket) {
     } catch (err) {
       logger.error('Voice leave error:', err);
       socket.emit('error', { message: 'Failed to leave the voice channel. Please try again.' });
+    }
+  };
+}
+
+/**
+ * Handle DJ settings changes from web clients (contracts §3). The resulting
+ * state reaches every client through the service's single `dj:state` broadcast,
+ * so nothing is emitted back on success.
+ * @param {Socket} socket - Socket.io socket instance
+ * @returns {Function} Event handler
+ */
+export function handleDjSettings(socket) {
+  return (payload) => {
+    if (isThrottled(socket, 'dj')) {
+      socket.emit('error', {
+        message: 'You are changing DJ settings too quickly. Please slow down.'
+      });
+      return;
+    }
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+      socket.emit('error', { message: 'DJ settings must be an object.' });
+      return;
+    }
+
+    try {
+      const actor = {
+        id: socket.user?.discord_id ?? null,
+        name: socket.user?.global_name || socket.user?.username || null
+      };
+      setSettings(payload, actor);
+    } catch (err) {
+      if (err instanceof DjError) {
+        const described = describeDjError(err.code, {
+          resetsAt: getStateOrUnavailable().caps?.resetsAt
+        });
+        if (described) {
+          socket.emit('error', { code: described.code, message: described.text });
+          return;
+        }
+      }
+      if (err instanceof TypeError) {
+        socket.emit('error', { message: err.message });
+        return;
+      }
+      logger.error('DJ settings error:', err);
+      socket.emit('error', { message: 'Failed to change DJ settings. Please try again.' });
     }
   };
 }

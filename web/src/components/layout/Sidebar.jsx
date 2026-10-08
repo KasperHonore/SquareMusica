@@ -98,6 +98,26 @@ const NAV_ITEMS = [
         <path d="M7 5H4v2a3 3 0 003 3" />
       </svg>
     )
+  },
+  {
+    id: 'dj',
+    label: 'DJ',
+    // Microphone, in the same inline 15x15 stroked family as the icons above.
+    icon: (
+      <svg
+        width="15"
+        height="15"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <rect x="9" y="2" width="6" height="12" rx="3" />
+        <path d="M5 10v1a7 7 0 0014 0v-1" />
+        <path d="M12 18v4" />
+        <path d="M8 22h8" />
+      </svg>
+    )
   }
 ];
 

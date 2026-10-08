@@ -32,7 +32,8 @@ vi.mock('../../../src/transports/realtime/handlers.js', () => ({
   handleQueueReorder: vi.fn(() => vi.fn()),
   handlePlayerControl: vi.fn(() => vi.fn()),
   handleVoiceJoin: vi.fn(() => vi.fn()),
-  handleVoiceLeave: vi.fn(() => vi.fn())
+  handleVoiceLeave: vi.fn(() => vi.fn()),
+  handleDjSettings: vi.fn(() => vi.fn())
 }));
 
 const fakeIo = { use: vi.fn(), on: vi.fn(), emit: vi.fn(), close: vi.fn() };

@@ -28,8 +28,11 @@ What this script enforces, all **mechanical**:
   at most ``MAX_REREVIEWS`` times per round, then parks ``review_rejected``. It costs no
   builder round and never counts toward stagnation (live 2026-10-08).
 - **Decision**: ``decision_needed`` blocks the piece (P6); a failing criterion or a
-  blocker/major finding asks for changes; otherwise approve. Only findings the builder
-  has not seen go back to it; ``max_rounds`` or the same blockers twice park the piece.
+  ``blocker`` finding asks for changes; otherwise approve. A ``major`` beyond the bar
+  does not send the piece back (D-CONVERGE-FINDINGS, Kasper 2026-10-13): the piece is
+  approved ``approve_with_findings`` and each major goes to the piece's
+  ``deferred_findings`` for ``piece.py converge``. Only findings the builder has not seen
+  go back to it; ``max_rounds`` or the same blockers twice park the piece.
 - **No loop switching**: no code path writes a piece's ``loop``; ``next`` refuses when the
   state's loop differs from the approved record.
 
@@ -57,7 +60,8 @@ import nightshift_model as model  # noqa: E402
 import nightshift_state as st  # noqa: E402
 
 SEVERITIES = ("blocker", "major", "minor", "nit")
-BLOCKING = ("blocker", "major")
+BLOCKING = ("blocker",)
+DEFERRED = ("major",)  # a real defect the bar does not name: converge input, not a send-back
 MAX_REREVIEWS = 1
 ANSWER = {"sha": str, "criteria": list, "findings": list, "biggest_gap": str, "decision_needed": (str, type(None))}
 
@@ -315,19 +319,23 @@ def review(c: Ctx, sha_rev: str, path: Path) -> dict[str, Any]:
             {"severity": "blocker", "category": "acceptance", "path": "-", "lines": "*",
              "rationale": f"{x['ref']} fails: {x['evidence']}", "fingerprint": "criterion:" + x["ref"]} for x in failing]
         blockers = sorted({f["fingerprint"] for f in findings if f["severity"] in BLOCKING})
+        deferred = [f for f in findings if f["severity"] in DEFERRED]
         result, reason = ("changes", "criteria_fail" if failing else "blocking_findings") if blockers \
-            else ("approve", "approved")
+            else ("approve_with_findings", "approved_with_findings") if deferred else ("approve", "approved")
     record = {"piece": c.key, "sha": sha, "bar_hash": bar_hash, "round": p["round"], "result": result,
               "reason": reason, "critic": critic, "findings": findings, "blockers": blockers,
               "biggest_gap": data["biggest_gap"] if data else None, "question": question}
     (ev / "verdict.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-    st.set_sub(c.state, c.key, "verdict", "passed" if result == "approve" else "rejected" if data is None else "failed")
+    approved = result in ("approve", "approve_with_findings")
+    st.set_sub(c.state, c.key, "verdict", "passed" if approved else "rejected" if data is None else "failed")
     if result == "rejected":
         rejected["rejections"].append({"reason": critic["reason"], "detail": critic["detail"]})
         p["rejected_reviews"] = rejected
     elif result == "changes":
         p["blocker_history"].append({"round": p["round"], "sha": sha, "source": "review", "blockers": blockers})
-    elif result == "approve":
+    elif approved:
+        if result == "approve_with_findings":
+            defer(p, findings, sha)
         st.transition(c.state, c.key, "merging")
     else:
         st.transition(c.state, c.key, "blocked", reason="decision_needed")
@@ -340,6 +348,19 @@ def review(c: Ctx, sha_rev: str, path: Path) -> dict[str, Any]:
         c.log("review", "output_tolerated", sha, f"critic: {note}")
     c.log("verdict", result, sha, reason)
     return record
+
+
+def defer(p: dict[str, Any], findings: list[dict[str, Any]], sha: str) -> None:
+    """Record an approved piece's majors for ``piece.py converge`` (mechanical; one entry per
+    fingerprint, never dropped: converge marks them ``sent``)."""
+    have = {d["fingerprint"] for d in p.setdefault("deferred_findings", [])}
+    for f in findings:
+        if f["severity"] in DEFERRED and f["fingerprint"] not in have:
+            have.add(f["fingerprint"])
+            p["deferred_findings"].append({"severity": f["severity"], "path": f.get("path", ""),
+                                           "lines": f.get("lines", ""), "rationale": f["rationale"],
+                                           "fingerprint": f["fingerprint"], "sha": sha, "round": p["round"],
+                                           "status": "pending"})
 
 
 # ---------------------------------------------------------------------------

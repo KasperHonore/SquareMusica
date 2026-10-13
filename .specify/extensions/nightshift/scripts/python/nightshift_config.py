@@ -35,7 +35,7 @@ DEFAULTS: dict[str, Any] = {
     "checks": [],
     "preview": {"command": [], "health_url": "", "health_timeout": 30},
     "cli": {"piece": "claude", "builder": "claude", "critic": "claude", "converge": "claude"},
-    # D-3': /speckit-converge rounds once every piece passed.
+    # D-3': /speckit-converge rounds whenever nothing is ready or running (D-CONVERGE-FINDINGS).
     "converge": {"max_rounds": 2},
     "gate_paths": DEFAULT_GATE_PATHS,
     # Free space (MB) preflight wants in the checks' temp dir and the repo's filesystem:

@@ -20,11 +20,15 @@
   result (``status: running`` while it runs).
 - ``result --piece P``: write and print ``pieces/<P>/result.json``.
 - ``converge``: one ``/speckit-converge`` round (D-3'), only when no piece is ready or
-  running, every piece has ``passed`` (Kasper, 2026-10-07: a parked or blocked piece skips
-  converge, since its gaps would be duplicated), and fewer than ``converge.max_rounds``
-  (default 2) rounds ran. It runs the configured ``cli.converge`` (``claude -p``) on
+  running, the run has not stopped and fewer than ``converge.max_rounds`` (default 2)
+  rounds ran; parked and blocked pieces no longer prevent it (D-CONVERGE-FINDINGS, Kasper
+  2026-10-13). It runs the configured ``cli.converge`` (``claude -p``) on
   ``/speckit-converge`` in a fresh worktree at origin's feature head with the feature
-  pinned. Mechanical check: only ``tasks.md`` changed and its old content is a
+  pinned. Its user input lists every pending deferred finding (a critic's ``major``
+  beyond the bar) of the *passed* pieces, so it never duplicates a parked or blocked
+  piece's own work; after a round that did not ``safety_stop`` they are marked ``sent``
+  with the round (never sent twice, never dropped), and the round's appended task ids are
+  kept in ``converge_appended``. Mechanical check: only ``tasks.md`` changed and its old content is a
   byte-identical prefix of the new; otherwise nothing is pushed and the run stops
   ``safety_stop``. An append is committed and pushed (fast-forward). Its open tasks split
   by tag: *traced* (``missing``/``partial``/``contradicts`` whose refs all exist in
@@ -292,16 +296,32 @@ def next_pieces(ctx: pm.Ctx) -> dict[str, Any]:
             "stop_reason": ctx.state.get("stop_reason")}
 
 
+CONVERGE_INPUT = ("Critic findings from approved pieces of this feature. Assess each against spec.md; "
+                  "append a task only where it traces to spec.md, tagged with its source-ref and gap type.")
+
+
+def pending_findings(ctx: pm.Ctx) -> list[tuple[str, dict[str, Any]]]:
+    """(piece, finding) for each deferred finding not yet sent to converge, of passed pieces
+    only (a parked or blocked piece's own work stays with it). The dicts are the state's own."""
+    return [(k, f) for k, p in ctx.state["pieces"].items() if p["status"] == "passed"
+            for f in p.get("deferred_findings") or [] if f.get("status") == "pending"]
+
+
+def converge_prompt(findings: list[tuple[str, dict[str, Any]]]) -> str:
+    """``/speckit-converge`` with the findings as its user input (bare when there are none)."""
+    if not findings:
+        return "/speckit-converge\n"
+    return "/speckit-converge " + CONVERGE_INPUT + "\n\n" + "".join(
+        f"- `{k}` {f['severity']} `{f['path']}{':' + f['lines'] if f.get('lines') else ''}` "
+        f"(found at `{f['sha'][:12]}`): {' '.join(f['rationale'].split())}\n" for k, f in findings)
+
+
 def converge(ctx: pm.Ctx) -> dict[str, Any]:
     cfg = config.load(ctx.root)
     cap = int((cfg.get("converge") or {}).get("max_rounds", 2))
     rounds = int(ctx.state.get("converge_rounds") or 0)
     nxt = next_pieces(ctx)
-    d = model.derive(ctx.root, ctx.fdir)
-    waiting = [p.key for p in d.pieces if p.kind != "convergence" or p.key in ctx.state["pieces"]]
-    waiting = [k for k in waiting if (ctx.state["pieces"].get(k) or {}).get("status") != "passed"]
     why = ("the run stopped" if nxt["stop_reason"] else "a piece is ready or running" if nxt["ready"] or nxt["running"]
-           else f"not every piece has passed ({', '.join(waiting)})" if waiting
            else f"the round cap ({cap}) is reached" if rounds >= cap else "")
     if why:
         return {"outcome": "skipped", "reason": why, "rounds": rounds}
@@ -317,7 +337,8 @@ def converge(ctx: pm.Ctx) -> dict[str, Any]:
     try:
         before = (wt / rel).read_bytes()
         prompt = out_dir / f"prompt-{rounds + 1}.md"
-        prompt.write_text("/speckit-converge\n", encoding="utf-8")
+        sent = pending_findings(ctx)
+        prompt.write_text(converge_prompt(sent), encoding="utf-8")
         argv = phase.role_argv(argparse.Namespace(cfg=cfg), "converge", prompt)
         env = phase.role_env(argv, {"SPECIFY_FEATURE_DIRECTORY": ctx.feature, "SPECIFY_FEATURE_NO_PERSIST": "1"})
         env.pop("NIGHTSHIFT_TEST_CRASH", None)
@@ -337,6 +358,8 @@ def converge(ctx: pm.Ctx) -> dict[str, Any]:
             ctx.log("_run", "converge", "safety_stop", head, f"converge broke append-only: {detail}; nothing pushed")
             return {"outcome": "safety_stop", "reason": detail, "rounds": rounds}
         ctx.state["converge_rounds"] = rounds + 1
+        for _, f in sent:
+            f.update(status="sent", converge_round=rounds + 1)
         if after == before:
             ctx.save()
             ctx.log("_run", "converge", "converged", head, f"round {rounds + 1}: no gaps")
@@ -358,6 +381,7 @@ def converge(ctx: pm.Ctx) -> dict[str, Any]:
     traced = [t.id for tr, _ in splits.values() for t in tr]
     untraced = [t.id for _, un in splits.values() for t in un]
     key = next((k for k, (tr, _) in splits.items() if tr), None)
+    ctx.state.setdefault("converge_appended", {})[str(rounds + 1)] = {"tasks": traced + untraced, "piece": key}
     if key:
         ctx.state["pieces"][key] = nsstate.new_piece("build")
     ctx.save()

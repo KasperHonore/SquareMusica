@@ -297,7 +297,13 @@ def next_ready(ctx: Ctx, not_ready: dict[str, list[str]] | None = None) -> list[
             if not_ready is not None:
                 not_ready[p.key] = reasons
             continue
-        if all((pieces.get(d) or {}).get("status") == "passed" for d in p.depends_on):
+        if p.kind == "convergence":
+            # It follows every piece before it, but converge runs beside parked and blocked
+            # pieces and what waits on them (D-CONVERGE-FINDINGS): only work that is ready
+            # or under way holds it. Derive order puts it after them, so ``out`` is complete.
+            if not any(d in out or (pieces.get(d) or {}).get("status") in nsstate.ACTIVE for d in p.depends_on):
+                out.append(p.key)
+        elif all((pieces.get(d) or {}).get("status") == "passed" for d in p.depends_on):
             out.append(p.key)
     return out
 

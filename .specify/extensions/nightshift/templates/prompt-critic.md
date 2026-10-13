@@ -35,9 +35,10 @@ at `{{sha}}` (your working directory). Changed files:
    `decision_needed`. Never guess it. A question the spec, plan or code can answer is not
    a product decision: investigate it.
 
-Severity: `blocker` breaks a criterion or correctness; `major` is a real defect the bar
-does not name; `minor` and `nit` are remarks. Only `blocker` and `major` send the piece
-back to the builder.
+Severity: `blocker` breaks a criterion or correctness and sends the piece back to the
+builder; `major` is a real defect the bar does not name, recorded and handed to converge
+as a candidate task (the piece is not sent back for it); `minor` and `nit` are remarks.
+A criterion you fail always sends the piece back.
 
 ## Output
 Return ONLY one JSON object in this shape. No text before or after it, no code fence;

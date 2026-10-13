@@ -6,13 +6,16 @@ Subcommands:
 - ``pr [--stop-reason R] [--notes F]``: render ``templates/pr-feature.md`` and open or
   update the feature PR into the base branch. The body (adapted from Matt Pocock's ``pr``
   and HumanLayer's ``visual-pr``/``show-me`` skills, MIT; ``THIRD_PARTY.md``):
-  *Needs your decision* first (parked and blocked pieces with their questions verbatim,
+  *Needs your decision* first (parked and blocked pieces with their questions verbatim
+  and any unmerged work on their phase branch,
   untraced converge gaps), *Summary*, *Evidence at <head>* (per piece: checks, critic
   verdict, CI, combined; the preview), *Merge danger* (door and blast radius) with the
   *detected one-way signals* (migrations, deleted files, lockfiles and dependency
   manifests, CI and gate paths: path globs over ``<base>...<head>``, mechanical),
   *Acceptance criteria* verbatim from ``spec.md``, *Changed during the run* (answers
-  absorbed old → new, breakage found while building) and *Known gaps*. ``--notes F`` is
+  absorbed old → new, breakage found while building), *Findings sent to converge* (each
+  critic ``major`` beyond the bar: sent in round N with the tasks that round appended and
+  its convergence piece's status, or still pending) and *Known gaps*. ``--notes F`` is
   the dispatcher's ``handover-notes.md`` (``## Summary`` and ``## Merge danger``,
   agent-written from a fresh read of the diff); its two sections are inserted verbatim
   and kept for later re-renders. Sets the run's stop reason (default
@@ -117,12 +120,31 @@ def task_text(ctx: pm.Ctx, t: core.Task) -> str:
     return f"`{t.id}`{tag}: {t.description} (`{ctx.feature}/tasks.md` line {t.line})"
 
 
+def unmerged_work(ctx: pm.Ctx, key: str, p: dict[str, Any]) -> str:
+    """A stopped piece's commits beyond its base: branch, head, pushed or not, and the
+    tasks they tick (live 2026-10-08: committed work on an unpushed branch went unmentioned).
+    Read-only; Nightshift pushes a phase branch only to open its PR."""
+    branch, base = pm.phase_branch(ctx.name, key), p.get("base_sha")
+    head = pm.git(ctx.root, "rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False)
+    if not base or not head or head == base:
+        return ""
+    remote = pm.git(ctx.root, "ls-remote", "origin", f"refs/heads/{branch}", check=False).split()[:1]
+    pushed = "pushed" if remote == [head] else "local only, not pushed"
+    rel = f"{ctx.feature}/tasks.md"
+    texts = [pm.git(ctx.root, "show", f"{sha}:{rel}", check=False) for sha in (base, head)]
+    done = [{t.line: t.done for t in core.parse_tasks_text(x, Path(rel)).tasks} for x in texts]
+    ticked = [t.id for t in core.parse_tasks_text(texts[1], Path(rel)).tasks if t.done and not done[0].get(t.line)]
+    return (f"\n  Unmerged work: `{branch}` at `{head}` ({pushed}); "
+            f"ticked {', '.join(ticked) or 'no tasks'}. Not in this PR or its preview.")
+
+
 def attention_section(ctx: pm.Ctx) -> str:
     lines = []
     for key, p in ctx.state["pieces"].items():
         if p["status"] in ("blocked", "parked"):
             q = p.get("question")
-            lines.append(f"- **`{key}` {p['status']} ({p.get('reason')})**" + (f"\n  > {q}" if q else ""))
+            lines.append(f"- **`{key}` {p['status']} ({p.get('reason')})**" + (f"\n  > {q}" if q else "")
+                         + unmerged_work(ctx, key, p))
     untraced, _ = converge_tasks(ctx)
     lines += [f"- Converge gap that no approved line asks for (a product decision): {task_text(ctx, t)}"
               for t in untraced]
@@ -236,14 +258,49 @@ def found_section(ctx: pm.Ctx) -> str:
     return "\n".join(fixed + filed)
 
 
+def deferred_findings(ctx: pm.Ctx) -> list[tuple[str, dict[str, Any]]]:
+    """(piece, finding) for every critic ``major`` beyond the bar (D-CONVERGE-FINDINGS)."""
+    return [(k, f) for k, p in ctx.state["pieces"].items() for f in p.get("deferred_findings") or []]
+
+
+def finding_text(key: str, f: dict[str, Any]) -> str:
+    where = f"{f.get('path') or '-'}{':' + f['lines'] if f.get('lines') else ''}"
+    return (f"`{key}` {f['severity']} `{where}` (found at `{(f.get('sha') or '-')[:12]}`, round {f.get('round')}): "
+            f"{' '.join(str(f.get('rationale', '')).split())}")
+
+
+def findings_section(ctx: pm.Ctx) -> str:
+    """Each deferred finding and where it went. Mechanical: read from state. A finding is
+    never shown as resolved: converge decides whether it traces to spec.md, and its
+    convergence piece's status is shown as it stands."""
+    lines = []
+    appended = ctx.state.get("converge_appended") or {}
+    for key, f in deferred_findings(ctx):
+        if f.get("status") == "sent":
+            n = f.get("converge_round")
+            rec = appended.get(str(n)) or {}
+            tasks = ", ".join(rec.get("tasks") or []) or "no task"
+            conv = rec.get("piece")
+            status = (f"`{conv}` {(ctx.state['pieces'].get(conv) or {}).get('status', 'not in run')}" if conv
+                      else "no traced task, so no convergence piece")
+            lines.append(f"- {finding_text(key, f)}\n  Sent to converge in round {n}: that round appended {tasks}; {status}.")
+        else:
+            p = ctx.state["pieces"][key]
+            why = "" if p["status"] == "passed" else f"; `{key}` is {p['status']}, so its findings stay with it"
+            lines.append(f"- {finding_text(key, f)}\n  Still pending (known gap){why}.")
+    return "\n".join(lines) or "No critic finding beyond the bar was deferred."
+
+
 def gaps_section(ctx: pm.Ctx) -> str:
     gaps = [f"- `{k}` is {p['status']}" + (f" ({p.get('reason')})" if p.get("reason") else "")
             for k, p in ctx.state["pieces"].items() if p["status"] != "passed"]
     _, open_traced = converge_tasks(ctx)
     gaps += [f"- Converge gap still open after {ctx.state.get('converge_rounds') or 0} round(s): {task_text(ctx, t)}"
              for t in open_traced]
+    gaps += [f"- Critic finding not sent to converge: {finding_text(k, f)}"
+             for k, f in deferred_findings(ctx) if f.get("status") != "sent"]
     if not ctx.state.get("converge_rounds"):
-        gaps.append("- `/speckit-converge` did not run (it runs only once every piece passed; a parked or blocked piece skips it).")
+        gaps.append("- `/speckit-converge` did not run.")
     return "\n".join(gaps) or "None known."
 
 
@@ -286,6 +343,7 @@ def render_body(ctx: pm.Ctx, head: str) -> str:
         "signals": "\n".join(signals) or "None.", "acceptance": acceptance_section(ctx),
         "changes": changes_section(ctx), "evidence": evidence_section(ctx, head),
         "preview": preview_section(ctx, head), "gaps": gaps_section(ctx), "version": VERSION,
+        "findings": findings_section(ctx),
     })
 
 

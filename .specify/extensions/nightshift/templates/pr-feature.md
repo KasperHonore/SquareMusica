@@ -35,6 +35,14 @@
 
 {{changes}}
 
+## Findings sent to converge
+
+Critic findings beyond the acceptance criteria (`major`); they did not hold their piece
+back. Converge decides whether each traces to `spec.md`; untraced tasks are under
+"Needs your decision".
+
+{{findings}}
+
 ## Known gaps
 
 {{gaps}}

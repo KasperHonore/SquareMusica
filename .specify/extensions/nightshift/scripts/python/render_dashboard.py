@@ -352,13 +352,14 @@ def round_table(rounds: list[dict[str, Any]]) -> str:
         return '<p class="calm">No builder round has run yet.</p>'
     rows = []
     for r in rounds:
-        verdict = {"approve": ("Approved", "t-ok"), "changes": ("Changes asked", "t-warn"),
+        verdict = {"approve": ("Approved", "t-ok"), "approve_with_findings": ("Approved, findings to converge", "t-ok"),
+                   "changes": ("Changes asked", "t-warn"),
                    "rejected": ("Review rejected", "t-warn"),
                    "decision_needed": ("Question for you", "t-bad")}.get(r["verdict"] or "", (r["verdict"] or "not yet", ""))
         checks = {"passed": ("Passed", "t-ok"), "failed": ("Failed", "t-bad")}.get(r["checks"] or "", ("not yet", ""))
         mins = f"{r['duration_s'] / 60:.0f} min" if isinstance(r["duration_s"], (int, float)) else "-"
         gap = f'<tr class="gap"><td></td><td colspan="4">Biggest gap: {md(r["gap"])}</td></tr>' \
-            if r["gap"] and r["verdict"] != "approve" else ""
+            if r["gap"] and r["verdict"] not in ("approve", "approve_with_findings") else ""
         rows.append(f'<tr><td>Round {r["n"]}</td><td>{esc(r["turns"] if r["turns"] is not None else "-")}</td>'
                     f'<td>{esc(mins)}</td><td>{pill(*checks)}</td><td>{pill(*verdict)}</td></tr>{gap}')
     return ('<div class="wrap"><table class="rounds"><thead><tr><th>Round</th><th>Builder turns</th>'
@@ -625,6 +626,7 @@ def say(e: dict[str, Any], labels: dict[str, str]) -> str:
         ("checks", "passed"): f"{who}: automated checks passed",
         ("checks", "failed"): f"{who}: automated checks failed, going back to the builder",
         ("verdict", "approve"): f"{who}: the critic approved",
+        ("verdict", "approve_with_findings"): f"{who}: the critic approved; its major findings go to converge",
         ("verdict", "changes"): f"{who}: the critic asked for changes",
         ("verdict", "rejected"): f"{who}: the critic's answer was rejected; asking it again",
         ("verdict", "decision_needed"): f"{who}: the critic found a product question",

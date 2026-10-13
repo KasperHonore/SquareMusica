@@ -6,6 +6,9 @@ Subcommands:
 - ``start --piece``: create the phase branch ``nightshift/<name>/<piece>`` and its
   worktree at ``.nightshift/<name>/worktrees/<piece>`` from the feature-branch head,
   and record ``base_sha``. Idempotent: an existing worktree on that branch is adopted.
+  A piece released from ``parked`` or ``blocked`` whose base the feature head has moved
+  past, or whose merge was reverted, keeps its old branch as ``<branch>-park-<n>`` and
+  branches afresh from the feature head (mechanical).
 - ``build --piece``: render the builder prompt (frozen bar, only the findings the
   builder has not seen, current check results) and run the configured builder CLI
   in the worktree with ``SPECIFY_FEATURE_DIRECTORY`` pinned, under the phase budget.
@@ -13,7 +16,8 @@ Subcommands:
   ``postconditions`` and ``checks`` decide.
 
 - ``review --piece``: run the fresh, read-only critic on the prompt ``verdict.py inputs``
-  rendered and store its raw answer for ``verdict.py review``.
+  rendered and store its raw answer for ``verdict.py review``. An earlier answer at the
+  same SHA moves to ``attempt-<n>/`` first (P7).
 
 Mechanical: the worktree and branch the builder works in, the pinned feature, the
 timeout, the usage-limit stop (exit 4, spike S-7) and the credential split (only role
@@ -85,16 +89,27 @@ def cmd_start(c: Ctx) -> dict[str, Any]:
     fb = c.state["feature_branch"]
     git(c.root, "fetch", "-q", "origin", f"refs/heads/{fb}:refs/remotes/origin/{fb}")
     head = git(c.root, "rev-parse", f"refs/remotes/origin/{fb}")
-    if c.p.get("fresh_branch"):
-        # Released after its merge was reverted: keep the old branch under a new name and
-        # start again from the feature head, where the reverted work is absent.
-        old = f"{c.branch}-park-{len(c.p.get('parks') or [])}"
+    base = c.p.get("base_sha")
+    # Released, never merged, and the feature head moved past its base (other pieces merged
+    # since it parked or blocked): rebuilding on the old base would miss them and conflict.
+    moved = bool(c.p.get("rebase_on_start") and base and base != head
+                 and subprocess.run(["git", "merge-base", "--is-ancestor", head, base], cwd=c.root).returncode != 0)
+    if c.p.get("fresh_branch") or moved:
+        # Keep the old branch under a new name and start again from the feature head
+        # (a reverted merge: where the reverted work is absent).
+        n = len(c.p.get("parks") or []) or 1
+        old = f"{c.branch}-park-{n}"
+        while git(c.root, "rev-parse", "--verify", "--quiet", f"refs/heads/{old}", check=False):
+            n += 1
+            old = f"{c.branch}-park-{n}"
         if c.worktree.is_dir():
             git(c.root, "worktree", "remove", "--force", str(c.worktree))
         if git(c.root, "rev-parse", "--verify", "--quiet", f"refs/heads/{c.branch}", check=False):
             git(c.root, "branch", "-M", c.branch, old)
-        c.p.update(fresh_branch=None, base_sha=None)
-        c.log("start", "fresh_branch", head, f"reverted attempt kept as {old}")
+        c.p.update(fresh_branch=None, base_sha=None, earlier_attempt=old)
+        c.log("start", "fresh_branch", head, f"{'reverted' if not moved else 'earlier'} attempt kept as {old}"
+              + (f"; feature head moved from {base[:12]}" if moved else ""))
+    c.p.pop("rebase_on_start", None)
     if c.worktree.is_dir():
         current = git(c.worktree, "branch", "--show-current", check=False)
         if current != c.branch:
@@ -150,7 +165,9 @@ def _check_results(c: Ctx) -> str:
     sha = c.p.get("candidate_sha")
     path = c.run_dir / "evidence" / c.key / (sha or "-") / "checks.json"
     if not sha or not path.is_file():
-        return "_No checks have run for this phase yet._"
+        # Round 1: the exact commands the gate will run, so the builder runs the same ones.
+        planned = [f"- `{x['id']}`: will run `{shlex.join(x['argv'])}`" for x in c.cfg.get("checks") or []]
+        return "\n".join(["_No checks have run for this phase yet._", *planned])
     data = json.loads(path.read_text(encoding="utf-8"))
     rows = data.get("checks", data) if isinstance(data, dict) else data
     return "\n".join(f"- `{' '.join(r.get('argv') or [])}`: exit {r.get('exit')}"
@@ -171,7 +188,12 @@ def _unseen(c: Ctx, path: str | None) -> str:
 def _grounding(c: Ctx) -> str:
     """P2: the run-start re-grounding's drift note for this piece, if any."""
     note = ((c.state.get("grounding") or {}).get("pieces") or {}).get(c.key)
-    return f"## Code moved since planning (re-grounding)\n{note}\n" if note else ""
+    out = f"## Code moved since planning (re-grounding)\n{note}\n" if note else ""
+    if c.p.get("earlier_attempt"):
+        out += (f"## An earlier attempt\nThis phase was built before on a base the feature branch has moved "
+                f"past; that work is kept on branch `{c.p['earlier_attempt']}` (read it with `git show` or "
+                "`git diff`). Reuse what still fits; this branch starts from the current feature head.\n")
+    return out
 
 
 def _render_prompt(c: Ctx, findings_file: str | None) -> str:
@@ -578,6 +600,26 @@ def cmd_build(c: Ctx, findings_file: str | None) -> dict[str, Any]:
     return result
 
 
+CRITIC_FILES = ("critic.json", "critic.wrapper.json", "critic.stderr.log", "verdict.json")
+
+
+def keep_earlier_answer(ev: Path) -> Path | None:
+    """P7: an earlier answer at this SHA (a rejected review asked again, or an interrupted
+    call) moves to ``attempt-<n>/`` before a fresh critic writes; the current files stay
+    where every reader looks for them."""
+    found = [ev / n for n in CRITIC_FILES if (ev / n).is_file()]
+    if not found:
+        return None
+    n = 1
+    while (ev / f"attempt-{n}").exists():
+        n += 1
+    kept = ev / f"attempt-{n}"
+    kept.mkdir()
+    for f in found:
+        f.rename(kept / f.name)
+    return kept
+
+
 def cmd_review(c: Ctx) -> dict[str, Any]:
     sha = c.p.get("candidate_sha")
     ev = c.run_dir / "evidence" / c.key / (sha or "-")
@@ -588,6 +630,9 @@ def cmd_review(c: Ctx) -> dict[str, Any]:
         raise core.NightshiftError(f"{pfile} missing; run `verdict.py inputs` first")
     kill_stray_children(c)
     c.save()
+    kept = keep_earlier_answer(ev)
+    if kept:
+        c.log("review", "earlier_answer_kept", sha, f"moved to {kept.name}/")
     target = ev / "critic.json"
     cwd = c.worktree if c.worktree.is_dir() else c.root
 

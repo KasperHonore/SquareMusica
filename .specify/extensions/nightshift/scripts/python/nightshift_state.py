@@ -419,6 +419,11 @@ def transition(state: dict[str, Any], key: str, to: str, *, by: str = "", reason
         raise core.NightshiftError(f"{key}: unknown block reason {reason!r}")
     if frm == "parked":
         unpark(p, to, by)
+    if frm in ("parked", "blocked") and to == "pending" and p.get("base_sha"):
+        # Released (``ready go``, ``blocker.py resolve``): the feature head may have moved
+        # since its attempt; ``phase.py start`` re-branches if so (field report 2026-10-08-4
+        # §10.2).
+        p["rebase_on_start"] = True
     p["status"] = to
     if to == "parked":
         p["parked_at"] = now()

@@ -274,6 +274,8 @@ def record_state(root: Path, name: str, result: dict[str, Any]) -> list[str]:
                 row = {"summary": f["summary"], "check_id": f["check"], "sha": head}
                 if not any(x["summary"] == row["summary"] for x in prefixed):
                     prefixed.append(row)
+    if outcome in ("passed", "blocked"):
+        # A blocked round's non-blockers are filed too (live 2026-10-08); a tampered gate's are not.
         p["found_pending"] = [f["summary"] for f in result.get("found") or [] if f["kind"] == "nonblocker"
                               and f["summary"] not in [x.get("summary") for x in p.get("found") or []]]
     if head != result["base"]:

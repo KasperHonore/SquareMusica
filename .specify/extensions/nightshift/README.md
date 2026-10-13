@@ -162,17 +162,19 @@ prompt is in `docs/prompts/install-and-first-run.md` (steps 3–5).
      (and `/speckit-tasks` if the work changed), commits, and `blocker.py resolve`
      absorbs it. A renumbering or a changed acceptance criterion blocks the piece
      `needs_kasper` instead: re-run `ready` and "go" by day.
-   - **Converge rounds.** When every piece has passed, `/speckit-converge` runs (at most
-     `converge.max_rounds`, default 2). It may only append to `tasks.md`. Gaps that trace
-     to `spec.md` become one more piece, `convergence-N`, built like any other; untraced
-     gaps (all `unrequested` ones) are listed for your decision. A run with a parked or
-     blocked piece skips converge.
+   - **Converge rounds.** Whenever nothing is ready or running, `/speckit-converge` runs
+     (at most `converge.max_rounds`, default 2), also beside parked or blocked pieces. It
+     receives the critic's `major` findings beyond the bar from approved pieces. It may
+     only append to `tasks.md`. Gaps that trace to `spec.md` become one more piece,
+     `convergence-N`, built like any other; untraced gaps (all `unrequested` ones) are
+     listed for your decision.
 5. **Handover.** One feature PR into `main` with a preview at its exact head SHA, or a
    stated stop reason. The PR body: *Needs your decision* (parked and blocked pieces with
    their questions verbatim, untraced gaps), *Summary*, *Evidence* per piece at the head
    SHA, *Merge danger* (door, blast radius, and mechanically detected one-way signals such
    as migrations, deleted files, lockfiles and CI paths), *Acceptance criteria* verbatim,
-   *Changed during the run*, *Known gaps*. Summary and Merge danger are agent-written.
+   *Changed during the run*, *Findings sent to converge*, *Known gaps*. Summary and Merge
+   danger are agent-written.
 6. **Accept, attended.** Test the preview at the PR's head SHA. Say "accepted" or
    "accepted except AC-3". A defect or a wish goes to `/speckit-clarify` by day and is
    picked up by the next run's converge. **You merge to `main`**, then ask Claude to
@@ -208,6 +210,45 @@ NIGHTSHIFT_SPECIFY=/path/to/specify python3 -m unittest discover -s tests -t .
 - [docs/prompts/](docs/prompts/): install-and-run and run-report prompts; reports go to
   [docs/field-reports/](docs/field-reports/). Spike reports: [docs/spikes/](docs/spikes/).
 - [AGENTS.md](AGENTS.md): instructions for agents working in this repository.
+
+## Changes in 2.1.0 (2026-10-13)
+
+The spec stays locked, the tasks may grow (D-CONVERGE-FINDINGS, Kasper 2026-10-13).
+
+- A critic `major` beyond the bar no longer sends its piece back. With every criterion
+  passing and no `blocker`, the verdict is `approve_with_findings`: the piece merges like
+  an approval and each major is kept in the piece's `deferred_findings`. A failing
+  criterion or a `blocker` still sends the piece back. Before, 10 of 18 send-backs in
+  four SquareMusica 002 trials had every criterion passing, and us3 parked `max_rounds`.
+- Converge runs whenever nothing is ready or running; parked and blocked pieces no
+  longer prevent it, and a `convergence-N` piece runs beside them. Before, converge ran
+  only when every piece had passed, and cycle 4 never converged.
+- `/speckit-converge` receives the pending deferred findings of passed pieces as user
+  input and appends a task only where a finding traces to `spec.md`. Each finding is
+  sent once; a parked or blocked piece's findings stay with it.
+- The feature PR has a *Findings sent to converge* section: each finding, the round it
+  went in with the tasks that round appended and its convergence piece's status, or
+  still pending (also a known gap).
+- A parked or blocked piece that was never merged and is released after the feature head
+  moved keeps its old branch as `-park-<n>` and branches afresh from the feature head;
+  the builder is told where the earlier attempt is. Before, it would have rebuilt on its
+  old base and conflicted (SquareMusica 002 us3, cycle 4).
+
+## Changes in 2.0.6 (2026-10-08)
+
+- A fresh review at a SHA that already has a critic answer first moves `critic.json`,
+  `critic.wrapper.json`, `critic.stderr.log` and `verdict.json` to `attempt-<n>/`. Before,
+  the re-review after a rejection overwrote the rejected answer and its cost (SquareMusica
+  002 us1, 2.0.4).
+- The round-1 builder prompt lists each configured check with the exact command the gate
+  will run. Before, it named only the check ids, and builders ran a plain `npm ci` without
+  the configured CFLAGS (SquareMusica 002 us4, #69).
+- A blocked round's nonblocker found notes are filed like a passed round's; a tampered gate's
+  are still dropped. Before, they were lost (SquareMusica 002 polish).
+- "Needs your decision" names a parked or blocked piece's unmerged work: its phase branch,
+  head SHA, whether it is pushed and the tasks it ticks. The branch is not pushed at the
+  park. Before, committed work on an unpushed branch went unmentioned (SquareMusica 002
+  polish, 7f96933).
 
 ## Changes in 2.0.5 (2026-10-08)
 

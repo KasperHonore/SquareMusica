@@ -401,7 +401,7 @@ sequential T001–T054.
 ## Stage 5 — Verify
 
 ```bash
-cd /home/claude/Documents/SquareMusica
+cd /home/claude/projects/SquareMusica
 # artifacts only — no production code has changed yet
 git status specs/001-dj-stats-page/
 ```
@@ -604,7 +604,7 @@ so no citation sweep was needed this time.
 ### Verification of this stage
 
 ```bash
-cd /home/claude/Documents/SquareMusica/specs/001-dj-stats-page
+cd /home/claude/projects/SquareMusica/specs/001-dj-stats-page
 grep -c '^- \[ \] T' tasks.md                      # 55
 grep -n 'clearHistory' tasks.md                    # T006 must say DELETE, not preserve
 grep -n 'T055' tasks.md plan.md                    # present in both
